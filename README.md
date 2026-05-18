@@ -1,62 +1,74 @@
+<div align="center">
+
 # Comix Downloader
 
-> Chrome extension (Manifest V3) — Download manga chapters from [comix.to](https://comix.to) as ZIP files, directly from the title page.
+### Download entire manga from [comix.to](https://comix.to) — one click, straight to your drive.
+
+[![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-brightgreen?logo=googlechrome&logoColor=white)](https://github.com/N3uralCreativity/comix-downloader)
+[![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](https://developer.chrome.com/docs/extensions/mv3/intro/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **by [N3uralCreativity](https://github.com/N3uralCreativity)**
 
+</div>
+
 ---
 
-## Features
+## What it does
 
-- **Per-chapter download** — one-click button next to every chapter on the title page
-- **Download All** — downloads every chapter into a single ZIP with one folder per chapter (`Ch0001/`, `Ch0002/`, …)
-- **CDN-agnostic** — works with any `wowpic*.store` CDN variant, auto-detected
-- **Smart page detection** — three-strategy extraction (Next.js `__NEXT_DATA__`, DOM frequency counting, URL pattern enumeration) handles partial preloads and lazy-loading
-- **Progress popup** — live progress bar, per-chapter log, cancel button
-- **Persistent activity log** — accessible from the extension popup
+Tired of reading online with a bad connection? **Comix Downloader** adds download buttons directly to every comix.to title page — grab a single chapter or the entire series in seconds, all neatly zipped and organized.
 
-## Installation (unpacked)
+---
 
-1. Clone or download this repository
-2. Open Chrome → `chrome://extensions`
-3. Enable **Developer mode** (top-right toggle)
-4. Click **Load unpacked** → select this folder
-5. Navigate to any `comix.to/title/…` page
+## Download an entire series in one click
 
-## File Structure
+Hit **Download All** on any title page and walk away. Every chapter is downloaded, packaged into its own folder, and bundled into a single ZIP — named, padded, and sorted.
 
-```
-├── manifest.json          # Extension manifest (MV3)
-├── background.js          # Service worker — tab orchestration, ZIP creation, logging
-├── content_title.js       # Content script — injects download buttons & popup UI
-├── popup.html             # Extension popup (credits + activity log)
-├── popup.js               # Popup logic
-├── lib/
-│   └── jszip.min.js       # JSZip 3.10.1
-└── icons/
-    ├── icon16.png
-    ├── icon48.png
-    └── icon128.png
-```
+![Download All button on title page](assets/screenshot-title.png)
 
-## How it works
+---
 
-1. User clicks a chapter's download button on the title page
-2. The service worker opens the chapter in a background tab
-3. `extractChapterImagesFromPage()` is injected (world: MAIN) to detect all image URLs
-4. Images are fetched in parallel batches of 3 directly from the CDN (service worker has `host_permissions`)
-5. JSZip assembles a ZIP → `chrome.downloads` saves it as a `data:` URL
+## Or pick individual chapters
 
-## Permissions
+Each chapter gets its own download button right in the list. One click → one ZIP, done.
 
-| Permission | Reason |
+![Per-chapter download buttons](assets/screenshot-chapters.png)
+
+---
+
+## Live progress — always in control
+
+A real-time popup tracks every chapter: which one is active, how many images were found, overall progress. Don't want to wait? Hit **Cancel** at any time.
+
+![Download progress popup](assets/screenshot-progress.png)
+
+> ⚠️ **Heads up** — During a "Download All" session, the extension automatically opens and closes background browser tabs to extract each chapter. This is completely normal behaviour. Your current tab is never touched, but you may notice tabs briefly appearing in your taskbar. **Do not close the browser while a download is in progress.**
+
+---
+
+## Install in 30 seconds
+
+1. [Download this repo](https://github.com/N3uralCreativity/comix-downloader/archive/refs/heads/master.zip) and unzip it
+2. Open Chrome → go to `chrome://extensions`
+3. Toggle **Developer mode** on (top-right)
+4. Click **Load unpacked** → select the unzipped folder
+5. Head to any [comix.to](https://comix.to) title page — buttons appear automatically
+
+---
+
+## Features at a glance
+
+| | |
 |---|---|
-| `tabs` | Open/close background chapter tabs |
-| `scripting` | Inject extraction script into chapter pages |
-| `downloads` | Trigger ZIP file download |
-| `storage` | Persist activity logs across sessions |
-| `host_permissions: comix.to, *.wowpic*.store` | Fetch chapter pages and CDN images |
+| ⚡ One-click download | Per-chapter or entire series |
+| 📦 Organized ZIPs | `Ch0001/`, `Ch0002/`, … inside a single archive |
+| 🔍 Smart image detection | Works even when the page only pre-loads a few images |
+| 🌐 CDN-agnostic | Auto-detects any `wowpic*.store` CDN variant |
+| 📊 Live progress | Bar + per-chapter log + cancel button |
+| 🗒️ Activity log | Persistent log viewer in the extension popup |
+
+---
 
 ## License
 
-MIT © N3uralCreativity
+MIT © [N3uralCreativity](https://github.com/N3uralCreativity)
