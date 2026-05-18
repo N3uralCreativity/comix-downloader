@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Comix Chapter Downloader",
+  "version": "1.0.0",
+  "description": "Ajoute un bouton de téléchargement pour chaque chapitre sur comix.to",
+  "permissions": [
+    "tabs",
+    "downloads",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "*://comix.to/*",
+    "*://*.wowpic1.store/*",
+    "*://*.wowpic2.store/*",
+    "*://*.wowpic3.store/*",
+    "*://*.wowpic4.store/*",
+    "*://*.wowpic5.store/*",
+    "*://*.wowpic6.store/*",
+    "*://*.wowpic7.store/*",
+    "*://*.wowpic8.store/*",
+    "*://*.wowpic9.store/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://comix.to/title/*"],
+      "js": ["content_title.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/jszip.min.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Comix Downloader",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
+}

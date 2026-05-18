@@ -1,0 +1,15 @@
+# Dependency artifacts
+node_modules/
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+
+# Build output (none currently, but just in case)
+dist/
+build/
