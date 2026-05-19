@@ -2,7 +2,7 @@
 
 # Comix Downloader
 
-### Download entire manga from [comix.to](https://comix.to) — one click, straight to your drive.
+### Download your mangas from [comix.to](https://comix.to) 
 
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-brightgreen?logo=googlechrome&logoColor=white)](https://github.com/N3uralCreativity/comix-downloader)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](https://developer.chrome.com/docs/extensions/mv3/intro/)
@@ -16,13 +16,13 @@
 
 ## What it does
 
-Tired of reading online with a bad connection? **Comix Downloader** adds download buttons directly to every comix.to title page — grab a single chapter or the entire series in seconds, all neatly zipped and organized.
+Adds download buttons directly to every comix.to title page — grab a single chapter or the entire series, all neatly zipped and organized.
 
 ---
 
 ## Download an entire series in one click
 
-Hit **Download All** on any title page and walk away. Every chapter is downloaded, packaged into its own folder, and bundled into a single ZIP — named, padded, and sorted.
+Hit **Download All** on any title page. Every chapter is downloaded, packaged into its own folder, and bundled into a single ZIP — named, padded, and sorted.
 
 ![Download All button on title page](assets/screenshot-title.png)
 
@@ -30,42 +30,26 @@ Hit **Download All** on any title page and walk away. Every chapter is downloade
 
 ## Or pick individual chapters
 
-Each chapter gets its own download button right in the list. One click → one ZIP, done.
+Each chapter gets its own download button right in the list.
 
 ![Per-chapter download buttons](assets/screenshot-chapters.png)
 
 ---
 
-## Live progress — always in control
-
-A real-time popup tracks every chapter: which one is active, how many images were found, overall progress. Don't want to wait? Hit **Cancel** at any time.
+## Live progress for series download
 
 ![Download progress popup](assets/screenshot-progress.png)
 
-> ⚠️ **Heads up** — During a "Download All" session, the extension automatically opens and closes background browser tabs to extract each chapter. This is completely normal behaviour. Your current tab is never touched, but you may notice tabs briefly appearing in your taskbar. **Do not close the browser while a download is in progress.**
+### > ⚠️ **Heads up** — During a "Download All" session, the extension automatically opens and closes background browser tabs to extract each chapter. This is completely normal behaviour. Your current tab is never touched, but you may notice tabs briefly appearing in your taskbar. **Do not close the browser while a download is in progress.**
 
 ---
 
-## Install in 30 seconds
-
+## Installation : 
 1. [Download this repo](https://github.com/N3uralCreativity/comix-downloader/archive/refs/heads/master.zip) and unzip it
 2. Open Chrome → go to `chrome://extensions`
 3. Toggle **Developer mode** on (top-right)
 4. Click **Load unpacked** → select the unzipped folder
 5. Head to any [comix.to](https://comix.to) title page — buttons appear automatically
-
----
-
-## Features at a glance
-
-| | |
-|---|---|
-| ⚡ One-click download | Per-chapter or entire series |
-| 📦 Organized ZIPs | `Ch0001/`, `Ch0002/`, … inside a single archive |
-| 🔍 Smart image detection | Works even when the page only pre-loads a few images |
-| 🌐 CDN-agnostic | Auto-detects any `wowpic*.store` CDN variant |
-| 📊 Live progress | Bar + per-chapter log + cancel button |
-| 🗒️ Activity log | Persistent log viewer in the extension popup |
 
 ---
 
