@@ -480,13 +480,206 @@ function escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+const CHAPTER_PATH_RE = /\/title\/[a-z0-9-]+\/\d+-chapter-[\w.-]+/gi;
+const CHAPTERS_PER_PAGE = 20;
+const MAX_CHAPTER_LIST_PAGES = 100;
+const CHAPTER_LIST_WAIT_MS = 7000;
+
+function unique(items) {
+  return [...new Set(items)];
+}
+
+function normalizeChapterUrl(path) {
+  try {
+    return new URL(path, window.location.origin).href;
+  } catch (_) {
+    return '';
+  }
+}
+
+function extractChapterUrlsFromText(text) {
+  if (!text) return [];
+  const matches = text.match(CHAPTER_PATH_RE) || [];
+  return unique(matches.map(normalizeChapterUrl).filter(Boolean));
+}
+
+function collectChapterUrlsFromValue(value, urls = []) {
+  if (!value) return urls;
+  if (typeof value === 'string') {
+    urls.push(...extractChapterUrlsFromText(value));
+  } else if (Array.isArray(value)) {
+    for (const item of value) collectChapterUrlsFromValue(item, urls);
+  } else if (typeof value === 'object') {
+    for (const item of Object.values(value)) collectChapterUrlsFromValue(item, urls);
+  }
+  return urls;
+}
+
+function extractChapterUrlsFromPayload(text) {
+  try {
+    return unique(collectChapterUrlsFromValue(JSON.parse(text)));
+  } catch (_) {
+    return extractChapterUrlsFromText(text);
+  }
+}
+
+function filterChapterUrlsForTitle(urls, titleSlug) {
+  if (!titleSlug) return urls;
+  const titlePrefix = `/title/${titleSlug}/`;
+  return urls.filter(url => {
+    try {
+      return new URL(url, window.location.origin).pathname.startsWith(titlePrefix);
+    } catch (_) {
+      return false;
+    }
+  });
+}
+
+function getChapterListRange(root = document.body) {
+  const text = root.innerText || root.textContent || document.body?.innerText || '';
+  const showingMatch = text.match(
+    /Showing\s+(\d+)\s+to\s+(\d+)\s+of\s+(\d+)\s+items/i
+  );
+  if (!showingMatch) return null;
+
+  return {
+    from: parseInt(showingMatch[1], 10),
+    to: parseInt(showingMatch[2], 10),
+    total: parseInt(showingMatch[3], 10),
+  };
+}
+
+function getExactChapterTotal(jsonStr = '') {
+  const range = getChapterListRange(document.body);
+  if (range) return range.total;
+
+  const totalMatch = jsonStr?.match(/"chapter_count"\s*:\s*(\d+)|"total_chapters"\s*:\s*(\d+)/);
+  if (totalMatch) return parseInt(totalMatch[1] || totalMatch[2], 10);
+
+  return 0;
+}
+
+async function fetchChapterListPage(buildId, slug, page) {
+  try {
+    const r = await fetch(`/_next/data/${buildId}/title/${slug}.json?page=${page}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!r.ok) return [];
+    return extractChapterUrlsFromPayload(await r.text());
+  } catch (_) {
+    return [];
+  }
+}
+
+function getChaptersSection() {
+  const heading = [...document.querySelectorAll('h1, h2, h3')]
+    .find(el => /^chapters$/i.test(el.textContent.trim()));
+  return heading?.closest('section') || document;
+}
+
+function extractChapterUrlsFromDom(root = getChaptersSection()) {
+  return unique(
+    [...root.querySelectorAll('a[href*="/title/"]')]
+      .map(a => normalizeChapterUrl(a.getAttribute('href') || a.href))
+      .filter(u => /\/\d+-chapter-/i.test(u))
+  );
+}
+
+function getChapterListSignature(root = getChaptersSection()) {
+  const range = getChapterListRange(root);
+  const rangeText = range ? `${range.from}-${range.to}-${range.total}` : '';
+  return `${rangeText}|${extractChapterUrlsFromDom(root).join('|')}`;
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForChapterListChange(previousSignature) {
+  const started = Date.now();
+  while (Date.now() - started < CHAPTER_LIST_WAIT_MS) {
+    await wait(120);
+    const signature = getChapterListSignature();
+    if (signature && signature !== previousSignature && extractChapterUrlsFromDom().length > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findChapterPagerButtonByLabel(label) {
+  return [...getChaptersSection().querySelectorAll('button[aria-label]')]
+    .find(btn => btn.getAttribute('aria-label') === label && !btn.disabled) || null;
+}
+
+function getCurrentRenderedChapterPage() {
+  const current = getChaptersSection().querySelector('[aria-current="page"], .npager__num.is-active');
+  const page = parseInt(current?.textContent?.trim() || '', 10);
+  if (Number.isFinite(page) && page > 0) return page;
+
+  const range = getChapterListRange(getChaptersSection());
+  if (!range) return 1;
+  return Math.max(1, Math.ceil(range.to / CHAPTERS_PER_PAGE));
+}
+
+async function clickChapterPagerButton(label) {
+  const btn = findChapterPagerButtonByLabel(label);
+  if (!btn) return false;
+
+  const before = getChapterListSignature();
+  btn.click();
+  return waitForChapterListChange(before);
+}
+
+async function restoreRenderedChapterPage(page) {
+  if (!page || page <= 0) return;
+
+  const current = getCurrentRenderedChapterPage();
+  if (current === page) return;
+
+  if (current !== 1) {
+    await clickChapterPagerButton('First page');
+  }
+
+  for (let p = 1; p < page; p++) {
+    const moved = await clickChapterPagerButton('Next page');
+    if (!moved) break;
+  }
+}
+
+async function collectChaptersFromRenderedPagination() {
+  let allUrls = extractChapterUrlsFromDom();
+  const initialRange = getChapterListRange(getChaptersSection());
+  if (!initialRange || initialRange.total <= allUrls.length) return allUrls;
+
+  const originalPage = getCurrentRenderedChapterPage();
+  const originalScrollY = window.scrollY;
+  if (originalPage !== 1) {
+    await clickChapterPagerButton('First page');
+  }
+
+  for (let i = 0; i < MAX_CHAPTER_LIST_PAGES; i++) {
+    allUrls.push(...extractChapterUrlsFromDom());
+
+    const range = getChapterListRange(getChaptersSection());
+    if (!range || range.to >= range.total) break;
+
+    const moved = await clickChapterPagerButton('Next page');
+    if (!moved) break;
+  }
+
+  await restoreRenderedChapterPage(originalPage);
+  window.scrollTo(0, originalScrollY);
+  return unique(allUrls);
+}
+
 /**
  * Collecte TOUTES les URLs de chapitres :
- *  1. Extraction regex depuis __NEXT_DATA__ (page courante)
+ *  1. Read embedded page payloads when present.
  *  2. Si un total > URLs trouvées, récupère les pages suivantes via l'API Next.js
- *  3. Fallback DOM
+ *  3. Fall back to walking the rendered chapter pagination.
  *  4. Déduplication par numéro de chapitre (une seule source par chapitre)
- *  5. Tri ascendant
+ *  5. Sort ascending.
  */
 async function getAllChapters() {
   const slug    = window.location.pathname.match(/\/title\/([^/]+)/)?.[1];
@@ -497,52 +690,52 @@ async function getAllChapters() {
     const jsonStr = scriptEl.textContent;
 
     // ─ Extraction initiale depuis le JSON brut ─────────────────────────────
-    const rawPaths = jsonStr.match(/\/title\/[a-z0-9-]+\/\d+-chapter-[\w.]+/g) || [];
-    allUrls = rawPaths.map(p => `https://comix.to${p}`);
+    allUrls = extractChapterUrlsFromPayload(jsonStr);
 
     // ─ Chercher le total de chapitres et le buildId pour les pages suivantes ───
     let nextData = null;
     try { nextData = JSON.parse(jsonStr); } catch (_) {}
     const buildId = nextData?.buildId;
 
-    // Tenter plusieurs clés candidates pour le total
-    const totalMatch = jsonStr.match(
-      /"chapter_count"\s*:\s*(\d+)|"total_chapters"\s*:\s*(\d+)|"total"\s*:\s*(\d+)/
-    );
-    const total = totalMatch
-      ? parseInt(totalMatch[1] || totalMatch[2] || totalMatch[3])
-      : 0;
+    const total = getExactChapterTotal(jsonStr);
 
-    if (buildId && slug && total > allUrls.length) {
-      const perPage   = 20;
-      const maxPages  = Math.min(Math.ceil(total / perPage), 100); // plafond sécurité
-      const pageNums  = [];
-      for (let p = 2; p <= maxPages; p++) pageNums.push(p);
+    if (buildId && slug && total > 0) {
+      // Exact total known: fetch every page from 1, independent of the current pagination page.
+      const maxPages = Math.min(Math.ceil(total / CHAPTERS_PER_PAGE), MAX_CHAPTER_LIST_PAGES);
+      const pageNums = [];
+      for (let p = 1; p <= maxPages; p++) pageNums.push(p);
 
       const results = await Promise.all(
-        pageNums.map(p =>
-          fetch(`/_next/data/${buildId}/title/${slug}.json?page=${p}`, {
-            headers: { 'Accept': 'application/json' }
-          })
-          .then(r => r.ok ? r.text() : '')
-          .catch(() => '')
-        )
+        pageNums.map(p => fetchChapterListPage(buildId, slug, p))
       );
 
-      for (const text of results) {
-        if (!text) continue;
-        const paths = text.match(/\/title\/[a-z0-9-]+\/\d+-chapter-[\w.]+/g) || [];
-        allUrls.push(...paths.map(p => `https://comix.to${p}`));
+      for (const urls of results) {
+        allUrls.push(...urls);
+      }
+    } else if (buildId && slug && allUrls.length > 0) {
+      // Unknown total: fetch pages until the endpoint returns no new chapter links.
+      const seenUrls = new Set(allUrls);
+      for (let p = 1; p <= MAX_CHAPTER_LIST_PAGES; p++) {
+        const urls = await fetchChapterListPage(buildId, slug, p);
+        if (!urls.length) break;
+
+        const freshUrls = urls.filter(url => !seenUrls.has(url));
+        for (const url of freshUrls) {
+          seenUrls.add(url);
+          allUrls.push(url);
+        }
+
+        if (!freshUrls.length && p > 1) break;
       }
     }
   }
 
   // ─ Fallback DOM ─────────────────────────────────────────────────────
-  if (allUrls.length === 0) {
-    allUrls = [...document.querySelectorAll('a[href*="/title/"]')]
-      .map(a => a.href)
-      .filter(u => /\/\d+-chapter-/i.test(u));
+  const visibleTotal = getExactChapterTotal();
+  if (allUrls.length === 0 || (visibleTotal > 0 && unique(allUrls).length < visibleTotal)) {
+    allUrls.push(...await collectChaptersFromRenderedPagination());
   }
+  allUrls = filterChapterUrlsForTitle(allUrls, slug);
 
   // ─ Déduplication par numéro de chapitre (une seule source par numéro) ──────
   // Deux entrées ont le même extractChapterLabel ⇒ même chapitre, sources différentes.

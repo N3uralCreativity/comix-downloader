@@ -476,7 +476,7 @@ async function _zipToDownloadUrl(zip) {
   // Fallback base64 pour navigateurs plus anciens
   const base64 = await zip.generateAsync({ type: 'base64', compression: 'STORE' });
   return { url: `data:application/zip;base64,${base64}`, revoke: () => {} };
-}──────────
+}
 
 function sanitizeFilename(name) {
   return name
