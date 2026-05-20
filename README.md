@@ -46,20 +46,21 @@ Each chapter gets its own download button right in the list.
 
 ## Mobile support (Android)
 
-The extension works as-is on Android via **[Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser)** — no code changes needed.
+The extension works as-is on Android via **[Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser)**
 
 **Setup on Kiwi Browser:**
 
 1. Install [Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser) from the Play Store
-2. On your phone, download this repo ZIP and extract it (use a file manager app)
+2. On your phone, download this repo ZIP and extract it
 3. Open Kiwi → go to `chrome://extensions`
 4. Toggle **Developer mode** on
 5. Tap **Load unpacked (zip or folder)** → select the extracted folder
-6. Head to any [comix.to](https://comix.to) title page — buttons appear automatically
+6. Head to any [comix.to](https://comix.to) title page, buttons appear automatically
 
-> iOS is not supported (Safari doesn't allow extension-based downloads).
+> iOS is not supported (Safari doesn't allow extension-based downloads) - sorry its essentially impossible 😭
 
 ---
+## PC support
 
 ## Installation : 
 1. [Download this repo](https://github.com/N3uralCreativity/comix-downloader/archive/refs/heads/master.zip) and unzip it
