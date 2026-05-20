@@ -40,7 +40,7 @@ Each chapter gets its own download button right in the list.
 
 ![Download progress popup](assets/screenshot-progress.png)
 
-### > ⚠️ **WARNING** — During download sessions, the extension automatically opens and closes background browser tabs to extract each chapter. This is completely normal behaviour. Your current tab is never touched, but you may notice tabs briefly appearing in your taskbar. **Do not close the browser while a download is in progress.**
+### > ⚠️ **WARNING**: During download sessions, the extension automatically opens and closes background browser tabs to extract each chapter. This is completely normal behaviour. Your current tab is never touched, but you may notice tabs briefly appearing in your taskbar. **Do not close the browser while a download is in progress.**
 
 ---
 
