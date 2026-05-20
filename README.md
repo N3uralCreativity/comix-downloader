@@ -46,6 +46,23 @@ A real-time popup tracks every chapter: which one is active, how many images wer
 
 ---
 
+## Mobile support (Android)
+
+The extension works as-is on Android via **[Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser)** — no code changes needed.
+
+**Setup on Kiwi Browser:**
+
+1. Install [Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser) from the Play Store
+2. On your phone, download this repo ZIP and extract it (use a file manager app)
+3. Open Kiwi → go to `chrome://extensions`
+4. Toggle **Developer mode** on
+5. Tap **Load unpacked (zip or folder)** → select the extracted folder
+6. Head to any [comix.to](https://comix.to) title page — buttons appear automatically
+
+> iOS is not supported (Safari doesn't allow extension-based downloads).
+
+---
+
 ## Install in 30 seconds
 
 1. [Download this repo](https://github.com/N3uralCreativity/comix-downloader/archive/refs/heads/master.zip) and unzip it

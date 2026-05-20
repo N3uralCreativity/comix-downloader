@@ -12,6 +12,9 @@ const DOWNLOAD_BTN_CLASS  = 'cdl-btn';
 const PROGRESS_SPAN_CLASS = 'cdl-progress';
 const EXTENSION_ID        = chrome.runtime.id;
 
+// Dernier lancement Download All — permet de relancer après une erreur ZIP
+let _lastDlAllParams = null;
+
 // SVG icône téléchargement (flèche vers le bas + barre)
 const ICON_DOWNLOAD = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -243,6 +246,17 @@ function injectStyles() {
       transition: background .15s;
     }
     .cdl-ap-done-btn:hover { background: rgba(74,222,128,0.22); }
+    .cdl-ap-retry-btn {
+      background: rgba(251,191,36,0.10);
+      border: 1px solid rgba(251,191,36,0.28);
+      color: #fbbf24;
+      border-radius: 8px;
+      padding: 6px 18px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .cdl-ap-retry-btn:hover { background: rgba(251,191,36,0.22); }
   `;
   document.head.appendChild(style);
 }
@@ -467,31 +481,96 @@ function escapeHtml(s) {
 }
 
 /**
- * Collecte toutes les URLs de chapitres depuis __NEXT_DATA__ (Next.js) ou
- * le DOM en fallback. Retourne un tableau trié par numéro de chapitre croissant.
+ * Collecte TOUTES les URLs de chapitres :
+ *  1. Extraction regex depuis __NEXT_DATA__ (page courante)
+ *  2. Si un total > URLs trouvées, récupère les pages suivantes via l'API Next.js
+ *  3. Fallback DOM
+ *  4. Déduplication par numéro de chapitre (une seule source par chapitre)
+ *  5. Tri ascendant
  */
-function getAllChapters() {
-  try {
-    const scriptEl = document.getElementById('__NEXT_DATA__');
-    if (scriptEl) {
-      const json = scriptEl.textContent;
-      // Extraire les chemins de type /title/SLUG/ID-chapter-X
-      const rawPaths = json.match(/\/title\/[a-z0-9-]+\/\d+-chapter-[\w.]+/g) || [];
-      const urls = [...new Set(rawPaths.map(p => `https://comix.to${p}`))];
-      if (urls.length > 0) {
-        return urls
-          .map(u => ({ chapterUrl: u, chapterLabel: extractChapterLabel(u) }))
-          .sort((a, b) => parseFloat(a.chapterLabel.replace(/[^0-9.]/g,'')) - parseFloat(b.chapterLabel.replace(/[^0-9.]/g,'')));
+async function getAllChapters() {
+  const slug    = window.location.pathname.match(/\/title\/([^/]+)/)?.[1];
+  let allUrls   = [];
+
+  const scriptEl = document.getElementById('__NEXT_DATA__');
+  if (scriptEl) {
+    const jsonStr = scriptEl.textContent;
+
+    // ─ Extraction initiale depuis le JSON brut ─────────────────────────────
+    const rawPaths = jsonStr.match(/\/title\/[a-z0-9-]+\/\d+-chapter-[\w.]+/g) || [];
+    allUrls = rawPaths.map(p => `https://comix.to${p}`);
+
+    // ─ Chercher le total de chapitres et le buildId pour les pages suivantes ───
+    let nextData = null;
+    try { nextData = JSON.parse(jsonStr); } catch (_) {}
+    const buildId = nextData?.buildId;
+
+    // Tenter plusieurs clés candidates pour le total
+    const totalMatch = jsonStr.match(
+      /"chapter_count"\s*:\s*(\d+)|"total_chapters"\s*:\s*(\d+)|"total"\s*:\s*(\d+)/
+    );
+    const total = totalMatch
+      ? parseInt(totalMatch[1] || totalMatch[2] || totalMatch[3])
+      : 0;
+
+    if (buildId && slug && total > allUrls.length) {
+      const perPage   = 20;
+      const maxPages  = Math.min(Math.ceil(total / perPage), 100); // plafond sécurité
+      const pageNums  = [];
+      for (let p = 2; p <= maxPages; p++) pageNums.push(p);
+
+      const results = await Promise.all(
+        pageNums.map(p =>
+          fetch(`/_next/data/${buildId}/title/${slug}.json?page=${p}`, {
+            headers: { 'Accept': 'application/json' }
+          })
+          .then(r => r.ok ? r.text() : '')
+          .catch(() => '')
+        )
+      );
+
+      for (const text of results) {
+        if (!text) continue;
+        const paths = text.match(/\/title\/[a-z0-9-]+\/\d+-chapter-[\w.]+/g) || [];
+        allUrls.push(...paths.map(p => `https://comix.to${p}`));
       }
     }
-  } catch (_) {}
-  // Fallback : parcourir les <a> du DOM
-  const seen = new Set();
-  return [...document.querySelectorAll('a[href*="/title/"]')]
-    .map(a => a.href)
-    .filter(u => /\/\d+-chapter-/i.test(u) && !seen.has(u) && seen.add(u))
-    .map(u => ({ chapterUrl: u, chapterLabel: extractChapterLabel(u) }))
-    .sort((a, b) => parseFloat(a.chapterLabel.replace(/[^0-9.]/g,'')) - parseFloat(b.chapterLabel.replace(/[^0-9.]/g,'')));
+  }
+
+  // ─ Fallback DOM ─────────────────────────────────────────────────────
+  if (allUrls.length === 0) {
+    allUrls = [...document.querySelectorAll('a[href*="/title/"]')]
+      .map(a => a.href)
+      .filter(u => /\/\d+-chapter-/i.test(u));
+  }
+
+  // ─ Déduplication par numéro de chapitre (une seule source par numéro) ──────
+  // Deux entrées ont le même extractChapterLabel ⇒ même chapitre, sources différentes.
+  // On garde la première occurrence trouvée.
+  const byLabel = new Map();
+  for (const url of allUrls) {
+    const label = extractChapterLabel(url);
+    if (!byLabel.has(label)) byLabel.set(label, { chapterUrl: url, chapterLabel: label });
+  }
+
+  return [...byLabel.values()].sort(
+    (a, b) => parseFloat(a.chapterLabel.replace(/[^0-9.]/g, ''))
+            - parseFloat(b.chapterLabel.replace(/[^0-9.]/g, ''))
+  );
+}
+
+/** Lance (ou relance) la session Download All avec les params en cache. */
+function _launchDownloadAll() {
+  if (!_lastDlAllParams) return;
+  const { chapters, mangaName, zipName } = _lastDlAllParams;
+  try {
+    chrome.runtime.sendMessage(
+      { action: 'downloadAllChapters', chapters, mangaName, zipName },
+      (res) => { if (chrome.runtime.lastError) updateDownloadAllPopupError('Erreur de connexion \u00e0 l\'extension'); }
+    );
+  } catch (_) {
+    updateDownloadAllPopupError('Extension recharg\u00e9e \u2014 actualisez la page');
+  }
 }
 
 /** Injecte le bouton "Download All" sous le bouton Follow/Start-reading. */
@@ -506,27 +585,33 @@ function injectDownloadAllButton() {
   btn.title = 'Télécharger tous les chapitres en un ZIP';
   btn.innerHTML = `${ICON_DOWNLOAD} Download All`;
 
-  btn.addEventListener('click', (e) => {
+  btn.addEventListener('click', async (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (!chrome?.runtime?.id) { alert('Extension rechargée — actualisez la page.'); return; }
     if (document.getElementById('cdl-all-popup')) return; // déjà en cours
 
-    const chapters = getAllChapters();
+    // Indicateur de chargement pendant la collecte des chapitres
+    btn.disabled = true;
+    btn.innerHTML = `${ICON_DOWNLOAD} Loading chapters…`;
+
+    let chapters;
+    try {
+      chapters = await getAllChapters();
+    } catch (_) {
+      chapters = [];
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `${ICON_DOWNLOAD} Download All`;
+    }
+
     if (chapters.length === 0) { alert('Aucun chapitre trouvé sur cette page.'); return; }
 
     const mangaName = getMangaName();
     const zipName   = `${slugify(mangaName)}.zip`;
+    _lastDlAllParams = { chapters, mangaName, zipName };
     showDownloadAllPopup(mangaName, chapters.length);
-
-    try {
-      chrome.runtime.sendMessage(
-        { action: 'downloadAllChapters', chapters, mangaName, zipName },
-        (res) => { if (chrome.runtime.lastError) updateDownloadAllPopupError('Erreur de connexion à l\'extension'); }
-      );
-    } catch (_) {
-      updateDownloadAllPopupError('Extension rechargée — actualisez la page');
-    }
+    _launchDownloadAll();
   });
 
   followBtn.insertAdjacentElement('afterend', btn);
@@ -572,9 +657,25 @@ function showDownloadAllPopup(mangaName, totalChapters) {
       document.getElementById('cdl-ap-cancel-btn').disabled = true;
     } catch (_) {}
   });
-}
+  // Apr\u00e8s 20s : ajouter un bouton Retry dans le footer m\u00eame sans erreur
+  popup._cdlRetryTimer = setTimeout(() => {
+    const footer = popup.querySelector('.cdl-ap-footer');
+    if (!footer || footer.querySelector('.cdl-ap-retry-btn')) return;
+    const btn = document.createElement('button');
+    btn.className = 'cdl-ap-retry-btn';
+    btn.textContent = '\u21ba Retry';
+    btn.addEventListener('click', () => {
+      clearTimeout(popup._cdlRetryTimer);
+      popup.remove();
+      const { mangaName, chapters } = _lastDlAllParams;
+      showDownloadAllPopup(mangaName, chapters.length);
+      _launchDownloadAll();
+    });
+    footer.insertBefore(btn, footer.firstChild);
+  }, 20000);}
 
 function _dlAllSetFooterClose(popup) {
+  clearTimeout(popup._cdlRetryTimer);
   const footer = popup.querySelector('.cdl-ap-footer');
   if (!footer) return;
   footer.innerHTML = '<button class="cdl-ap-done-btn" id="cdl-ap-close-btn">Close</button>';
@@ -617,6 +718,29 @@ function updateDownloadAllPopup(msg) {
     el('cdl-ap-chapter-status').textContent = 'Building ZIP file…';
     el('cdl-ap-img-status').textContent     = 'Please wait — this may take a moment…';
     el('cdl-ap-bar').style.width            = '99%';
+    // Afficher immédiatement le bouton Retry dans le footer dès la phase ZIP
+    clearTimeout(popup._cdlRetryTimer);
+    const footer = popup.querySelector('.cdl-ap-footer');
+    if (footer && !footer.querySelector('.cdl-ap-retry-btn')) {
+      const retryBtn = document.createElement('button');
+      retryBtn.className   = 'cdl-ap-retry-btn';
+      retryBtn.textContent = '↺ Retry';
+      retryBtn.addEventListener('click', () => {
+        // Relance uniquement le ZIP — ne touche pas au popup ni aux chapitres
+        retryBtn.disabled    = true;
+        retryBtn.textContent = '↺ Retrying…';
+        el('cdl-ap-chapter-status').textContent = 'Building ZIP file…';
+        el('cdl-ap-img-status').textContent     = 'Please wait — this may take a moment…';
+        el('cdl-ap-bar').style.width            = '99%';
+        try {
+          chrome.runtime.sendMessage({ action: 'retryZip' }, (res) => {
+            if (chrome.runtime.lastError) updateDownloadAllPopupError('Erreur de connexion à l\'extension');
+            else { retryBtn.disabled = false; retryBtn.textContent = '↺ Retry'; }
+          });
+        } catch (_) { updateDownloadAllPopupError('Extension rechargée — actualisez la page'); }
+      });
+      footer.insertBefore(retryBtn, footer.firstChild);
+    }
   }
 }
 
@@ -647,9 +771,32 @@ function _dlAllUpdateLastLog(text, newCls) {
 function updateDownloadAllPopupError(errMsg) {
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
+  clearTimeout(popup._cdlRetryTimer);
   const s = document.getElementById('cdl-ap-chapter-status');
   if (s) { s.textContent = `Error: ${errMsg}`; s.style.color = '#f87171'; }
-  _dlAllSetFooterClose(popup);
+
+  const footer = popup.querySelector('.cdl-ap-footer');
+  if (!footer) return;
+  footer.innerHTML = '';
+
+  if (_lastDlAllParams) {
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'cdl-ap-retry-btn';
+    retryBtn.textContent = '↺ Retry';
+    retryBtn.addEventListener('click', () => {
+      popup.remove();
+      const { mangaName, chapters } = _lastDlAllParams;
+      showDownloadAllPopup(mangaName, chapters.length);
+      _launchDownloadAll();
+    });
+    footer.appendChild(retryBtn);
+  }
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'cdl-ap-done-btn';
+  closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', () => popup.remove());
+  footer.appendChild(closeBtn);
 }
 
 // ── Scan initial et MutationObserver ─────────────────────────────────────────

@@ -25,6 +25,9 @@ const downloadQueue = [];
 /** Flag d'annulation du téléchargement groupé */
 let downloadAllAbortFlag = false;
 
+/** ZIP en attente de génération — conservé pour permettre un retry uniquement sur l'étape ZIP */
+let _pendingZip = null;
+
 const BATCH_SIZE = 3;
 const MAX_LOG_ENTRIES = 500;
 
@@ -59,6 +62,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === 'cancelDownloadAll') {
     downloadAllAbortFlag = true;
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message.action === 'retryZip') {
+    const originTabId = sender.tab?.id ?? null;
+    if (_pendingZip) {
+      _doZipAndSave(_pendingZip);
+    } else {
+      notifyTab(originTabId, { action: 'downloadAllError', error: 'Session expired — please restart Download All' });
+    }
     sendResponse({ ok: true });
     return true;
   }
@@ -436,19 +450,33 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId })
     );
   }
 
-  // base64 : seul format utilisable depuis un service worker
-  // (URL.createObjectURL n'existe pas dans les SW, et chrome.downloads n'est
-  //  pas disponible dans les offscreen documents)
-  const base64  = await zip.generateAsync({ type: 'base64', compression: 'STORE' });
-  const dataUrl = `data:application/zip;base64,${base64}`;
-
-  await chrome.downloads.download({ url: dataUrl, filename: sanitizeFilename(zipName), saveAs: false });
+  const { url, revoke } = await _zipToDownloadUrl(zip);
+  await chrome.downloads.download({ url, filename: sanitizeFilename(zipName), saveAs: false });
+  setTimeout(revoke, 60_000);
 
   cdlLog('ok', `ZIP saved: ${sanitizeFilename(zipName)} (${images.length} images)`);
   notifyTab(originTabId, { action: 'downloadDone', chapterUrl });
 }
 
 // ── Utilitaires ───────────────────────────────────────────────────────────────
+
+/**
+ * Génère le ZIP et retourne une URL téléchargeable.
+ * Priorité : blob: URL (sans limite de taille, Chrome 120+).
+ * Fallback  : data: base64 (Chrome < 120, taille limitée ≈ 500 Mo).
+ * Retourne { url, revoke } — appeler revoke() une fois le téléchargement lancé.
+ */
+async function _zipToDownloadUrl(zip) {
+  // Blob URL — pas de limite de taille, libère la mémoire correctement
+  try {
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    const url  = URL.createObjectURL(blob);
+    return { url, revoke: () => URL.revokeObjectURL(url) };
+  } catch (_) {}
+  // Fallback base64 pour navigateurs plus anciens
+  const base64 = await zip.generateAsync({ type: 'base64', compression: 'STORE' });
+  return { url: `data:application/zip;base64,${base64}`, revoke: () => {} };
+}──────────
 
 function sanitizeFilename(name) {
   return name
@@ -595,13 +623,21 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   // Génération du ZIP final
   notify({ phase: 'zipping', chapterIndex: chapters.length, totalChapters: chapters.length,
            chapterLabel: '', imagesDone: 0, imagesTotal: 0 });
+  _pendingZip = { zip, zipName, originTabId };
+  await _doZipAndSave({ zip, zipName, originTabId });
+}
+
+async function _doZipAndSave({ zip, zipName, originTabId }) {
   try {
-    const base64 = await zip.generateAsync({ type: 'base64', compression: 'STORE' });
+    const { url, revoke } = await _zipToDownloadUrl(zip);
     await chrome.downloads.download({
-      url:      `data:application/zip;base64,${base64}`,
+      url,
       filename: sanitizeFilename(zipName),
       saveAs:   false,
     });
+    // Libérer le blob URL après que Chrome a eu le temps de lire le flux
+    setTimeout(revoke, 60_000);
+    _pendingZip = null;
     cdlLog('ok', `Download All complete: ${sanitizeFilename(zipName)}`);
     notifyTab(originTabId, { action: 'downloadAllDone', zipName });
   } catch (err) {
