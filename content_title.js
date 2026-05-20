@@ -440,27 +440,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     updateDownloadAllPopup(message);
 
   } else if (message.action === 'downloadAllDone') {
-    const popup = document.getElementById('cdl-all-popup');
-    if (popup) {
-      const bar = document.getElementById('cdl-ap-bar');
-      if (bar) bar.style.width = '100%';
-      const s = document.getElementById('cdl-ap-chapter-status');
-      if (s) s.textContent = '✓ Download complete!';
-      const i = document.getElementById('cdl-ap-img-status');
-      if (i) i.textContent = `Saved as: ${message.zipName || 'manga.zip'}`;
-      _dlAllSetFooterClose(popup);
-    }
+    updateDownloadAllPopupDone(message.zipName || 'manga.zip');
 
   } else if (message.action === 'downloadAllError') {
-    updateDownloadAllPopupError(message.error || 'Unknown error');
+    updateDownloadAllPopupError(message.error || 'Unknown error', { canRetryZip: !!message.canRetryZip });
 
   } else if (message.action === 'downloadAllCancelled') {
-    const popup = document.getElementById('cdl-all-popup');
-    if (popup) {
-      const s = document.getElementById('cdl-ap-chapter-status');
-      if (s) s.textContent = 'Download cancelled.';
-      _dlAllSetFooterClose(popup);
-    }
+    updateDownloadAllPopupCancelled();
   }
 });
 
@@ -812,7 +798,8 @@ function injectDownloadAllButton() {
 
 // ── Popup Download All ────────────────────────────────────────────────────────
 
-function showDownloadAllPopup(mangaName, totalChapters) {
+function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
+  const allowFullRetry = options.allowFullRetry !== false;
   document.getElementById('cdl-all-popup')?.remove();
 
   const popup = document.createElement('div');
@@ -851,7 +838,8 @@ function showDownloadAllPopup(mangaName, totalChapters) {
     } catch (_) {}
   });
   // Apr\u00e8s 20s : ajouter un bouton Retry dans le footer m\u00eame sans erreur
-  popup._cdlRetryTimer = setTimeout(() => {
+  popup._cdlRetryTimer = allowFullRetry ? setTimeout(() => {
+    if (!_lastDlAllParams) return;
     const footer = popup.querySelector('.cdl-ap-footer');
     if (!footer || footer.querySelector('.cdl-ap-retry-btn')) return;
     const btn = document.createElement('button');
@@ -865,14 +853,51 @@ function showDownloadAllPopup(mangaName, totalChapters) {
       _launchDownloadAll();
     });
     footer.insertBefore(btn, footer.firstChild);
-  }, 20000);}
+  }, 20000) : null;
+}
+
+function dismissDownloadAllSession() {
+  if (!chrome?.runtime?.id) return;
+  try {
+    chrome.runtime.sendMessage({ action: 'dismissDownloadAllSession' });
+  } catch (_) {}
+}
 
 function _dlAllSetFooterClose(popup) {
   clearTimeout(popup._cdlRetryTimer);
   const footer = popup.querySelector('.cdl-ap-footer');
   if (!footer) return;
   footer.innerHTML = '<button class="cdl-ap-done-btn" id="cdl-ap-close-btn">Close</button>';
-  document.getElementById('cdl-ap-close-btn')?.addEventListener('click', () => popup.remove());
+  document.getElementById('cdl-ap-close-btn')?.addEventListener('click', () => {
+    dismissDownloadAllSession();
+    popup.remove();
+  });
+}
+
+function updateDownloadAllPopupDone(zipName) {
+  const popup = document.getElementById('cdl-all-popup');
+  if (!popup) return;
+  const bar = document.getElementById('cdl-ap-bar');
+  if (bar) bar.style.width = '100%';
+  const s = document.getElementById('cdl-ap-chapter-status');
+  if (s) {
+    s.textContent = 'Download complete!';
+    s.style.color = '';
+  }
+  const i = document.getElementById('cdl-ap-img-status');
+  if (i) i.textContent = `Saved as: ${zipName || 'manga.zip'}`;
+  _dlAllSetFooterClose(popup);
+}
+
+function updateDownloadAllPopupCancelled() {
+  const popup = document.getElementById('cdl-all-popup');
+  if (!popup) return;
+  const s = document.getElementById('cdl-ap-chapter-status');
+  if (s) {
+    s.textContent = 'Download cancelled.';
+    s.style.color = '';
+  }
+  _dlAllSetFooterClose(popup);
 }
 
 function updateDownloadAllPopup(msg) {
@@ -884,7 +909,17 @@ function updateDownloadAllPopup(msg) {
   const pctDone    = totalChapters > 0 ? Math.round((chapterIndex - 1) / totalChapters * 100) : 0;
   const pctCurrent = totalChapters > 0 ? Math.round(chapterIndex / totalChapters * 100) : 0;
 
-  if (phase === 'extracting') {
+  if (phase === 'preparing') {
+    el('cdl-ap-chapter-status').textContent = 'Preparing...';
+    el('cdl-ap-img-status').textContent     = 'Starting...';
+    el('cdl-ap-bar').style.width            = '0%';
+    el('cdl-ap-counter').textContent        = `0 / ${totalChapters || 0} chapters`;
+
+  } else if (phase === 'cancelling') {
+    el('cdl-ap-chapter-status').textContent = 'Cancelling...';
+    el('cdl-ap-img-status').textContent     = 'Stopping after the current step...';
+
+  } else if (phase === 'extracting') {
     el('cdl-ap-chapter-status').textContent = `Chapter ${chapterIndex} / ${totalChapters} — ${chapterLabel}`;
     el('cdl-ap-img-status').textContent     = 'Opening chapter…';
     el('cdl-ap-bar').style.width            = `${pctDone}%`;
@@ -934,6 +969,9 @@ function updateDownloadAllPopup(msg) {
       });
       footer.insertBefore(retryBtn, footer.firstChild);
     }
+  } else if (phase === 'savingPart') {
+    el('cdl-ap-chapter-status').textContent = `Saving ZIP part ${msg.zipPart || ''}...`;
+    el('cdl-ap-img-status').textContent     = 'Continuing after this part is saved...';
   }
 }
 
@@ -961,7 +999,7 @@ function _dlAllUpdateLastLog(text, newCls) {
   if (newCls) last.className = `cdl-ap-log-item ${newCls}`;
 }
 
-function updateDownloadAllPopupError(errMsg) {
+function updateDownloadAllPopupError(errMsg, options = {}) {
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
   clearTimeout(popup._cdlRetryTimer);
@@ -972,7 +1010,32 @@ function updateDownloadAllPopupError(errMsg) {
   if (!footer) return;
   footer.innerHTML = '';
 
-  if (_lastDlAllParams) {
+  if (options.canRetryZip) {
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'cdl-ap-retry-btn';
+    retryBtn.textContent = 'Retry ZIP';
+    retryBtn.addEventListener('click', () => {
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Retrying...';
+      const status = document.getElementById('cdl-ap-chapter-status');
+      if (status) {
+        status.textContent = 'Building ZIP file...';
+        status.style.color = '';
+      }
+      try {
+        chrome.runtime.sendMessage({ action: 'retryZip' }, () => {
+          if (chrome.runtime.lastError) updateDownloadAllPopupError('Erreur de connexion à l\'extension');
+          else {
+            retryBtn.disabled = false;
+            retryBtn.textContent = 'Retry ZIP';
+          }
+        });
+      } catch (_) {
+        updateDownloadAllPopupError('Extension rechargée — actualisez la page');
+      }
+    });
+    footer.appendChild(retryBtn);
+  } else if (_lastDlAllParams) {
     const retryBtn = document.createElement('button');
     retryBtn.className = 'cdl-ap-retry-btn';
     retryBtn.textContent = '↺ Retry';
@@ -988,8 +1051,58 @@ function updateDownloadAllPopupError(errMsg) {
   const closeBtn = document.createElement('button');
   closeBtn.className = 'cdl-ap-done-btn';
   closeBtn.textContent = 'Close';
-  closeBtn.addEventListener('click', () => popup.remove());
+  closeBtn.addEventListener('click', () => {
+    dismissDownloadAllSession();
+    popup.remove();
+  });
   footer.appendChild(closeBtn);
+}
+
+function restoreDownloadAllLogItems(items) {
+  const log = document.getElementById('cdl-ap-log');
+  if (!log || !Array.isArray(items)) return;
+  log.innerHTML = '';
+  for (const entry of items) {
+    if (!entry || !entry.text) continue;
+    const cls = ['active', 'done', 'error', 'skipped'].includes(entry.cls) ? entry.cls : '';
+    const item = document.createElement('div');
+    item.className = `cdl-ap-log-item ${cls}`;
+    item.dataset.chid = entry.id || entry.text;
+    item.textContent = entry.text;
+    log.appendChild(item);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+function restoreDownloadAllPopupFromSession(session) {
+  if (!session || document.getElementById('cdl-all-popup')) return;
+
+  showDownloadAllPopup(
+    session.mangaName || getMangaName(),
+    session.totalChapters || 0,
+    { allowFullRetry: false }
+  );
+  restoreDownloadAllLogItems(session.logItems);
+
+  if (session.status === 'done') {
+    updateDownloadAllPopupDone(session.doneZipName || session.zipName || 'manga.zip');
+  } else if (session.status === 'error') {
+    updateDownloadAllPopupError(session.error || 'Unknown error', { canRetryZip: !!session.canRetryZip });
+  } else if (session.status === 'cancelled') {
+    updateDownloadAllPopupCancelled();
+  } else if (session.lastProgress) {
+    updateDownloadAllPopup(session.lastProgress);
+  }
+}
+
+function restoreDownloadAllPopupFromBackground() {
+  if (!chrome?.runtime?.id) return;
+  try {
+    chrome.runtime.sendMessage({ action: 'getDownloadAllSession' }, (res) => {
+      if (chrome.runtime.lastError || !res?.session) return;
+      restoreDownloadAllPopupFromSession(res.session);
+    });
+  } catch (_) {}
 }
 
 // ── Scan initial et MutationObserver ─────────────────────────────────────────
@@ -1050,4 +1163,5 @@ function observeDOM() {
   injectStyles();
   scanAndInject();
   observeDOM();
+  restoreDownloadAllPopupFromBackground();
 })();

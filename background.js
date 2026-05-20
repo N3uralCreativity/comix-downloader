@@ -30,6 +30,12 @@ let _pendingZip = null;
 
 const BATCH_SIZE = 3;
 const MAX_LOG_ENTRIES = 500;
+const ZIP_PART_MAX_CHAPTERS = 5;
+const ZIP_PART_MAX_BYTES = 300 * 1024 * 1024;
+const DOWNLOAD_ALL_LOG_LIMIT = 150;
+const DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS = 2 * 60 * 1000;
+
+let downloadAllSession = null;
 
 // ── Système de logs persistants ──────────────────────────────────────────────
 // Stocke les entrées dans chrome.storage.local (clé 'cdlLogs').
@@ -40,6 +46,198 @@ function cdlLog(level, msg) {
     if (cdlLogs.length > MAX_LOG_ENTRIES) cdlLogs.splice(0, cdlLogs.length - MAX_LOG_ENTRIES);
     chrome.storage.local.set({ cdlLogs });
   }).catch(() => {});
+}
+
+function startDownloadAllSession({ originTabId, mangaName, zipName, totalChapters }) {
+  const now = Date.now();
+  downloadAllSession = {
+    active: true,
+    status: 'running',
+    originTabId,
+    mangaName,
+    zipName,
+    totalChapters,
+    chapterIndex: 0,
+    imagesDone: 0,
+    imagesTotal: 0,
+    phase: 'preparing',
+    startedAt: now,
+    updatedAt: now,
+    logItems: [],
+    lastProgress: {
+      action: 'downloadAllProgress',
+      phase: 'preparing',
+      chapterIndex: 0,
+      totalChapters,
+      chapterLabel: '',
+      imagesDone: 0,
+      imagesTotal: 0,
+    },
+  };
+}
+
+function updateDownloadAllSessionLog(progress) {
+  if (!downloadAllSession || !progress.chapterLabel) return;
+
+  const { phase, chapterLabel, imagesDone, imagesTotal } = progress;
+  let cls = 'active';
+  let text = '';
+
+  if (phase === 'extracting') {
+    text = `${chapterLabel} - opening...`;
+  } else if (phase === 'downloading') {
+    text = `${chapterLabel} - ${imagesDone}/${imagesTotal} images`;
+  } else if (phase === 'done') {
+    cls = 'done';
+    text = `${chapterLabel} (${imagesDone} images)`;
+  } else if (phase === 'error') {
+    cls = 'error';
+    text = `${chapterLabel} - failed`;
+  } else if (phase === 'skipped') {
+    cls = 'skipped';
+    text = `${chapterLabel} - skipped`;
+  }
+
+  if (!text) return;
+
+  const logItems = Array.isArray(downloadAllSession.logItems)
+    ? [...downloadAllSession.logItems]
+    : [];
+  const existing = logItems.find((item) => item.id === chapterLabel);
+  if (existing) {
+    existing.cls = cls;
+    existing.text = text;
+  } else {
+    logItems.push({ id: chapterLabel, cls, text });
+  }
+  if (logItems.length > DOWNLOAD_ALL_LOG_LIMIT) {
+    logItems.splice(0, logItems.length - DOWNLOAD_ALL_LOG_LIMIT);
+  }
+  downloadAllSession.logItems = logItems;
+}
+
+function recordDownloadAllProgress(progress) {
+  if (!downloadAllSession) return;
+  const normalized = { action: 'downloadAllProgress', ...progress };
+  Object.assign(downloadAllSession, {
+    active: true,
+    status: downloadAllSession.status === 'cancelling' ? 'cancelling' : 'running',
+    phase: progress.phase,
+    chapterIndex: progress.chapterIndex ?? downloadAllSession.chapterIndex,
+    totalChapters: progress.totalChapters ?? downloadAllSession.totalChapters,
+    imagesDone: progress.imagesDone ?? downloadAllSession.imagesDone,
+    imagesTotal: progress.imagesTotal ?? downloadAllSession.imagesTotal,
+    zipPart: progress.zipPart ?? downloadAllSession.zipPart,
+    lastProgress: normalized,
+    updatedAt: Date.now(),
+  });
+  updateDownloadAllSessionLog(progress);
+}
+
+function recordDownloadAllCancelling() {
+  if (!downloadAllSession) return;
+  const progress = {
+    action: 'downloadAllProgress',
+    phase: 'cancelling',
+    chapterIndex: downloadAllSession.chapterIndex || 0,
+    totalChapters: downloadAllSession.totalChapters || 0,
+    chapterLabel: '',
+    imagesDone: downloadAllSession.imagesDone || 0,
+    imagesTotal: downloadAllSession.imagesTotal || 0,
+  };
+  Object.assign(downloadAllSession, {
+    active: true,
+    status: 'cancelling',
+    phase: 'cancelling',
+    lastProgress: progress,
+    updatedAt: Date.now(),
+  });
+}
+
+function recordDownloadAllTerminal(status, patch = {}) {
+  if (!downloadAllSession) {
+    downloadAllSession = {
+      active: false,
+      status,
+      originTabId: patch.originTabId ?? null,
+      mangaName: '',
+      zipName: '',
+      totalChapters: 0,
+      logItems: [],
+      startedAt: Date.now(),
+    };
+  }
+  Object.assign(downloadAllSession, {
+    active: false,
+    status,
+    ...patch,
+    updatedAt: Date.now(),
+  });
+}
+
+function getDownloadAllSessionForTab(tabId) {
+  if (!downloadAllSession) return null;
+  if (
+    downloadAllSession.originTabId != null &&
+    tabId != null &&
+    downloadAllSession.originTabId !== tabId
+  ) {
+    return null;
+  }
+  if (
+    !downloadAllSession.active &&
+    Date.now() - (downloadAllSession.updatedAt || 0) > DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS
+  ) {
+    return null;
+  }
+  return downloadAllSession;
+}
+
+function dismissDownloadAllSessionForTab(tabId) {
+  if (!downloadAllSession) return;
+  if (
+    downloadAllSession.originTabId != null &&
+    tabId != null &&
+    downloadAllSession.originTabId !== tabId
+  ) {
+    return;
+  }
+  if (!downloadAllSession.active) downloadAllSession = null;
+}
+
+function notifyDownloadAllProgress(originTabId, progress) {
+  recordDownloadAllProgress(progress);
+  notifyTab(originTabId, { action: 'downloadAllProgress', ...progress });
+}
+
+function notifyDownloadAllDone(originTabId, zipName) {
+  const message = { action: 'downloadAllDone', zipName };
+  recordDownloadAllTerminal('done', {
+    originTabId,
+    doneZipName: zipName,
+    lastDone: message,
+  });
+  notifyTab(originTabId, message);
+}
+
+function notifyDownloadAllError(originTabId, error, canRetryZip = false) {
+  const message = { action: 'downloadAllError', error, canRetryZip };
+  recordDownloadAllTerminal('error', {
+    originTabId,
+    error,
+    canRetryZip,
+    lastError: message,
+  });
+  notifyTab(originTabId, message);
+}
+
+function notifyDownloadAllCancelled(originTabId) {
+  const message = { action: 'downloadAllCancelled' };
+  recordDownloadAllTerminal('cancelled', {
+    originTabId,
+    lastCancelled: message,
+  });
+  notifyTab(originTabId, message);
 }
 
 // ── Réception des messages depuis content_title.js ───────────────────────────
@@ -62,6 +260,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === 'cancelDownloadAll') {
     downloadAllAbortFlag = true;
+    recordDownloadAllCancelling();
     sendResponse({ ok: true });
     return true;
   }
@@ -71,8 +270,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (_pendingZip) {
       _doZipAndSave(_pendingZip);
     } else {
-      notifyTab(originTabId, { action: 'downloadAllError', error: 'Session expired — please restart Download All' });
+      notifyDownloadAllError(originTabId, 'Session expired - please restart Download All');
     }
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message.action === 'getDownloadAllSession') {
+    const originTabId = sender.tab?.id ?? null;
+    sendResponse({ ok: true, session: getDownloadAllSessionForTab(originTabId) });
+    return true;
+  }
+
+  if (message.action === 'dismissDownloadAllSession') {
+    const originTabId = sender.tab?.id ?? null;
+    dismissDownloadAllSessionForTab(originTabId);
     sendResponse({ ok: true });
     return true;
   }
@@ -479,10 +691,17 @@ async function _zipToDownloadUrl(zip) {
 }
 
 function sanitizeFilename(name) {
-  return name
+  const base = name
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+    .replace(/\.zip$/i, '')
     .replace(/\.+$/, '')
-    .substring(0, 196) + '.zip';
+    .substring(0, 196);
+  return `${base || 'download'}.zip`;
+}
+
+function getZipPartName(zipName, partNumber) {
+  const base = zipName.replace(/\.zip$/i, '');
+  return `${base}-part-${String(partNumber).padStart(2, '0')}.zip`;
 }
 
 // ── Notification vers un onglet ───────────────────────────────────────────────
@@ -541,16 +760,46 @@ async function extractFromTab(url) {
 
 // ── Téléchargement de tous les chapitres ──────────────────────────────────────
 async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabId) {
+  startDownloadAllSession({ originTabId, mangaName, zipName, totalChapters: chapters.length });
   cdlLog('info', `Download All started: "${mangaName}" — ${chapters.length} chapters`);
-  const zip = new JSZip();
-  const notify = (extra) => notifyTab(originTabId, { action: 'downloadAllProgress', ...extra });
+  let zip = new JSZip();
+  let zipPart = 1;
+  let zipPartChapters = 0;
+  let zipPartBytes = 0;
+  const savedZipNames = [];
+  const notify = (extra) => notifyDownloadAllProgress(originTabId, extra);
+
+  const saveCurrentZipPart = async (isFinal = false) => {
+    if (zipPartChapters === 0) return true;
+    const partName = zipPart === 1 && isFinal ? zipName : getZipPartName(zipName, zipPart);
+
+    notify({ phase: isFinal ? 'zipping' : 'savingPart',
+             chapterIndex: chapters.length,
+             totalChapters: chapters.length,
+             chapterLabel: '',
+             imagesDone: 0,
+             imagesTotal: 0,
+             zipPart });
+
+    _pendingZip = { zip, zipName: partName, originTabId };
+    const savedName = await _doZipAndSave({ zip, zipName: partName, originTabId, notifyDone: false });
+    if (!savedName) return false;
+
+    savedZipNames.push(savedName);
+    cdlLog('ok', `Download All ZIP part saved: ${savedName}`);
+    zip = new JSZip();
+    zipPart++;
+    zipPartChapters = 0;
+    zipPartBytes = 0;
+    return true;
+  };
 
   // Rate limiting dynamique entre chapitres
   let rateDelay = 1500;  // ms
   const MIN_DELAY = 800, MAX_DELAY = 8000;
 
   for (let i = 0; i < chapters.length; i++) {
-    if (downloadAllAbortFlag) { notifyTab(originTabId, { action: 'downloadAllCancelled' }); return; }
+    if (downloadAllAbortFlag) { notifyDownloadAllCancelled(originTabId); return; }
 
     const { chapterUrl, chapterLabel } = chapters[i];
     // Nom de dossier avec numéro paddé pour tri alphabétique correct
@@ -590,6 +839,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
             const buf = await res.arrayBuffer();
             const ext = (src.match(/\.([a-z0-9]+)$/i) || [, 'webp'])[1];
             folder.file(`${paddedIndex}.${ext}`, buf);
+            zipPartBytes += buf.byteLength;
           } catch (err) {
             console.warn(`[ComixDL-All] ${chapterLabel} img ${index} ignorée:`, err.message);
           }
@@ -602,6 +852,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       notify({ phase: 'done', chapterIndex: i + 1, totalChapters: chapters.length,
                chapterLabel, imagesDone: imgDone, imagesTotal: images.length });
       cdlLog('ok', `${chapterLabel}: done (${imgDone} images)`);
+      zipPartChapters++;
       rateDelay = Math.max(MIN_DELAY, rateDelay - 100); // succès → légèrement plus rapide
 
     } catch (err) {
@@ -612,36 +863,49 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
                chapterLabel, imagesDone: 0, imagesTotal: 0 });
     }
 
+    if (i < chapters.length - 1 &&
+        (zipPartChapters >= ZIP_PART_MAX_CHAPTERS || zipPartBytes >= ZIP_PART_MAX_BYTES)) {
+      const saved = await saveCurrentZipPart(false);
+      if (!saved) return;
+    }
+
     // Pause entre chapitres (rate limiting)
     if (i < chapters.length - 1 && !downloadAllAbortFlag) {
       await new Promise(r => setTimeout(r, rateDelay));
     }
   }
 
-  if (downloadAllAbortFlag) { notifyTab(originTabId, { action: 'downloadAllCancelled' }); return; }
+  if (downloadAllAbortFlag) { notifyDownloadAllCancelled(originTabId); return; }
 
   // Génération du ZIP final
-  notify({ phase: 'zipping', chapterIndex: chapters.length, totalChapters: chapters.length,
-           chapterLabel: '', imagesDone: 0, imagesTotal: 0 });
-  _pendingZip = { zip, zipName, originTabId };
-  await _doZipAndSave({ zip, zipName, originTabId });
+  const saved = await saveCurrentZipPart(true);
+  if (!saved) return;
+
+  const doneName = savedZipNames.length === 1 ? savedZipNames[0] : `${savedZipNames.length} ZIP parts`;
+  cdlLog('ok', `Download All complete: ${doneName}`);
+  notifyDownloadAllDone(originTabId, doneName);
 }
 
-async function _doZipAndSave({ zip, zipName, originTabId }) {
+async function _doZipAndSave({ zip, zipName, originTabId, notifyDone = true }) {
   try {
     const { url, revoke } = await _zipToDownloadUrl(zip);
+    const filename = sanitizeFilename(zipName);
     await chrome.downloads.download({
       url,
-      filename: sanitizeFilename(zipName),
+      filename,
       saveAs:   false,
     });
     // Libérer le blob URL après que Chrome a eu le temps de lire le flux
     setTimeout(revoke, 60_000);
     _pendingZip = null;
-    cdlLog('ok', `Download All complete: ${sanitizeFilename(zipName)}`);
-    notifyTab(originTabId, { action: 'downloadAllDone', zipName });
+    if (notifyDone) {
+      cdlLog('ok', `Download All complete: ${filename}`);
+      notifyDownloadAllDone(originTabId, filename);
+    }
+    return filename;
   } catch (err) {
     cdlLog('error', `Download All ZIP error: ${err.message}`);
-    notifyTab(originTabId, { action: 'downloadAllError', error: err.message });
+    notifyDownloadAllError(originTabId, err.message, true);
+    return null;
   }
 }
