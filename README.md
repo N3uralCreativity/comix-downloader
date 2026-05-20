@@ -24,7 +24,7 @@ Adds download buttons directly to every comix.to title page — grab a single ch
 
 Hit **Download All** on any title page. Every chapter is downloaded, packaged into its own folder, and bundled into a single ZIP — named, padded, and sorted.
 
-![Download All button on title page](assets/screenshot-title.png)
+![Download All button on title page](assets/screenshot-title.png) (peak Manwha btw)
 
 ---
 
