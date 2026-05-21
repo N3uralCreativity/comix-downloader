@@ -13,3 +13,4 @@ Thumbs.db
 # Build output (none currently, but just in case)
 dist/
 build/
+.gradle/

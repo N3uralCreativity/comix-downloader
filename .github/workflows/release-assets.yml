@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  package:
+  browser:
     name: Package browser ZIPs
     runs-on: windows-latest
 
@@ -34,3 +34,49 @@ jobs:
           }
           $assetPaths = $assets | ForEach-Object { $_.FullName }
           gh release upload $env:RELEASE_TAG @assetPaths --clobber
+
+  mihon:
+    name: Package Mihon APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build Mihon APK
+        working-directory: mihon-support
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :src:en:comix:assembleRelease --no-daemon
+
+      - name: Stage Mihon APK
+        shell: bash
+        run: |
+          version="$(node -p "require('./manifest.json').version")"
+          mkdir -p dist/release
+          apk="$(find mihon-support/src/en/comix/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          if [ -z "$apk" ]; then
+            echo "No Mihon APK was generated." >&2
+            exit 1
+          fi
+          cp "$apk" "dist/release/comix-mihon-v${version}.apk"
+
+      - name: Upload Mihon APK to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" dist/release/comix-mihon-v*.apk --clobber
