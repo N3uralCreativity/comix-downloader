@@ -17,10 +17,6 @@ function badgeLabel(level) {
   return { info: 'INFO', ok: 'OK', warn: 'WARN', error: 'ERR' }[level] || level.toUpperCase();
 }
 
-function escapeHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
 // ── Rendu des logs ────────────────────────────────────────────────────────────
 
 function renderLogs(logs) {
@@ -46,10 +42,16 @@ function renderLogs(logs) {
   for (const entry of reversed) {
     const div = document.createElement('div');
     div.className = `log-entry ${entry.level || 'info'}`;
-    div.innerHTML =
-      `<span class="log-ts">${formatTs(entry.ts)}</span>` +
-      `<span class="log-badge">${badgeLabel(entry.level || 'info')}</span>` +
-      `<span class="log-msg">${escapeHtml(entry.msg)}</span>`;
+    const ts = document.createElement('span');
+    ts.className = 'log-ts';
+    ts.textContent = formatTs(entry.ts);
+    const badge = document.createElement('span');
+    badge.className = 'log-badge';
+    badge.textContent = badgeLabel(entry.level || 'info');
+    const msg = document.createElement('span');
+    msg.className = 'log-msg';
+    msg.textContent = entry.msg;
+    div.append(ts, badge, msg);
     frag.appendChild(div);
   }
 

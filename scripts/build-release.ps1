@@ -98,6 +98,9 @@ $firefoxManifest.background = [ordered]@{
 $firefoxManifest | Add-Member -NotePropertyName browser_specific_settings -NotePropertyValue ([ordered]@{
   gecko = [ordered]@{
     id = "comix-downloader@n3uralcreativity.github.io"
+    data_collection_permissions = [ordered]@{
+      required = @("none")
+    }
   }
 }) -Force
 Write-JsonFile $firefoxManifest (Join-Path $firefoxDir "manifest.json")
