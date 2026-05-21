@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-  [string]$OutputDir = "dist/release"
+  [string]$OutputDir = "dist/release",
+  [string]$Suffix = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -108,8 +109,8 @@ $firefoxManifest | Add-Member -NotePropertyName browser_specific_settings -NoteP
 }) -Force
 Write-JsonFile $firefoxManifest (Join-Path $firefoxDir "manifest.json")
 
-$chromeZip = Join-Path $outputFull "comix-downloader-chrome-v$version.zip"
-$firefoxZip = Join-Path $outputFull "comix-downloader-firefox-v$version.zip"
+$chromeZip = Join-Path $outputFull "comix-downloader-chrome-v$version$Suffix.zip"
+$firefoxZip = Join-Path $outputFull "comix-downloader-firefox-v$version$Suffix.zip"
 
 New-Zip $chromeDir $chromeZip
 New-Zip $firefoxDir $firefoxZip

@@ -20,7 +20,11 @@ jobs:
 
       - name: Build Chrome and Firefox ZIPs
         shell: pwsh
-        run: ./scripts/build-release.ps1
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          $suffix = if ($env:RELEASE_TAG -match '-([A-Za-z][A-Za-z0-9]*)$') { "_$($matches[1])" } else { "" }
+          ./scripts/build-release.ps1 -Suffix $suffix
 
       - name: Upload ZIPs to release
         shell: pwsh
@@ -65,15 +69,21 @@ jobs:
 
       - name: Stage Mihon APK
         shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           version="$(node -p "require('./manifest.json').version")"
+          suffix=""
+          if [[ "$RELEASE_TAG" =~ -([A-Za-z][A-Za-z0-9]*)$ ]]; then
+            suffix="_${BASH_REMATCH[1]}"
+          fi
           mkdir -p dist/release
           apk="$(find mihon-support/src/en/comix/build/outputs/apk/release -name '*.apk' | head -n 1)"
           if [ -z "$apk" ]; then
             echo "No Mihon APK was generated." >&2
             exit 1
           fi
-          cp "$apk" "dist/release/comix-mihon-v${version}.apk"
+          cp "$apk" "dist/release/comix-mihon-v${version}${suffix}.apk"
 
       - name: Upload Mihon APK to release
         env:
