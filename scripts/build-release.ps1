@@ -102,6 +102,9 @@ $firefoxManifest | Add-Member -NotePropertyName browser_specific_settings -NoteP
       required = @("none")
     }
   }
+  gecko_android = [ordered]@{
+    strict_min_version = "142.0"
+  }
 }) -Force
 Write-JsonFile $firefoxManifest (Join-Path $firefoxDir "manifest.json")
 

@@ -5,7 +5,7 @@
 ### Download manga from [comix.to](https://comix.to)
 
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-brightgreen?logo=googlechrome&logoColor=white)](https://github.com/N3uralCreativity/comix-downloader/releases)
-[![Firefox Extension](https://img.shields.io/badge/Firefox-Temporary%20Extension-orange?logo=firefoxbrowser&logoColor=white)](https://github.com/N3uralCreativity/comix-downloader/releases)
+[![Firefox Extension](https://img.shields.io/badge/Firefox-Desktop%20%2B%20Android-orange?logo=firefoxbrowser&logoColor=white)](https://github.com/N3uralCreativity/comix-downloader/releases)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -55,9 +55,9 @@ Each chapter gets its own download button in the chapter list.
 
 ---
 
-## Install on Firefox
+## Install on Firefox Desktop
 
-Firefox support is currently shipped as a temporary unpacked extension. It works for testing and normal use during the current browser session, but Firefox removes temporary extensions after restart.
+Firefox support is available through the Firefox package. Until the add-on is listed on AMO, local installs are temporary and Firefox removes them after restart.
 
 1. Open the [latest release](https://github.com/N3uralCreativity/comix-downloader/releases/latest).
 2. Download `comix-downloader-firefox-vX.Y.Z.zip`.
@@ -67,11 +67,19 @@ Firefox support is currently shipped as a temporary unpacked extension. It works
 6. Select the extracted folder's `manifest.json`.
 7. Open any [comix.to](https://comix.to) title page.
 
-A permanent Firefox install requires a Mozilla-signed XPI. That is planned for a later release path.
+A permanent Firefox install requires the official AMO listing.
 
 ---
 
-## Android
+## Firefox for Android
+
+The Firefox package declares Firefox for Android support for Firefox Android `142.0` and newer. Install it from AMO once the listing is approved.
+
+For local Android testing before AMO approval, follow Mozilla's Firefox for Android extension debugging workflow with `web-ext run -t firefox-android`.
+
+---
+
+## Android with Kiwi Browser
 
 The Chrome package can also be loaded on Android through [Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser).
 
