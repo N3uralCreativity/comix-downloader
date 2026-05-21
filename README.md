@@ -65,7 +65,7 @@ The extension works as-is on Android via **[Kiwi Browser](https://play.google.co
 
 ### Firefox
 
-[![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
+[![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/) **PENDING APPROVAL** 
 
 ### Chrome (unpacked)
 1. [Download this repo](https://github.com/N3uralCreativity/comix-downloader/archive/refs/heads/master.zip) and unzip it
