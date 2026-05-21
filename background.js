@@ -332,7 +332,6 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: extractChapterImagesFromPage,
-      world: 'MAIN',
     });
 
     // Fermer l'onglet dès que possible
@@ -742,7 +741,6 @@ async function extractFromTab(url) {
         const results = await chrome.scripting.executeScript({
           target: { tabId },
           func:   extractChapterImagesFromPage,
-          world:  'MAIN',
         });
         chrome.tabs.remove(tabId).catch(() => {});
         settle(resolve, results?.[0]?.result || []);
