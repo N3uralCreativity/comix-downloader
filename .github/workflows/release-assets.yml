@@ -1,0 +1,36 @@
+name: Build release assets
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package browser ZIPs
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Build Chrome and Firefox ZIPs
+        shell: pwsh
+        run: ./scripts/build-release.ps1
+
+      - name: Upload ZIPs to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          $assets = Get-ChildItem -LiteralPath "dist/release" -Filter "*.zip"
+          if (-not $assets) {
+            throw "No ZIP assets were generated."
+          }
+          $assetPaths = $assets | ForEach-Object { $_.FullName }
+          gh release upload $env:RELEASE_TAG @assetPaths --clobber

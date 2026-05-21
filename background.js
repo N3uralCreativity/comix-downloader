@@ -8,8 +8,11 @@
  *   5. Crée le ZIP via JSZip (importScripts) → chrome.downloads (data URL base64)
  */
 
-// JSZip chargé en synchrone ; expose self.JSZip dans le service worker (UMD)
-importScripts('lib/jszip.min.js');
+// Chrome loads JSZip from the service worker. Firefox loads it first through
+// manifest.background.scripts in the generated Firefox package.
+if (typeof importScripts === 'function' && typeof JSZip === 'undefined') {
+  importScripts('lib/jszip.min.js');
+}
 
 'use strict';
 
