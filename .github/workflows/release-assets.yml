@@ -61,11 +61,33 @@ jobs:
       - name: Install Android platform
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Decode release signing key
+        env:
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$SIGNING_KEYSTORE_B64" ]; then
+            echo "::error::SIGNING_KEYSTORE_B64 secret is not set — releases would be debug-signed and break Mihon auto-updates."
+            exit 1
+          fi
+          printf '%s' "$SIGNING_KEYSTORE_B64" | base64 -d > mihon-support/signingkey.jks
+          if [ ! -s mihon-support/signingkey.jks ]; then
+            echo "::error::Decoded keystore is empty — check the SIGNING_KEYSTORE_B64 secret."
+            exit 1
+          fi
+
       - name: Build Mihon APK
         working-directory: mihon-support
+        env:
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
           ./gradlew :src:en:comix:assembleRelease --no-daemon
+
+      - name: Wipe keystore from runner
+        if: always()
+        run: rm -f mihon-support/signingkey.jks
 
       - name: Stage Mihon APK
         shell: bash

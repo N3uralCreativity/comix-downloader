@@ -18,6 +18,10 @@ build/
 # Android local config (machine-specific)
 local.properties
 
+# Android signing keys — NEVER commit these
+*.jks
+*.keystore
+
 # Python tooling
 __pycache__/
 *.pyc
