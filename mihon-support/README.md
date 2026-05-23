@@ -11,7 +11,7 @@ Once installed in Mihon, the source gives you the same "download all" and "per c
 1. Install [Mihon](https://mihon.app/download).
 2. **More → Settings → Browse → Extension repos → +**, then paste:
    ```
-   https://raw.githubusercontent.com/N3uralCreativity/comix-downloader/repo/index.min.json
+   https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json
    ```
 3. **Browse → Extensions** → install **Comix**.
 4. **Browse → Comix** → pick a title → tap **⋮ → Download → All** (or use the per-chapter download icons).

@@ -62,7 +62,7 @@ Each chapter gets its own download button right in the list.
 2. Open Mihon → **More** → **Settings** → **Browse** → **Extension repos**.
 3. Tap **+** and paste this URL:
    ```
-   https://raw.githubusercontent.com/N3uralCreativity/comix-downloader/repo/index.min.json
+   https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json
    ```
 4. Go to **Browse** → **Extensions** → install **Comix**.
 5. Open **Browse** → **Comix** and start reading or downloading.
