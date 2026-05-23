@@ -47,14 +47,12 @@ Each chapter gets its own download button right in the list.
 
 ## Mobile support (Android)
 
-Two ways to get Comix downloads on Android — pick whichever fits your workflow.
-
 ### Option A — Mihon (recommended for offline reading)
 
-[Mihon](https://mihon.app/) is a free, open-source Android manga reader. It ships with a built-in download manager, library, and reader. Once you add the Comix source extension, you get the **exact same download capability** as the PC extension:
+[Mihon](https://mihon.app/) you get the **exact same download capability** as the PC extension:
 
-- **Download All chapters** — open any title → tap the **⋮** menu → **Download** → **All** (or Next / Unread / Custom range)
-- **Per-chapter download** — tap the download icon on a chapter row, or long-press to multi-select
+- **Download All chapters** : open any title → tap the **⋮** menu → **Download** → **All** (or Next / Unread / Custom range)
+- **Per-chapter download** : tap the download icon on a chapter row, or long-press to multi-select
 - Monitor / pause / reorder downloads from **More → Download queue**
 - Files land under `Mihon/downloads/Comix/<Manga>/<Chapter>/` for offline reading
 
@@ -88,7 +86,7 @@ If you specifically want the in-page buttons that the desktop extension provides
 5. Tap **Load unpacked (zip or folder)** → select the extracted folder.
 6. Head to any [comix.to](https://comix.to) title page — buttons appear automatically.
 
-> iOS is not supported (Safari doesn't allow extension-based downloads) - sorry its essentially impossible 😭
+> iOS is not supported (Safari doesn't allow extension-based downloads) - sorry its essentially impossible.. at least i can't :c
 
 ---
 ## PC support
