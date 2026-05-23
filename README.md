@@ -47,16 +47,46 @@ Each chapter gets its own download button right in the list.
 
 ## Mobile support (Android)
 
-The extension works as-is on Android via **[Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser)**
+Two ways to get Comix downloads on Android — pick whichever fits your workflow.
 
-**Setup on Kiwi Browser:**
+### Option A — Mihon (recommended for offline reading)
 
-1. Install [Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser) from the Play Store
-2. On your phone, download this repo ZIP and extract it
-3. Open Kiwi → go to `chrome://extensions`
-4. Toggle **Developer mode** on
-5. Tap **Load unpacked (zip or folder)** → select the extracted folder
-6. Head to any [comix.to](https://comix.to) title page, buttons appear automatically
+[Mihon](https://mihon.app/) is a free, open-source Android manga reader. It ships with a built-in download manager, library, and reader. Once you add the Comix source extension, you get the **exact same download capability** as the PC extension:
+
+- **Download All chapters** — open any title → tap the **⋮** menu → **Download** → **All** (or Next / Unread / Custom range)
+- **Per-chapter download** — tap the download icon on a chapter row, or long-press to multi-select
+- Monitor / pause / reorder downloads from **More → Download queue**
+- Files land under `Mihon/downloads/Comix/<Manga>/<Chapter>/` for offline reading
+
+#### One-tap install (auto-updates)
+
+1. Install [Mihon](https://mihon.app/download) on your Android device.
+2. Open Mihon → **More** → **Settings** → **Browse** → **Extension repos**.
+3. Tap **+** and paste this URL:
+   ```
+   https://raw.githubusercontent.com/N3uralCreativity/comix-downloader/repo/index.min.json
+   ```
+4. Go to **Browse** → **Extensions** → install **Comix**.
+5. Open **Browse** → **Comix** and start reading or downloading.
+
+Mihon will fetch new versions automatically whenever a new release is published here.
+
+#### Manual APK install (one-off)
+
+1. Grab `comix-mihon-vX.Y.Z.apk` from [Releases](https://github.com/N3uralCreativity/comix-downloader/releases).
+2. Install on your phone (allow unknown app installs if prompted).
+3. Open Mihon → **Browse** → **Comix**.
+
+### Option B — Kiwi Browser (browser-extension parity)
+
+If you specifically want the in-page buttons that the desktop extension provides, the WebExtension works as-is on Android via **[Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser)**:
+
+1. Install [Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser) from the Play Store.
+2. On your phone, download this repo ZIP and extract it.
+3. Open Kiwi → go to `chrome://extensions`.
+4. Toggle **Developer mode** on.
+5. Tap **Load unpacked (zip or folder)** → select the extracted folder.
+6. Head to any [comix.to](https://comix.to) title page — buttons appear automatically.
 
 > iOS is not supported (Safari doesn't allow extension-based downloads) - sorry its essentially impossible 😭
 

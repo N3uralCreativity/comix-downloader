@@ -17,3 +17,7 @@ build/
 
 # Android local config (machine-specific)
 local.properties
+
+# Python tooling
+__pycache__/
+*.pyc
