@@ -127,9 +127,11 @@ def main() -> None:
     }
 
     repo_meta = {
-        "name": REPO_NAME,
-        "website": REPO_WEBSITE,
-        "signingKeyFingerprint": fingerprint,
+        "meta": {
+            "name": REPO_NAME,
+            "website": REPO_WEBSITE,
+            "signingKeyFingerprint": fingerprint,
+        }
     }
 
     (out_dir / "index.min.json").write_text(
