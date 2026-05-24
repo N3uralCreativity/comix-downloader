@@ -11,6 +11,8 @@
 
 **by [N3uralCreativity](https://github.com/N3uralCreativity)**
 
+Note : The firefox Add-on is currently wiating for approval (1-2 weeks delay)
+
 </div>
 
 ---
