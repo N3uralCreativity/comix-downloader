@@ -11,7 +11,6 @@
 
 **by [N3uralCreativity](https://github.com/N3uralCreativity)**
 
-Note : The firefox Add-on is currently wiating for approval (1-2 weeks delay)
 
 </div>
 
@@ -89,7 +88,7 @@ If you specifically want the in-page buttons that the desktop extension provides
 6. Head to any [comix.to](https://comix.to) title page — buttons appear automatically.
 
 ### Option C — Firefox Android add-on
-[![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/) **PENDING APPROVAL** 
+[![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
 
 > iOS is not supported (Safari doesn't allow extension-based downloads) - sorry its essentially impossible.. at least i can't :c
 
@@ -98,7 +97,7 @@ If you specifically want the in-page buttons that the desktop extension provides
 
 ### Firefox
 
-[![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/) **PENDING APPROVAL** 
+[![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
 
 ### Chrome (unpacked)
 1. [Download this repo](https://github.com/N3uralCreativity/comix-downloader/archive/refs/heads/master.zip) and unzip it
