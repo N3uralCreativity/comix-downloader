@@ -88,6 +88,9 @@ If you specifically want the in-page buttons that the desktop extension provides
 5. Tap **Load unpacked (zip or folder)** → select the extracted folder.
 6. Head to any [comix.to](https://comix.to) title page — buttons appear automatically.
 
+### Option C — Firefox Android add-on
+[![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/) **PENDING APPROVAL** 
+
 > iOS is not supported (Safari doesn't allow extension-based downloads) - sorry its essentially impossible.. at least i can't :c
 
 ---
