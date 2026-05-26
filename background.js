@@ -638,21 +638,8 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId })
       batch.map(async ({ src, index }) => {
         const paddedIndex = String(index).padStart(3, '0');
         try {
-          const controller = new AbortController();
-          const timeoutId  = setTimeout(() => controller.abort(), 30000);
-          const response   = await fetch(src, {
-            signal:  controller.signal,
-            headers: {
-              Accept:  'image/webp,image/avif,image/*,*/*;q=0.8',
-              Referer: 'https://comix.to/',
-            },
-          });
-          clearTimeout(timeoutId);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const arrayBuffer = await response.arrayBuffer();
-          // Conserver l'extension d'origine (webp, jpg, png…)
-          const ext = (src.match(/\.([a-z0-9]+)$/i) || [, 'webp'])[1];
-          zip.file(`${paddedIndex}.${ext}`, arrayBuffer);
+          const image = await fetchImageForZip(src);
+          zip.file(`${paddedIndex}.${image.ext}`, image.buffer);
         } catch (err) {
           // Image introuvable (ex. numéro de page hors limites) → on l'ignore,
           // pas de fichier vide dans le ZIP.
@@ -670,6 +657,167 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId })
 
   cdlLog('ok', `ZIP saved: ${sanitizeFilename(zipName)} (${images.length} images)`);
   notifyTab(originTabId, { action: 'downloadDone', chapterUrl });
+}
+
+// Fetch an image and, when comix.to marks it as scrambled, redraw the CDN
+// tile mosaic back into normal page order before it goes into the ZIP.
+async function fetchImageForZip(src) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(src, {
+      signal: controller.signal,
+      headers: {
+        Accept: 'image/webp,image/avif,image/*,*/*;q=0.8',
+        Referer: 'https://comix.to/',
+      },
+    });
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const contentType = response.headers.get('content-type') || '';
+    const rawExt = getImageExtension(src, contentType);
+    const scramble = getScrambleInfo(response.headers);
+
+    if (!scramble) {
+      return {
+        buffer: await response.arrayBuffer(),
+        ext: rawExt,
+        scrambled: false,
+      };
+    }
+
+    const blob = await response.blob();
+    try {
+      const fixed = await unscrambleImageBlob(blob, scramble);
+      return {
+        buffer: fixed.buffer,
+        ext: fixed.ext,
+        scrambled: true,
+      };
+    } catch (err) {
+      cdlLog('warn', `Scrambled page fallback used (${scramble.seed}/${scramble.cols}x${scramble.rows}): ${err.message}`);
+      console.warn('[ComixDL] Scrambled image could not be redrawn, keeping raw bytes:', err);
+      return {
+        buffer: await blob.arrayBuffer(),
+        ext: rawExt,
+        scrambled: false,
+        scrambleFailed: true,
+      };
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function getScrambleInfo(headers) {
+  const seedHeader = headers.get('X-Scramble-Seed');
+  if (!seedHeader) return null;
+
+  const seed = parseInt(seedHeader, 10);
+  if (!Number.isFinite(seed) || seed <= 0) return null;
+
+  const gridHeader = headers.get('X-Scramble-Grid') || '5x5';
+  const gridMatch = gridHeader.match(/^\s*(\d+)\s*x\s*(\d+)\s*$/i);
+  const cols = gridMatch ? parseInt(gridMatch[1], 10) || 5 : 5;
+  const rows = gridMatch ? parseInt(gridMatch[2], 10) || 5 : 5;
+
+  return {
+    seed: seed >>> 0,
+    cols: Math.max(1, cols),
+    rows: Math.max(1, rows),
+  };
+}
+
+function getImageExtension(src, contentType = '') {
+  const urlExt = (src.split('?')[0].match(/\.([a-z0-9]+)$/i) || [])[1];
+  if (urlExt) return urlExt.toLowerCase();
+
+  if (/image\/png/i.test(contentType)) return 'png';
+  if (/image\/jpe?g/i.test(contentType)) return 'jpg';
+  if (/image\/avif/i.test(contentType)) return 'avif';
+  if (/image\/webp/i.test(contentType)) return 'webp';
+  return 'webp';
+}
+
+async function unscrambleImageBlob(blob, { seed, cols, rows }) {
+  if (typeof createImageBitmap !== 'function') {
+    throw new Error('createImageBitmap is unavailable');
+  }
+
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = createZipCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('2D canvas context is unavailable');
+
+    const tileW = Math.floor(bitmap.width / cols);
+    const tileH = Math.floor(bitmap.height / rows);
+    if (tileW < 1 || tileH < 1) throw new Error('invalid scramble grid');
+
+    const permutation = makeScramblePermutation(seed, cols * rows);
+    for (let i = 0; i < permutation.length; i++) {
+      const srcX = (i % cols) * tileW;
+      const srcY = Math.floor(i / cols) * tileH;
+      const dstIndex = permutation[i];
+      const dstX = (dstIndex % cols) * tileW;
+      const dstY = Math.floor(dstIndex / cols) * tileH;
+      ctx.drawImage(bitmap, srcX, srcY, tileW, tileH, dstX, dstY, tileW, tileH);
+    }
+
+    const outBlob = await canvasToBlob(canvas, 'image/png');
+    return {
+      buffer: await outBlob.arrayBuffer(),
+      ext: 'png',
+    };
+  } finally {
+    bitmap.close?.();
+  }
+}
+
+function createZipCanvas(width, height) {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(width, height);
+  }
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  }
+  throw new Error('canvas is unavailable');
+}
+
+function canvasToBlob(canvas, type) {
+  if (typeof canvas.convertToBlob === 'function') {
+    return canvas.convertToBlob({ type });
+  }
+  if (typeof canvas.toBlob === 'function') {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('canvas encoding failed'));
+      }, type);
+    });
+  }
+  throw new Error('canvas blob export is unavailable');
+}
+
+function makeScramblePermutation(seed, count) {
+  const order = Array.from({ length: count }, (_, i) => i);
+  let state = seed >>> 0;
+
+  for (let remaining = count; remaining >= 2; remaining--) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const swapWith = state % remaining;
+    const last = remaining - 1;
+    const tmp = order[last];
+    order[last] = order[swapWith];
+    order[swapWith] = tmp;
+  }
+
+  return order;
 }
 
 // ── Utilitaires ───────────────────────────────────────────────────────────────
@@ -829,18 +977,9 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
         await Promise.allSettled(batch.map(async ({ src, index }) => {
           const paddedIndex = String(index).padStart(3, '0');
           try {
-            const ctrl = new AbortController();
-            const t    = setTimeout(() => ctrl.abort(), 30_000);
-            const res  = await fetch(src, {
-              signal:  ctrl.signal,
-              headers: { Accept: 'image/webp,image/avif,image/*,*/*;q=0.8', Referer: 'https://comix.to/' },
-            });
-            clearTimeout(t);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const buf = await res.arrayBuffer();
-            const ext = (src.match(/\.([a-z0-9]+)$/i) || [, 'webp'])[1];
-            folder.file(`${paddedIndex}.${ext}`, buf);
-            zipPartBytes += buf.byteLength;
+            const image = await fetchImageForZip(src);
+            folder.file(`${paddedIndex}.${image.ext}`, image.buffer);
+            zipPartBytes += image.buffer.byteLength;
           } catch (err) {
             console.warn(`[ComixDL-All] ${chapterLabel} img ${index} ignorée:`, err.message);
           }

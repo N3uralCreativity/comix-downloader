@@ -15,58 +15,25 @@ const EXTENSION_ID        = chrome.runtime.id;
 // Dernier lancement Download All — permet de relancer après une erreur ZIP
 let _lastDlAllParams = null;
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
+// SVG icône téléchargement (flèche vers le bas + barre)
+const ICON_DOWNLOAD = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+  <polyline points="7 10 12 15 17 10"/>
+  <line x1="12" y1="15" x2="12" y2="3"/>
+</svg>`;
 
-function createSvgIcon(kind) {
-  const svg = document.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('xmlns', SVG_NS);
-  svg.setAttribute('width', '16');
-  svg.setAttribute('height', '16');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-linecap', 'round');
-  svg.setAttribute('stroke-linejoin', 'round');
+// SVG icône succès (checkmark)
+const ICON_DONE = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="20 6 9 17 4 12"/>
+</svg>`;
 
-  const add = (tag, attrs) => {
-    const node = document.createElementNS(SVG_NS, tag);
-    for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
-    svg.appendChild(node);
-  };
+// SVG icône erreur (×)
+const ICON_ERROR = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="18" y1="6" x2="6" y2="18"/>
+  <line x1="6" y1="6" x2="18" y2="18"/>
+</svg>`;
 
-  if (kind === 'download') {
-    svg.setAttribute('stroke-width', '2');
-    add('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' });
-    add('polyline', { points: '7 10 12 15 17 10' });
-    add('line', { x1: '12', y1: '15', x2: '12', y2: '3' });
-  } else if (kind === 'done') {
-    svg.setAttribute('stroke-width', '2.5');
-    add('polyline', { points: '20 6 9 17 4 12' });
-  } else if (kind === 'error') {
-    svg.setAttribute('stroke-width', '2.5');
-    add('line', { x1: '18', y1: '6', x2: '6', y2: '18' });
-    add('line', { x1: '6', y1: '6', x2: '18', y2: '18' });
-  } else if (kind === 'spinner') {
-    svg.setAttribute('stroke-width', '2');
-    add('path', { d: 'M21 12a9 9 0 1 1-6.219-8.56' });
-  }
-
-  return svg;
-}
-
-function setIconButtonContent(btn, iconKind, progressText = null) {
-  btn.replaceChildren(createSvgIcon(iconKind));
-  if (progressText !== null) {
-    const span = document.createElement('span');
-    span.className = PROGRESS_SPAN_CLASS;
-    span.textContent = progressText;
-    btn.appendChild(span);
-  }
-}
-
-function setDownloadAllButtonContent(btn, label) {
-  btn.replaceChildren(createSvgIcon('download'), document.createTextNode(label));
-}
+// ── Styles injectés ───────────────────────────────────────────────────────────
 
 function injectStyles() {
   if (document.getElementById('cdl-styles')) return;
@@ -81,14 +48,19 @@ function injectStyles() {
       background: transparent;
       border: none;
       cursor: pointer;
-      padding: 4px;
-      margin-left: 4px;
+      padding: 0;
+      margin-left: 0;
       border-radius: 4px;
       color: var(--muted, #888);
       transition: color 0.15s ease, background 0.15s ease;
       vertical-align: middle;
       flex-shrink: 0;
       outline: none;
+      align-self: stretch;
+      width: 36px;
+      min-width: 36px;
+      height: auto;
+      overflow: hidden;
     }
     .${DOWNLOAD_BTN_CLASS}:hover {
       color: var(--fg, #e0e0e0);
@@ -97,6 +69,10 @@ function injectStyles() {
     .${DOWNLOAD_BTN_CLASS}[data-state="loading"] {
       color: #60a5fa;
       pointer-events: none;
+      gap: 3px;
+      width: 68px;
+      min-width: 68px;
+      justify-content: center;
     }
     .${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg {
       animation: cdl-spin 1s linear infinite;
@@ -116,23 +92,18 @@ function injectStyles() {
       to   { transform: rotate(360deg); }
     }
     .${PROGRESS_SPAN_CLASS} {
-      position: absolute;
-      bottom: -8px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 9px;
+      position: static;
+      transform: none;
+      font-size: 10px;
+      line-height: 1;
       font-weight: 600;
       color: #60a5fa;
       white-space: nowrap;
       pointer-events: none;
-      letter-spacing: -0.3px;
+      letter-spacing: 0;
     }
-    .${DOWNLOAD_BTN_CLASS}[data-state="loading"] .${PROGRESS_SPAN_CLASS} {
-      display: block;
-    }
-    .${DOWNLOAD_BTN_CLASS}:not([data-state="loading"]) .${PROGRESS_SPAN_CLASS} {
-      display: none;
-    }
+    .${DOWNLOAD_BTN_CLASS}[data-state="loading"] .${PROGRESS_SPAN_CLASS} { display: inline; }
+    .${DOWNLOAD_BTN_CLASS}:not([data-state="loading"]) .${PROGRESS_SPAN_CLASS} { display: none; }
     /* ── Bouton Download All ──────────────────────────────────────────────── */
     .cdl-dl-all-btn {
       display: flex !important;
@@ -373,7 +344,7 @@ function injectButtonForRow(bookmarkBtn) {
   btn.title = `Télécharger ${chapterLabel}`;
   btn.setAttribute('data-state', 'idle');
   btn.setAttribute('data-chapter-url', chapterUrl);
-  setIconButtonContent(btn, 'download', '');
+  btn.innerHTML = ICON_DOWNLOAD + `<span class="${PROGRESS_SPAN_CLASS}"></span>`;
 
   btn.addEventListener('click', (e) => {
     e.preventDefault();
@@ -421,27 +392,33 @@ function setButtonState(btn, state, extra) {
   const progressSpan = btn.querySelector(`.${PROGRESS_SPAN_CLASS}`);
 
   if (state === 'loading') {
-    setIconButtonContent(btn, 'spinner', extra || '');
+    btn.innerHTML = getSpinnerSVG() + `<span class="${PROGRESS_SPAN_CLASS}">${extra || ''}</span>`;
   } else if (state === 'done') {
-    setIconButtonContent(btn, 'done');
+    btn.innerHTML = ICON_DONE;
     btn.title = 'Téléchargé !';
     // Revenir à l'icône download après 2.5s
     setTimeout(() => {
       if (btn.getAttribute('data-state') === 'done') {
-        setIconButtonContent(btn, 'download', '');
+        btn.innerHTML = ICON_DOWNLOAD + `<span class="${PROGRESS_SPAN_CLASS}"></span>`;
         btn.setAttribute('data-state', 'idle');
         btn.title = `Télécharger`;
         btn.style.pointerEvents = '';
       }
     }, 2500);
   } else if (state === 'error') {
-    setIconButtonContent(btn, 'error');
+    btn.innerHTML = ICON_ERROR;
     btn.title = extra || 'Erreur lors du téléchargement';
     btn.style.pointerEvents = '';
   } else {
     // idle
-    setIconButtonContent(btn, 'download', '');
+    btn.innerHTML = ICON_DOWNLOAD + `<span class="${PROGRESS_SPAN_CLASS}"></span>`;
   }
+}
+
+function getSpinnerSVG() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+  </svg>`;
 }
 
 // ── Réception des messages du background (progression, fin, erreur) ───────────
@@ -487,6 +464,11 @@ function findButtonByChapterUrl(url) {
 }
 
 // ── Download All ──────────────────────────────────────────────────────────────
+
+/** Échappe les caractères HTML dangereux pour l'insertion dans innerHTML. */
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 const CHAPTER_PATH_RE = /\/title\/[a-z0-9-]+\/\d+-chapter-[\w.-]+/gi;
 const CHAPTERS_PER_PAGE = 20;
@@ -774,17 +756,56 @@ function _launchDownloadAll() {
   }
 }
 
+/**
+ * Trouve l'élément après lequel insérer le bouton "Download All".
+ * Desktop : .mpage__follow-btn. Mobile (Firefox Android, etc.) :
+ * la classe diffère — on essaie plusieurs ancres puis on retombe sur
+ * tout élément ayant "follow" dans son className, puis sur un bouton
+ * dont le texte contient "Follow" / "Following".
+ * Retourne { anchor, mode } où mode === 'afterend' (par défaut) ou 'append'.
+ */
+function findDownloadAllAnchor() {
+  // 1. Selector exact desktop (préservé)
+  const desktop = document.querySelector('.mpage__follow-btn');
+  if (desktop) return { anchor: desktop, mode: 'afterend' };
+
+  // 2. Toute classe qui ressemble à un follow-btn (mobile peut utiliser
+  //    .mpage__follow-btn--mobile, .mpage-follow-btn, .follow-btn, etc.)
+  const followLike = document.querySelector(
+    '[class*="follow-btn"], [class*="follow_btn"], [class*="followBtn"]'
+  );
+  if (followLike) return { anchor: followLike, mode: 'afterend' };
+
+  // 3. Bouton/lien dont le texte visible commence par "Follow" / "Following"
+  const followByText = [...document.querySelectorAll('button, a')]
+    .find(el => {
+      const t = (el.textContent || '').trim();
+      return /^follow(ing)?\b/i.test(t) && el.offsetParent !== null;
+    });
+  if (followByText) return { anchor: followByText, mode: 'afterend' };
+
+  // 4. Conteneur d'actions de la page manga (toujours présent sur les deux
+  //    layouts — sert au moins de point d'ancrage de secours).
+  const actionContainer = document.querySelector(
+    '[class*="mpage__actions"], [class*="mpage-actions"], [class*="page-actions"]'
+  );
+  if (actionContainer) return { anchor: actionContainer, mode: 'append' };
+
+  return null;
+}
+
 /** Injecte le bouton "Download All" sous le bouton Follow/Start-reading. */
 function injectDownloadAllButton() {
   if (document.querySelector('.cdl-dl-all-btn')) return;
-  const followBtn = document.querySelector('.mpage__follow-btn');
-  if (!followBtn) return;
+  const found = findDownloadAllAnchor();
+  if (!found) return;
+  const { anchor, mode } = found;
 
   const btn = document.createElement('button');
   btn.className = 'btn btn--soft mpage__follow-btn cdl-dl-all-btn';
   btn.type = 'button';
   btn.title = 'Télécharger tous les chapitres en un ZIP';
-  setDownloadAllButtonContent(btn, 'Download All');
+  btn.innerHTML = `${ICON_DOWNLOAD} Download All`;
 
   btn.addEventListener('click', async (e) => {
     e.preventDefault();
@@ -794,7 +815,7 @@ function injectDownloadAllButton() {
 
     // Indicateur de chargement pendant la collecte des chapitres
     btn.disabled = true;
-    setDownloadAllButtonContent(btn, 'Loading chapters...');
+    btn.innerHTML = `${ICON_DOWNLOAD} Loading chapters…`;
 
     let chapters;
     try {
@@ -803,7 +824,7 @@ function injectDownloadAllButton() {
       chapters = [];
     } finally {
       btn.disabled = false;
-      setDownloadAllButtonContent(btn, 'Download All');
+      btn.innerHTML = `${ICON_DOWNLOAD} Download All`;
     }
 
     if (chapters.length === 0) { alert('Aucun chapitre trouvé sur cette page.'); return; }
@@ -815,7 +836,8 @@ function injectDownloadAllButton() {
     _launchDownloadAll();
   });
 
-  followBtn.insertAdjacentElement('afterend', btn);
+  if (mode === 'append') anchor.appendChild(btn);
+  else anchor.insertAdjacentElement('afterend', btn);
 }
 
 // ── Popup Download All ────────────────────────────────────────────────────────
@@ -826,56 +848,23 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
 
   const popup = document.createElement('div');
   popup.id = 'cdl-all-popup';
+  popup.innerHTML = `
+    <div class="cdl-ap-header">
+      <div class="cdl-ap-title">${ICON_DOWNLOAD}&nbsp;Downloading All Chapters</div>
+      <button class="cdl-ap-close" title="Réduire">−</button>
+    </div>
+    <div class="cdl-ap-body">
+      <div class="cdl-ap-manga-name">${escapeHtml(mangaName)}</div>
+      <div class="cdl-ap-status-chapter" id="cdl-ap-chapter-status">Preparing…</div>
+      <div class="cdl-ap-status-line"    id="cdl-ap-img-status">Starting…</div>
+      <div class="cdl-ap-bar-wrap"><div class="cdl-ap-bar" id="cdl-ap-bar" style="width:0%"></div></div>
+      <div class="cdl-ap-counter" id="cdl-ap-counter">0 / ${totalChapters} chapters</div>
+      <div class="cdl-ap-log" id="cdl-ap-log"></div>
+    </div>
+    <div class="cdl-ap-footer">
+      <button class="cdl-ap-cancel-btn" id="cdl-ap-cancel-btn">Cancel</button>
+    </div>`;
   document.body.appendChild(popup);
-
-  const header = document.createElement('div');
-  header.className = 'cdl-ap-header';
-  const title = document.createElement('div');
-  title.className = 'cdl-ap-title';
-  title.append(createSvgIcon('download'), document.createTextNode(' Downloading All Chapters'));
-  const close = document.createElement('button');
-  close.className = 'cdl-ap-close';
-  close.title = 'Reduire';
-  close.textContent = '-';
-  header.append(title, close);
-
-  const body = document.createElement('div');
-  body.className = 'cdl-ap-body';
-  const name = document.createElement('div');
-  name.className = 'cdl-ap-manga-name';
-  name.textContent = mangaName;
-  const chapterStatus = document.createElement('div');
-  chapterStatus.className = 'cdl-ap-status-chapter';
-  chapterStatus.id = 'cdl-ap-chapter-status';
-  chapterStatus.textContent = 'Preparing...';
-  const imageStatus = document.createElement('div');
-  imageStatus.className = 'cdl-ap-status-line';
-  imageStatus.id = 'cdl-ap-img-status';
-  imageStatus.textContent = 'Starting...';
-  const barWrap = document.createElement('div');
-  barWrap.className = 'cdl-ap-bar-wrap';
-  const bar = document.createElement('div');
-  bar.className = 'cdl-ap-bar';
-  bar.id = 'cdl-ap-bar';
-  bar.style.width = '0%';
-  barWrap.appendChild(bar);
-  const counter = document.createElement('div');
-  counter.className = 'cdl-ap-counter';
-  counter.id = 'cdl-ap-counter';
-  counter.textContent = `0 / ${totalChapters} chapters`;
-  const log = document.createElement('div');
-  log.className = 'cdl-ap-log';
-  log.id = 'cdl-ap-log';
-  body.append(name, chapterStatus, imageStatus, barWrap, counter, log);
-
-  const footer = document.createElement('div');
-  footer.className = 'cdl-ap-footer';
-  const cancel = document.createElement('button');
-  cancel.className = 'cdl-ap-cancel-btn';
-  cancel.id = 'cdl-ap-cancel-btn';
-  cancel.textContent = 'Cancel';
-  footer.appendChild(cancel);
-  popup.append(header, body, footer);
 
   // Bouton −  : réduire/agrandir le corps du popup
   popup.querySelector('.cdl-ap-close').addEventListener('click', () => {
@@ -922,13 +911,8 @@ function _dlAllSetFooterClose(popup) {
   clearTimeout(popup._cdlRetryTimer);
   const footer = popup.querySelector('.cdl-ap-footer');
   if (!footer) return;
-  footer.textContent = '';
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'cdl-ap-done-btn';
-  closeBtn.id = 'cdl-ap-close-btn';
-  closeBtn.textContent = 'Close';
-  footer.appendChild(closeBtn);
-  closeBtn.addEventListener('click', () => {
+  footer.innerHTML = '<button class="cdl-ap-done-btn" id="cdl-ap-close-btn">Close</button>';
+  document.getElementById('cdl-ap-close-btn')?.addEventListener('click', () => {
     dismissDownloadAllSession();
     popup.remove();
   });
@@ -1068,7 +1052,7 @@ function updateDownloadAllPopupError(errMsg, options = {}) {
 
   const footer = popup.querySelector('.cdl-ap-footer');
   if (!footer) return;
-  footer.textContent = '';
+  footer.innerHTML = '';
 
   if (options.canRetryZip) {
     const retryBtn = document.createElement('button');
@@ -1121,7 +1105,7 @@ function updateDownloadAllPopupError(errMsg, options = {}) {
 function restoreDownloadAllLogItems(items) {
   const log = document.getElementById('cdl-ap-log');
   if (!log || !Array.isArray(items)) return;
-  log.textContent = '';
+  log.innerHTML = '';
   for (const entry of items) {
     if (!entry || !entry.text) continue;
     const cls = ['active', 'done', 'error', 'skipped'].includes(entry.cls) ? entry.cls : '';
@@ -1193,12 +1177,19 @@ function observeDOM() {
       if (shouldScan) break;
     }
     if (shouldScan) scanAndInject();
-    // Aussi surveiller l'apparition du bouton Follow (rendu React tardif)
+    // Aussi surveiller l'apparition du bouton Follow (rendu React tardif).
+    // Sur mobile (Firefox Android, etc.) la classe diffère — on accepte
+    // toute classe contenant "follow-btn" / "follow_btn" / "followBtn",
+    // sinon on demande à findDownloadAllAnchor() de chercher.
+    const FOLLOW_LIKE_RE = /(?:^|\s)(?:mpage__)?(?:follow(?:[-_]?btn)?)\b/i;
     for (const mut of mutations) {
       for (const node of mut.addedNodes) {
-        if (node.nodeType === Node.ELEMENT_NODE &&
-            (node.classList?.contains('mpage__follow-btn') ||
-             node.querySelector?.('.mpage__follow-btn'))) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        const cls = typeof node.className === 'string' ? node.className : '';
+        if (
+          FOLLOW_LIKE_RE.test(cls) ||
+          node.querySelector?.('[class*="follow-btn"], [class*="follow_btn"], [class*="followBtn"], .mpage__follow-btn')
+        ) {
           injectDownloadAllButton();
         }
       }
