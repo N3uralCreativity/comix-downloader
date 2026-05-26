@@ -328,25 +328,45 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   pendingDownloads.delete(tabId);
 
   try {
-    // Injecter le script d'extraction dans l'onglet chapitre
+    // Étape 1 (rapide, tab en arrière-plan) : URLs + flag scramble.
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: extractChapterImagesFromPage,
     });
 
-    // Fermer l'onglet dès que possible
-    chrome.tabs.remove(tabId).catch(() => {});
-
     const payload = results?.[0]?.result;
     const images = Array.isArray(payload) ? payload : (payload?.images || []);
-    const dataUrls = (payload && !Array.isArray(payload)) ? (payload.dataUrls || {}) : {};
+    const scrambled = (payload && !Array.isArray(payload)) ? !!payload.scrambled : false;
     if (!Array.isArray(images) || images.length === 0) {
+      chrome.tabs.remove(tabId).catch(() => {});
       throw new Error('Aucune image trouvée dans ce chapitre');
     }
 
+    // Étape 2 (seulement si scramble) : activer l'onglet pour que les canvas
+    // se rendent (le throttling des background tabs bloque sinon), capturer,
+    // restaurer l'onglet original.
+    let dataUrls = {};
+    if (scrambled) {
+      const originalActiveTabId = await getCurrentlyActiveTabId(tabId);
+      try {
+        await chrome.tabs.update(tabId, { active: true }).catch(() => {});
+        const capResults = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: captureScrambledCanvases,
+        });
+        dataUrls = capResults?.[0]?.result || {};
+      } finally {
+        if (originalActiveTabId != null) {
+          await chrome.tabs.update(originalActiveTabId, { active: true }).catch(() => {});
+        }
+      }
+    }
+
+    // Fermer l'onglet maintenant que l'extraction est terminée.
+    chrome.tabs.remove(tabId).catch(() => {});
+
     const scrambledCount = Object.keys(dataUrls).length;
     cdlLog('info', `Extracted ${images.length} images for ${zipName}${scrambledCount ? ` (${scrambledCount} unscrambled via canvas)` : ''}`);
-    // Lancer le téléchargement + ZIP directement dans le service worker
     scheduleDownload({ images, chapterUrl, zipName, originTabId, dataUrls });
   } catch (err) {
     chrome.tabs.remove(tabId).catch(() => {});
@@ -359,6 +379,18 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     });
   }
 });
+
+// Returns the id of the currently active tab in the chapter tab's window,
+// excluding the chapter tab itself. Used to restore focus after we briefly
+// activate the chapter tab for canvas capture.
+async function getCurrentlyActiveTabId(chapterTabId) {
+  try {
+    const chapterTab = await chrome.tabs.get(chapterTabId);
+    const tabs = await chrome.tabs.query({ active: true, windowId: chapterTab.windowId });
+    const other = tabs.find(t => t.id !== chapterTabId);
+    return other?.id ?? null;
+  } catch (_) { return null; }
+}
 
 // ── Nettoyage des onglets fermés avant extraction ─────────────────────────────
 
@@ -375,95 +407,24 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 async function extractChapterImagesFromPage() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // ── Descrambling (comix.to) ───────────────────────────────────────────────
-  // Le site applique côté client un canvas-unscramble via une fonction Mr
-  // obfusquée (export "t" de secure-tfl4t2-*.js). Plutôt que de réimplémenter
-  // sa logique (qui change), on laisse la page produire le canvas et on lit
-  // les pixels. Détection per-image : l'URL contient "/si/" (vs "/i/" pour
-  // les images non scramblées) — confirmé dans le code source comix.to :
+  // ── Descrambling detection (comix.to) ─────────────────────────────────────
+  // Site applies a client-side canvas-unscramble via an obfuscated `Mr`
+  // function (export "t" of secure-tfl4t2-*.js). We don't reimplement it —
+  // we just flag scrambled chapters here so the SW can run captureScrambledCanvases
+  // in an active tab (background tabs are throttled and canvas render stalls).
+  // Per-image detection: URL contains "/si/" (vs "/i/" for non-scrambled).
+  // Confirmed in the bundle:
   //     url: (n ? t : e) + a.url   où t = baseUrl.replace(/\/i\/(?=[bh])/, "/si/")
-  //
-  // `finalize` à la fin du flux récupère les canvases rendus et renvoie un
-  // objet { images, dataUrls } où dataUrls[index] = PNG base64 quand dispo.
   const isScrambledUrl = (u) => typeof u === 'string' && /\/si\//.test(u);
 
-  // Captures one canvas as a base64 image. Returns null if not yet drawn or
-  // tainted (the page's Mr loads images via fetch→blob→bitmap so the canvas
-  // shouldn't be tainted, but we handle the edge case anyway).
-  // WebP at q=0.95 ≈ visually lossless for manga but ~5× smaller than PNG,
-  // which matters because we serialize 89+ images back through executeScript.
-  const captureCanvasAsDataUrl = (canvas) => {
-    if (!canvas || !canvas.width || !canvas.height) return null;
-    try {
-      const ctx = canvas.getContext('2d');
-      // Sample the center pixel — if alpha is 0 the canvas hasn't been drawn yet.
-      const mid = ctx.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1);
-      if (mid.data[3] === 0) return null;
-      // Prefer webp; fall back to PNG if the browser refuses (very old Firefox).
-      const webp = canvas.toDataURL('image/webp', 0.95);
-      if (webp && webp.startsWith('data:image/webp')) return webp;
-      return canvas.toDataURL('image/png');
-    } catch (_) { return null; }
-  };
-
-  const collectScrambledCaptures = async () => {
-    const rpages = [...document.querySelectorAll('.rpage-page')];
-    if (rpages.length === 0) return {};
-
-    // Filename → dataUrl (we key by the trailing "NN.webp" so we can match
-    // back to whatever URL the SW ends up fetching, regardless of host).
-    const captures = {};
-    const PER_PAGE_TIMEOUT_MS = 8000;
-    const SCROLL_SETTLE_MS = 150;
-    // Bail out of the whole loop if total runtime exceeds this — prevents a
-    // single broken chapter from locking the extension up indefinitely.
-    const OVERALL_TIMEOUT_MS = 4 * 60 * 1000;
-    const overallDeadline = Date.now() + OVERALL_TIMEOUT_MS;
-
-    for (const el of rpages) {
-      if (Date.now() > overallDeadline) break;
-      const img = el.querySelector('img');
-      const url = img?.currentSrc || img?.src || '';
-      if (!isScrambledUrl(url)) continue;
-
-      el.scrollIntoView({ block: 'center', behavior: 'auto' });
-      await sleep(SCROLL_SETTLE_MS);
-
-      const start = Date.now();
-      let dataUrl = null;
-      while (Date.now() - start < PER_PAGE_TIMEOUT_MS) {
-        const canvas = el.querySelector('canvas');
-        dataUrl = captureCanvasAsDataUrl(canvas);
-        if (dataUrl) break;
-        await sleep(200);
-      }
-      if (!dataUrl) continue;
-
-      // Key the capture by the filename portion of the URL (e.g. "07.webp").
-      // The SW reconstructs URLs by pattern so the *path* may differ slightly,
-      // but the trailing filename is stable.
-      const fname = url.split('/').pop() || '';
-      captures[fname] = dataUrl;
-      // Also key by full URL for exact-match lookups.
-      captures[url] = dataUrl;
-    }
-    return captures;
-  };
-
-  // Wraps every outer return : after URL discovery, walk the rendered pages
-  // and grab any scrambled canvases as PNG data URLs.
-  const finalize = async (images) => {
-    let dataUrls = {};
-    // Only do the slow canvas-reading pass if at least one image URL is
-    // scrambled — otherwise this is just a normal chapter and we skip it.
+  // This wrapper just packages the URL list + scramble flag. Canvas reading
+  // happens in a separate injection so it can run in an active tab.
+  const finalize = (images) => {
     const anyScrambled =
       images.some(img => isScrambledUrl(img && img.src)) ||
       [...document.querySelectorAll('.rpage-page img')]
         .some(im => isScrambledUrl(im.currentSrc || im.src));
-    if (anyScrambled) {
-      try { dataUrls = await collectScrambledCaptures(); } catch (_) {}
-    }
-    return { images, dataUrls };
+    return { images, scrambled: !!anyScrambled };
   };
 
   // ── STRATÉGIE 1 : __NEXT_DATA__ de Next.js ──────────────────────────────────
@@ -694,7 +655,68 @@ async function extractChapterImagesFromPage() {
   })));
 }
 
+// ── Capture des canvases scramblés (tab actif requis) ─────────────────────────
+// Injecté APRÈS avoir rendu l'onglet actif (chrome.tabs.update active:true) :
+// les onglets en arrière-plan ont leurs timers/RAF/rendu React throttlés, donc
+// le canvas de la page ne se dessine jamais à temps. En foreground, chaque
+// page rend en ~200-500ms au lieu de 5-10s.
+//
+// Retourne { [filename | fullUrl]: dataUrl } pour chaque image scramblée
+// dont le canvas a pu être lu.
+async function captureScrambledCanvases() {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const isScrambledUrl = (u) => typeof u === 'string' && /\/si\//.test(u);
 
+  const captureCanvasAsDataUrl = (canvas) => {
+    if (!canvas || !canvas.width || !canvas.height) return null;
+    try {
+      const ctx = canvas.getContext('2d');
+      const mid = ctx.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1);
+      if (mid.data[3] === 0) return null;
+      // WebP at q=0.95 ≈ visually lossless and ~5× smaller than PNG —
+      // matters because we serialize 89+ images back through executeScript.
+      const webp = canvas.toDataURL('image/webp', 0.95);
+      if (webp && webp.startsWith('data:image/webp')) return webp;
+      return canvas.toDataURL('image/png');
+    } catch (_) { return null; }
+  };
+
+  const rpages = [...document.querySelectorAll('.rpage-page')];
+  if (rpages.length === 0) return {};
+
+  const captures = {};
+  // Foreground tab : timings serrés, échec rapide si le canvas ne se rend pas.
+  const PER_PAGE_TIMEOUT_MS = 4000;
+  const SCROLL_SETTLE_MS = 80;
+  const POLL_MS = 80;
+  const OVERALL_TIMEOUT_MS = 3 * 60 * 1000;
+  const deadline = Date.now() + OVERALL_TIMEOUT_MS;
+
+  for (const el of rpages) {
+    if (Date.now() > deadline) break;
+    const img = el.querySelector('img');
+    const url = img?.currentSrc || img?.src || '';
+    if (!isScrambledUrl(url)) continue;
+
+    el.scrollIntoView({ block: 'center', behavior: 'auto' });
+    await sleep(SCROLL_SETTLE_MS);
+
+    const start = Date.now();
+    let dataUrl = null;
+    while (Date.now() - start < PER_PAGE_TIMEOUT_MS) {
+      const canvas = el.querySelector('canvas');
+      dataUrl = captureCanvasAsDataUrl(canvas);
+      if (dataUrl) break;
+      await sleep(POLL_MS);
+    }
+    if (!dataUrl) continue;
+
+    const fname = url.split('/').pop() || '';
+    captures[fname] = dataUrl;
+    captures[url] = dataUrl;
+  }
+  return captures;
+}
 
 // ── File de téléchargement ────────────────────────────────────────────────────
 
@@ -871,14 +893,34 @@ async function extractFromTab(url) {
     const onUpdated = async (updatedId, changeInfo) => {
       if (updatedId !== tabId || changeInfo.status !== 'complete') return;
       try {
+        // Phase 1 : URLs + scramble flag (rapide, background OK).
         const results = await chrome.scripting.executeScript({
           target: { tabId },
           func:   extractChapterImagesFromPage,
         });
-        chrome.tabs.remove(tabId).catch(() => {});
         const payload = results?.[0]?.result;
         const images = Array.isArray(payload) ? payload : (payload?.images || []);
-        const dataUrls = (payload && !Array.isArray(payload)) ? (payload.dataUrls || {}) : {};
+        const scrambled = (payload && !Array.isArray(payload)) ? !!payload.scrambled : false;
+
+        // Phase 2 (seulement scramble) : activer le tab pour rendre les canvas.
+        let dataUrls = {};
+        if (scrambled) {
+          const originalActiveTabId = await getCurrentlyActiveTabId(tabId);
+          try {
+            await chrome.tabs.update(tabId, { active: true }).catch(() => {});
+            const capResults = await chrome.scripting.executeScript({
+              target: { tabId },
+              func:   captureScrambledCanvases,
+            });
+            dataUrls = capResults?.[0]?.result || {};
+          } finally {
+            if (originalActiveTabId != null) {
+              await chrome.tabs.update(originalActiveTabId, { active: true }).catch(() => {});
+            }
+          }
+        }
+
+        chrome.tabs.remove(tabId).catch(() => {});
         settle(resolve, { images, dataUrls });
       } catch (err) {
         chrome.tabs.remove(tabId).catch(() => {});
