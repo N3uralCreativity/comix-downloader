@@ -15,6 +15,9 @@ const EXTENSION_ID        = chrome.runtime.id;
 // Dernier lancement Download All — permet de relancer après une erreur ZIP
 let _lastDlAllParams = null;
 
+// Retry timer for Download All button injection (React renders Follow btn late on mobile)
+let _dlAllInjRetryTimer = null;
+
 // SVG icône téléchargement (flèche vers le bas + barre)
 const ICON_DOWNLOAD = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -451,6 +454,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   } else if (message.action === 'downloadAllCancelled') {
     updateDownloadAllPopupCancelled();
+
+  } else if (message.action === 'triggerDownload') {
+    // Fallback for Firefox Android where chrome.downloads.download doesn't work
+    // with blob URLs created in the service worker. The service worker sends the
+    // ZIP as base64 and we trigger the download from the page context instead.
+    try {
+      const bytes = atob(message.base64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const blob = new Blob([arr], { type: 'application/zip' });
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = message.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch (_) {}
   }
 });
 
@@ -757,35 +779,30 @@ function _launchDownloadAll() {
 }
 
 /**
- * Trouve l'élément après lequel insérer le bouton "Download All".
- * Desktop : .mpage__follow-btn. Mobile (Firefox Android, etc.) :
- * la classe diffère — on essaie plusieurs ancres puis on retombe sur
- * tout élément ayant "follow" dans son className, puis sur un bouton
- * dont le texte contient "Follow" / "Following".
- * Retourne { anchor, mode } où mode === 'afterend' (par défaut) ou 'append'.
+ * Finds the anchor element for inserting the Download All button.
+ * Tries progressively broader selectors to handle desktop and mobile layouts.
+ * Returns { anchor, mode } or null.
  */
 function findDownloadAllAnchor() {
-  // 1. Selector exact desktop (préservé)
+  // 1. Exact desktop class
   const desktop = document.querySelector('.mpage__follow-btn');
   if (desktop) return { anchor: desktop, mode: 'afterend' };
 
-  // 2. Toute classe qui ressemble à un follow-btn (mobile peut utiliser
-  //    .mpage__follow-btn--mobile, .mpage-follow-btn, .follow-btn, etc.)
-  const followLike = document.querySelector(
-    '[class*="follow-btn"], [class*="follow_btn"], [class*="followBtn"]'
+  // 2. Any element whose class contains "follow" within the manga header area
+  //    (mobile Firefox may use .mpage__follow-btn--mobile, .follow-btn, etc.)
+  const pageRoot = document.querySelector('[class*="mpage"], [class*="manga-header"], [class*="title-page"]') || document.body;
+  const followLike = pageRoot.querySelector(
+    '[class*="follow-btn"], [class*="follow_btn"], [class*="followBtn"], [class*="follow-button"]'
   );
   if (followLike) return { anchor: followLike, mode: 'afterend' };
 
-  // 3. Bouton/lien dont le texte visible commence par "Follow" / "Following"
-  const followByText = [...document.querySelectorAll('button, a')]
-    .find(el => {
-      const t = (el.textContent || '').trim();
-      return /^follow(ing)?\b/i.test(t) && el.offsetParent !== null;
-    });
+  // 3. Any button / link / role=button whose visible text starts with "Follow"
+  //    (offsetParent check removed — unreliable in Firefox Android)
+  const followByText = [...document.querySelectorAll('button, a, [role="button"]')]
+    .find(el => /^follow(ing)?\b/i.test((el.textContent || '').trim()));
   if (followByText) return { anchor: followByText, mode: 'afterend' };
 
-  // 4. Conteneur d'actions de la page manga (toujours présent sur les deux
-  //    layouts — sert au moins de point d'ancrage de secours).
+  // 4. Action container fallback
   const actionContainer = document.querySelector(
     '[class*="mpage__actions"], [class*="mpage-actions"], [class*="page-actions"]'
   );
@@ -798,7 +815,25 @@ function findDownloadAllAnchor() {
 function injectDownloadAllButton() {
   if (document.querySelector('.cdl-dl-all-btn')) return;
   const found = findDownloadAllAnchor();
-  if (!found) return;
+  if (!found) {
+    // Follow button not yet in DOM (React renders it late on mobile) — retry
+    if (!_dlAllInjRetryTimer) {
+      let attempts = 0;
+      const retry = () => {
+        if (document.querySelector('.cdl-dl-all-btn')) { _dlAllInjRetryTimer = null; return; }
+        injectDownloadAllButton();
+        if (!document.querySelector('.cdl-dl-all-btn') && attempts++ < 20) {
+          _dlAllInjRetryTimer = setTimeout(retry, 500);
+        } else {
+          _dlAllInjRetryTimer = null;
+        }
+      };
+      _dlAllInjRetryTimer = setTimeout(retry, 500);
+    }
+    return;
+  }
+  // Cancel any pending retry — we found the anchor
+  if (_dlAllInjRetryTimer) { clearTimeout(_dlAllInjRetryTimer); _dlAllInjRetryTimer = null; }
   const { anchor, mode } = found;
 
   const btn = document.createElement('button');
@@ -1177,10 +1212,7 @@ function observeDOM() {
       if (shouldScan) break;
     }
     if (shouldScan) scanAndInject();
-    // Aussi surveiller l'apparition du bouton Follow (rendu React tardif).
-    // Sur mobile (Firefox Android, etc.) la classe diffère — on accepte
-    // toute classe contenant "follow-btn" / "follow_btn" / "followBtn",
-    // sinon on demande à findDownloadAllAnchor() de chercher.
+    // Also watch for the Follow button appearing late (React deferred render on mobile).
     const FOLLOW_LIKE_RE = /(?:^|\s)(?:mpage__)?(?:follow(?:[-_]?btn)?)\b/i;
     for (const mut of mutations) {
       for (const node of mut.addedNodes) {
@@ -1188,7 +1220,11 @@ function observeDOM() {
         const cls = typeof node.className === 'string' ? node.className : '';
         if (
           FOLLOW_LIKE_RE.test(cls) ||
-          node.querySelector?.('[class*="follow-btn"], [class*="follow_btn"], [class*="followBtn"], .mpage__follow-btn')
+          node.querySelector?.('[class*="follow-btn"], [class*="follow_btn"], [class*="followBtn"], .mpage__follow-btn') ||
+          (node.querySelector?.('button, a, [role="button"]') &&
+            [...(node.querySelectorAll?.('button, a, [role="button"]') || [])].some(
+              el => /^follow(ing)?\b/i.test((el.textContent || '').trim())
+            ))
         ) {
           injectDownloadAllButton();
         }

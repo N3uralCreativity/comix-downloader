@@ -16,6 +16,11 @@ if (typeof importScripts === 'function' && typeof JSZip === 'undefined') {
 
 'use strict';
 
+// Firefox exposes `browser` in addition to `chrome`; Chrome does not.
+// In Firefox Android, blob: URLs created in a service worker cannot be resolved
+// by the downloads API, so we use base64 data: URLs there instead.
+const _IS_FIREFOX = typeof browser !== 'undefined';
+
 // ── État global ───────────────────────────────────────────────────────────────
 
 /** Map { tabId (chapitre) → { chapterUrl, zipName, originTabId } } */
@@ -651,9 +656,25 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId })
     );
   }
 
-  const { url, revoke } = await _zipToDownloadUrl(zip);
-  await chrome.downloads.download({ url, filename: sanitizeFilename(zipName), saveAs: false });
-  setTimeout(revoke, 60_000);
+  const { url, revoke, base64: urlBase64 } = await _zipToDownloadUrl(zip);
+  try {
+    await chrome.downloads.download({ url, filename: sanitizeFilename(zipName), saveAs: false });
+    setTimeout(revoke, 60_000);
+  } catch (_dlErr) {
+    revoke();
+    // downloads API unavailable on this platform (Firefox Android) — send ZIP
+    // to the content script which can trigger a download via <a> click instead.
+    if (originTabId != null) {
+      const b64 = urlBase64 || await zip.generateAsync({ type: 'base64', compression: 'STORE' });
+      chrome.tabs.sendMessage(originTabId, {
+        action: 'triggerDownload',
+        base64: b64,
+        filename: sanitizeFilename(zipName),
+      }).catch(() => {});
+    } else {
+      throw _dlErr;
+    }
+  }
 
   cdlLog('ok', `ZIP saved: ${sanitizeFilename(zipName)} (${images.length} images)`);
   notifyTab(originTabId, { action: 'downloadDone', chapterUrl });
@@ -824,20 +845,23 @@ function makeScramblePermutation(seed, count) {
 
 /**
  * Génère le ZIP et retourne une URL téléchargeable.
- * Priorité : blob: URL (sans limite de taille, Chrome 120+).
- * Fallback  : data: base64 (Chrome < 120, taille limitée ≈ 500 Mo).
- * Retourne { url, revoke } — appeler revoke() une fois le téléchargement lancé.
+ * Chrome : blob: URL (sans limite de taille).
+ * Firefox : data: base64 — blob URLs created in a service worker cannot be
+ *   resolved by the Firefox downloads API (they are scoped to the SW context).
+ * Retourne { url, revoke, base64? } — appeler revoke() après téléchargement.
  */
 async function _zipToDownloadUrl(zip) {
-  // Blob URL — pas de limite de taille, libère la mémoire correctement
-  try {
-    const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
-    const url  = URL.createObjectURL(blob);
-    return { url, revoke: () => URL.revokeObjectURL(url) };
-  } catch (_) {}
-  // Fallback base64 pour navigateurs plus anciens
+  if (!_IS_FIREFOX) {
+    // Chrome: blob URL (no size limit, memory-efficient)
+    try {
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+      const url  = URL.createObjectURL(blob);
+      return { url, revoke: () => URL.revokeObjectURL(url) };
+    } catch (_) {}
+  }
+  // Firefox (or fallback): base64 data URL
   const base64 = await zip.generateAsync({ type: 'base64', compression: 'STORE' });
-  return { url: `data:application/zip;base64,${base64}`, revoke: () => {} };
+  return { url: `data:application/zip;base64,${base64}`, revoke: () => {}, base64 };
 }
 
 function sanitizeFilename(name) {
@@ -1028,15 +1052,19 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
 
 async function _doZipAndSave({ zip, zipName, originTabId, notifyDone = true }) {
   try {
-    const { url, revoke } = await _zipToDownloadUrl(zip);
+    const { url, revoke, base64: urlBase64 } = await _zipToDownloadUrl(zip);
     const filename = sanitizeFilename(zipName);
-    await chrome.downloads.download({
-      url,
-      filename,
-      saveAs:   false,
-    });
-    // Libérer le blob URL après que Chrome a eu le temps de lire le flux
-    setTimeout(revoke, 60_000);
+    try {
+      await chrome.downloads.download({ url, filename, saveAs: false });
+      setTimeout(revoke, 60_000);
+    } catch (_dlErr) {
+      revoke();
+      // downloads API unavailable on this platform (Firefox Android) — fall back
+      // to sending ZIP data to the content script for a <a>-click download.
+      if (originTabId == null) throw _dlErr;
+      const b64 = urlBase64 || await zip.generateAsync({ type: 'base64', compression: 'STORE' });
+      await chrome.tabs.sendMessage(originTabId, { action: 'triggerDownload', base64: b64, filename });
+    }
     _pendingZip = null;
     if (notifyDone) {
       cdlLog('ok', `Download All complete: ${filename}`);

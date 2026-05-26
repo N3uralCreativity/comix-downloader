@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Comix Chapter Downloader",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Ajoute un bouton de téléchargement pour chaque chapitre sur comix.to",
   "permissions": [
     "tabs",
