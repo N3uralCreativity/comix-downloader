@@ -328,46 +328,23 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   pendingDownloads.delete(tabId);
 
   try {
-    // Étape 1 (rapide, tab en arrière-plan) : URLs + flag scramble.
+    // Injecter le script d'extraction dans l'onglet chapitre
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: extractChapterImagesFromPage,
     });
 
-    const payload = results?.[0]?.result;
-    const images = Array.isArray(payload) ? payload : (payload?.images || []);
-    const scrambled = (payload && !Array.isArray(payload)) ? !!payload.scrambled : false;
+    // Fermer l'onglet dès que possible
+    chrome.tabs.remove(tabId).catch(() => {});
+
+    const images = results?.[0]?.result;
     if (!Array.isArray(images) || images.length === 0) {
-      chrome.tabs.remove(tabId).catch(() => {});
       throw new Error('Aucune image trouvée dans ce chapitre');
     }
 
-    // Étape 2 (seulement si scramble) : activer l'onglet pour que les canvas
-    // se rendent (le throttling des background tabs bloque sinon), capturer,
-    // restaurer l'onglet original.
-    let dataUrls = {};
-    if (scrambled) {
-      const originalActiveTabId = await getCurrentlyActiveTabId(tabId);
-      try {
-        await chrome.tabs.update(tabId, { active: true }).catch(() => {});
-        const capResults = await chrome.scripting.executeScript({
-          target: { tabId },
-          func: captureScrambledCanvases,
-        });
-        dataUrls = capResults?.[0]?.result || {};
-      } finally {
-        if (originalActiveTabId != null) {
-          await chrome.tabs.update(originalActiveTabId, { active: true }).catch(() => {});
-        }
-      }
-    }
-
-    // Fermer l'onglet maintenant que l'extraction est terminée.
-    chrome.tabs.remove(tabId).catch(() => {});
-
-    const scrambledCount = Object.keys(dataUrls).length;
-    cdlLog('info', `Extracted ${images.length} images for ${zipName}${scrambledCount ? ` (${scrambledCount} unscrambled via canvas)` : ''}`);
-    scheduleDownload({ images, chapterUrl, zipName, originTabId, dataUrls });
+    cdlLog('info', `Extracted ${images.length} images for ${zipName}`);
+    // Lancer le téléchargement + ZIP directement dans le service worker
+    scheduleDownload({ images, chapterUrl, zipName, originTabId });
   } catch (err) {
     chrome.tabs.remove(tabId).catch(() => {});
     console.error('[ComixDL] Extraction échouée:', err);
@@ -379,18 +356,6 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     });
   }
 });
-
-// Returns the id of the currently active tab in the chapter tab's window,
-// excluding the chapter tab itself. Used to restore focus after we briefly
-// activate the chapter tab for canvas capture.
-async function getCurrentlyActiveTabId(chapterTabId) {
-  try {
-    const chapterTab = await chrome.tabs.get(chapterTabId);
-    const tabs = await chrome.tabs.query({ active: true, windowId: chapterTab.windowId });
-    const other = tabs.find(t => t.id !== chapterTabId);
-    return other?.id ?? null;
-  } catch (_) { return null; }
-}
 
 // ── Nettoyage des onglets fermés avant extraction ─────────────────────────────
 
@@ -406,26 +371,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 async function extractChapterImagesFromPage() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-  // ── Descrambling detection (comix.to) ─────────────────────────────────────
-  // Site applies a client-side canvas-unscramble via an obfuscated `Mr`
-  // function (export "t" of secure-tfl4t2-*.js). We don't reimplement it —
-  // we just flag scrambled chapters here so the SW can run captureScrambledCanvases
-  // in an active tab (background tabs are throttled and canvas render stalls).
-  // Per-image detection: URL contains "/si/" (vs "/i/" for non-scrambled).
-  // Confirmed in the bundle:
-  //     url: (n ? t : e) + a.url   où t = baseUrl.replace(/\/i\/(?=[bh])/, "/si/")
-  const isScrambledUrl = (u) => typeof u === 'string' && /\/si\//.test(u);
-
-  // This wrapper just packages the URL list + scramble flag. Canvas reading
-  // happens in a separate injection so it can run in an active tab.
-  const finalize = (images) => {
-    const anyScrambled =
-      images.some(img => isScrambledUrl(img && img.src)) ||
-      [...document.querySelectorAll('.rpage-page img')]
-        .some(im => isScrambledUrl(im.currentSrc || im.src));
-    return { images, scrambled: !!anyScrambled };
-  };
 
   // ── STRATÉGIE 1 : __NEXT_DATA__ de Next.js ──────────────────────────────────
   // comix.to est un site Next.js : les props de page (incl. URLs des images)
@@ -526,11 +471,11 @@ async function extractChapterImagesFromPage() {
     if (quickTotal > fromNextDataRaw.length) {
       // __NEXT_DATA__ partiel → réessayer avec le vrai total pour énumérer complètement
       const completed = tryNextData(quickTotal);
-      if (completed) return finalize(completed);
+      if (completed) return completed;
       // Échec énumération → continuer vers stratégie 2 (DOM + scroll)
     } else {
       // textContent confirme ou ne dépasse pas → __NEXT_DATA__ est complet
-      return finalize(fromNextDataRaw);
+      return fromNextDataRaw;
     }
   }
 
@@ -593,7 +538,7 @@ async function extractChapterImagesFromPage() {
   // si le JSON contenait moins d'images que le total, on complète par enumération.
   if (total > 0) {
     const fromNextDataFull = tryNextData(total);
-    if (fromNextDataFull && fromNextDataFull.length >= total) return finalize(fromNextDataFull);
+    if (fromNextDataFull && fromNextDataFull.length >= total) return fromNextDataFull;
   }
 
   // 4. Trouver l'URL de la 1ère image réellement chargée
@@ -627,19 +572,19 @@ async function extractChapterImagesFromPage() {
 
   // Aucune image trouvable → retourner ce qu'on a dans le DOM
   if (!baseSrc) {
-    return finalize(pageImgEls
+    return pageImgEls
       .map((img) => ({ src: findSrc(img), index: parseInt((img.alt || '').replace(/\D/g, ''), 10) || 0 }))
       .filter((x) => x.src)
-      .sort((a, b) => a.index - b.index));
+      .sort((a, b) => a.index - b.index);
   }
 
   // 5. Parser le pattern URL : https://cdn/.../HASH/01.webp
   const urlMatch = baseSrc.match(/^(https?:\/\/.+\/)(\d+)(\.\w+)$/i);
   if (!urlMatch) {
-    return finalize(pageImgEls
+    return pageImgEls
       .map((img) => ({ src: findSrc(img), index: parseInt((img.alt || '').replace(/\D/g, ''), 10) || 0 }))
       .filter((x) => x.src)
-      .sort((a, b) => a.index - b.index));
+      .sort((a, b) => a.index - b.index);
   }
 
   const baseUrl   = urlMatch[1];          // "https://cdn/.../HASH/"
@@ -649,74 +594,12 @@ async function extractChapterImagesFromPage() {
   if (total <= 0) total = 50; // garde-fou absolu
 
   // 6. Construire toutes les URLs séquentiellement
-  return finalize(Array.from({ length: total }, (_, i) => ({
+  return Array.from({ length: total }, (_, i) => ({
     src:   `${baseUrl}${String(i + 1).padStart(numDigits, '0')}${ext}`,
     index: i + 1,
-  })));
+  }));
 }
 
-// ── Capture des canvases scramblés (tab actif requis) ─────────────────────────
-// Injecté APRÈS avoir rendu l'onglet actif (chrome.tabs.update active:true) :
-// les onglets en arrière-plan ont leurs timers/RAF/rendu React throttlés, donc
-// le canvas de la page ne se dessine jamais à temps. En foreground, chaque
-// page rend en ~200-500ms au lieu de 5-10s.
-//
-// Retourne { [filename | fullUrl]: dataUrl } pour chaque image scramblée
-// dont le canvas a pu être lu.
-async function captureScrambledCanvases() {
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const isScrambledUrl = (u) => typeof u === 'string' && /\/si\//.test(u);
-
-  const captureCanvasAsDataUrl = (canvas) => {
-    if (!canvas || !canvas.width || !canvas.height) return null;
-    try {
-      const ctx = canvas.getContext('2d');
-      const mid = ctx.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1);
-      if (mid.data[3] === 0) return null;
-      // WebP at q=0.95 ≈ visually lossless and ~5× smaller than PNG —
-      // matters because we serialize 89+ images back through executeScript.
-      const webp = canvas.toDataURL('image/webp', 0.95);
-      if (webp && webp.startsWith('data:image/webp')) return webp;
-      return canvas.toDataURL('image/png');
-    } catch (_) { return null; }
-  };
-
-  const rpages = [...document.querySelectorAll('.rpage-page')];
-  if (rpages.length === 0) return {};
-
-  const captures = {};
-  // Foreground tab : timings serrés, échec rapide si le canvas ne se rend pas.
-  const PER_PAGE_TIMEOUT_MS = 4000;
-  const SCROLL_SETTLE_MS = 80;
-  const POLL_MS = 80;
-  const OVERALL_TIMEOUT_MS = 3 * 60 * 1000;
-  const deadline = Date.now() + OVERALL_TIMEOUT_MS;
-
-  for (const el of rpages) {
-    if (Date.now() > deadline) break;
-    const img = el.querySelector('img');
-    const url = img?.currentSrc || img?.src || '';
-    if (!isScrambledUrl(url)) continue;
-
-    el.scrollIntoView({ block: 'center', behavior: 'auto' });
-    await sleep(SCROLL_SETTLE_MS);
-
-    const start = Date.now();
-    let dataUrl = null;
-    while (Date.now() - start < PER_PAGE_TIMEOUT_MS) {
-      const canvas = el.querySelector('canvas');
-      dataUrl = captureCanvasAsDataUrl(canvas);
-      if (dataUrl) break;
-      await sleep(POLL_MS);
-    }
-    if (!dataUrl) continue;
-
-    const fname = url.split('/').pop() || '';
-    captures[fname] = dataUrl;
-    captures[url] = dataUrl;
-  }
-  return captures;
-}
 
 // ── File de téléchargement ────────────────────────────────────────────────────
 
@@ -744,7 +627,7 @@ function processDownloadQueue() {
 
 // ── Téléchargement + création du ZIP ─────────────────────────────────────────
 
-async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, dataUrls }) {
+async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId }) {
   const zip = new JSZip();
   const total = images.length;
   let done = 0;
@@ -755,29 +638,21 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, d
       batch.map(async ({ src, index }) => {
         const paddedIndex = String(index).padStart(3, '0');
         try {
-          // Si la page a déjà rendu (et nous a renvoyé) un canvas unscramblé
-          // pour cette image, on l'utilise directement — sinon on télécharge
-          // les bytes bruts depuis le CDN.
-          const captured = pickCapturedDataUrl(src, dataUrls);
-          if (captured) {
-            const { buf, ext } = decodeDataUrl(captured);
-            zip.file(`${paddedIndex}.${ext}`, buf);
-          } else {
-            const controller = new AbortController();
-            const timeoutId  = setTimeout(() => controller.abort(), 30000);
-            const response   = await fetch(src, {
-              signal:  controller.signal,
-              headers: {
-                Accept:  'image/webp,image/avif,image/*,*/*;q=0.8',
-                Referer: 'https://comix.to/',
-              },
-            });
-            clearTimeout(timeoutId);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const buf = await response.arrayBuffer();
-            const ext = (src.match(/\.([a-z0-9]+)$/i) || [, 'webp'])[1];
-            zip.file(`${paddedIndex}.${ext}`, buf);
-          }
+          const controller = new AbortController();
+          const timeoutId  = setTimeout(() => controller.abort(), 30000);
+          const response   = await fetch(src, {
+            signal:  controller.signal,
+            headers: {
+              Accept:  'image/webp,image/avif,image/*,*/*;q=0.8',
+              Referer: 'https://comix.to/',
+            },
+          });
+          clearTimeout(timeoutId);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const arrayBuffer = await response.arrayBuffer();
+          // Conserver l'extension d'origine (webp, jpg, png…)
+          const ext = (src.match(/\.([a-z0-9]+)$/i) || [, 'webp'])[1];
+          zip.file(`${paddedIndex}.${ext}`, arrayBuffer);
         } catch (err) {
           // Image introuvable (ex. numéro de page hors limites) → on l'ignore,
           // pas de fichier vide dans le ZIP.
@@ -798,36 +673,6 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, d
 }
 
 // ── Utilitaires ───────────────────────────────────────────────────────────────
-
-/**
- * Comix.to applique son descrambling côté client via une fonction obfusquée
- * (Mr dans secure-tfl4t2-*.js) — réimplémenter sa logique est impraticable et
- * fragile. À la place, l'injected script scrolle dans la page chapitre,
- * attend que chaque canvas <canvas class="rpage-page__img"> soit rendu, puis
- * lit ses pixels via toDataURL('image/png'). Ces dataUrls sont passés au SW
- * dans `dataUrls` keyed by filename and full URL.
- *
- * Les fonctions ci-dessous décodent ces captures pour le ZIP.
- */
-function pickCapturedDataUrl(src, dataUrls) {
-  if (!src || !dataUrls) return null;
-  if (dataUrls[src]) return dataUrls[src];
-  const fname = src.split('/').pop() || '';
-  if (fname && dataUrls[fname]) return dataUrls[fname];
-  return null;
-}
-
-function decodeDataUrl(dataUrl) {
-  const m = dataUrl.match(/^data:([^;,]+)(?:;base64)?,(.*)$/);
-  if (!m) throw new Error('Invalid data URL');
-  const mime = m[1];
-  const binary = atob(m[2]);
-  const buf = new ArrayBuffer(binary.length);
-  const view = new Uint8Array(buf);
-  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
-  const ext = (mime.split('/')[1] || 'png').toLowerCase();
-  return { buf, ext };
-}
 
 /**
  * Génère le ZIP et retourne une URL téléchargeable.
@@ -870,7 +715,7 @@ function notifyTab(tabId, message) {
 
 // ── Extraction Promise-based (pour download-all) ──────────────────────────────
 // Ouvre un onglet, attend le chargement complet, injecte le script d'extraction,
-// retourne { images, scramble } ou lance une exception.
+// retourne les images ou lance une exception.
 async function extractFromTab(url) {
   const tab = await chrome.tabs.create({ url, active: false });
   const tabId = tab.id;
@@ -893,35 +738,12 @@ async function extractFromTab(url) {
     const onUpdated = async (updatedId, changeInfo) => {
       if (updatedId !== tabId || changeInfo.status !== 'complete') return;
       try {
-        // Phase 1 : URLs + scramble flag (rapide, background OK).
         const results = await chrome.scripting.executeScript({
           target: { tabId },
           func:   extractChapterImagesFromPage,
         });
-        const payload = results?.[0]?.result;
-        const images = Array.isArray(payload) ? payload : (payload?.images || []);
-        const scrambled = (payload && !Array.isArray(payload)) ? !!payload.scrambled : false;
-
-        // Phase 2 (seulement scramble) : activer le tab pour rendre les canvas.
-        let dataUrls = {};
-        if (scrambled) {
-          const originalActiveTabId = await getCurrentlyActiveTabId(tabId);
-          try {
-            await chrome.tabs.update(tabId, { active: true }).catch(() => {});
-            const capResults = await chrome.scripting.executeScript({
-              target: { tabId },
-              func:   captureScrambledCanvases,
-            });
-            dataUrls = capResults?.[0]?.result || {};
-          } finally {
-            if (originalActiveTabId != null) {
-              await chrome.tabs.update(originalActiveTabId, { active: true }).catch(() => {});
-            }
-          }
-        }
-
         chrome.tabs.remove(tabId).catch(() => {});
-        settle(resolve, { images, dataUrls });
+        settle(resolve, results?.[0]?.result || []);
       } catch (err) {
         chrome.tabs.remove(tabId).catch(() => {});
         settle(reject, err);
@@ -989,15 +811,14 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
              chapterLabel, imagesDone: 0, imagesTotal: 0 });
 
     try {
-      const { images, dataUrls } = await extractFromTab(chapterUrl);
+      const images = await extractFromTab(chapterUrl);
       if (!images || images.length === 0) {
         cdlLog('warn', `No images found, skipping ${chapterLabel}`);
         notify({ phase: 'skipped', chapterIndex: i + 1, totalChapters: chapters.length,
                  chapterLabel, imagesDone: 0, imagesTotal: 0 });
         continue;
       }
-      const captured = Object.keys(dataUrls || {}).length;
-      cdlLog('info', `${chapterLabel}: extracted ${images.length} images${captured ? ` (${captured} unscrambled via canvas)` : ''}`);
+      cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
 
       const folder = zip.folder(folderName);
       let imgDone = 0;
@@ -1008,25 +829,18 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
         await Promise.allSettled(batch.map(async ({ src, index }) => {
           const paddedIndex = String(index).padStart(3, '0');
           try {
-            const captured = pickCapturedDataUrl(src, dataUrls);
-            if (captured) {
-              const { buf, ext } = decodeDataUrl(captured);
-              folder.file(`${paddedIndex}.${ext}`, buf);
-              zipPartBytes += buf.byteLength;
-            } else {
-              const ctrl = new AbortController();
-              const t    = setTimeout(() => ctrl.abort(), 30_000);
-              const res  = await fetch(src, {
-                signal:  ctrl.signal,
-                headers: { Accept: 'image/webp,image/avif,image/*,*/*;q=0.8', Referer: 'https://comix.to/' },
-              });
-              clearTimeout(t);
-              if (!res.ok) throw new Error(`HTTP ${res.status}`);
-              const buf = await res.arrayBuffer();
-              const ext = (src.match(/\.([a-z0-9]+)$/i) || [, 'webp'])[1];
-              folder.file(`${paddedIndex}.${ext}`, buf);
-              zipPartBytes += buf.byteLength;
-            }
+            const ctrl = new AbortController();
+            const t    = setTimeout(() => ctrl.abort(), 30_000);
+            const res  = await fetch(src, {
+              signal:  ctrl.signal,
+              headers: { Accept: 'image/webp,image/avif,image/*,*/*;q=0.8', Referer: 'https://comix.to/' },
+            });
+            clearTimeout(t);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const buf = await res.arrayBuffer();
+            const ext = (src.match(/\.([a-z0-9]+)$/i) || [, 'webp'])[1];
+            folder.file(`${paddedIndex}.${ext}`, buf);
+            zipPartBytes += buf.byteLength;
           } catch (err) {
             console.warn(`[ComixDL-All] ${chapterLabel} img ${index} ignorée:`, err.message);
           }
