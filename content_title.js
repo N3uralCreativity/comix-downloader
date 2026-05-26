@@ -114,7 +114,19 @@ function injectStyles() {
       gap: 7px !important;
       margin-top: 8px !important;
     }
-    .cdl-dl-all-btn svg { flex-shrink: 0 !important; }
+    /* ── Bouton Download All (floating mobile fallback) ────────────────────── */
+    .cdl-dl-all-btn.cdl-floating {
+      position: fixed !important;
+      bottom: 72px !important;
+      right: 16px !important;
+      z-index: 2147483646 !important;
+      border-radius: 50px !important;
+      padding: 10px 18px !important;
+      background: rgba(19,21,31,0.97) !important;
+      border: 1px solid rgba(255,255,255,0.18) !important;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.55) !important;
+      margin-top: 0 !important;
+    }
     /* ── Popup progression Download All ──────────────────────────────────── */
     #cdl-all-popup {
       position: fixed;
@@ -779,35 +791,50 @@ function _launchDownloadAll() {
 }
 
 /**
+ * Returns true if an element has non-zero dimensions (i.e. is not hidden by
+ * CSS display:none / visibility:hidden on itself or an ancestor).
+ */
+function isElVisible(el) {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 || r.height > 0;
+}
+
+/**
  * Finds the anchor element for inserting the Download All button.
- * Tries progressively broader selectors to handle desktop and mobile layouts.
- * Returns { anchor, mode } or null.
+ * Each candidate is checked for actual visibility so we don't inject
+ * into a container that is display:none on mobile.
+ * Returns { anchor, mode } where mode is 'afterend' | 'append' | 'floating',
+ * or null (anchor not in DOM yet — caller should retry).
  */
 function findDownloadAllAnchor() {
-  // 1. Exact desktop class
+  // 1. Desktop exact class — only if visible
   const desktop = document.querySelector('.mpage__follow-btn');
-  if (desktop) return { anchor: desktop, mode: 'afterend' };
+  if (desktop && isElVisible(desktop)) return { anchor: desktop, mode: 'afterend' };
 
-  // 2. Any element whose class contains "follow" within the manga header area
-  //    (mobile Firefox may use .mpage__follow-btn--mobile, .follow-btn, etc.)
+  // 2. Any follow-like class within the manga header, only if visible
   const pageRoot = document.querySelector('[class*="mpage"], [class*="manga-header"], [class*="title-page"]') || document.body;
-  const followLike = pageRoot.querySelector(
+  const followLike = [...pageRoot.querySelectorAll(
     '[class*="follow-btn"], [class*="follow_btn"], [class*="followBtn"], [class*="follow-button"]'
-  );
+  )].find(isElVisible);
   if (followLike) return { anchor: followLike, mode: 'afterend' };
 
-  // 3. Any button / link / role=button whose visible text starts with "Follow"
-  //    (offsetParent check removed — unreliable in Firefox Android)
+  // 3. Button / link / role=button whose text starts with "Follow", visible
   const followByText = [...document.querySelectorAll('button, a, [role="button"]')]
-    .find(el => /^follow(ing)?\b/i.test((el.textContent || '').trim()));
+    .find(el => isElVisible(el) && /^follow(ing)?\b/i.test((el.textContent || '').trim()));
   if (followByText) return { anchor: followByText, mode: 'afterend' };
 
-  // 4. Action container fallback
-  const actionContainer = document.querySelector(
+  // 4. Visible action container
+  const actionContainer = [...document.querySelectorAll(
     '[class*="mpage__actions"], [class*="mpage-actions"], [class*="page-actions"]'
-  );
+  )].find(isElVisible);
   if (actionContainer) return { anchor: actionContainer, mode: 'append' };
 
+  // 5. Desktop button is in DOM but hidden (mobile collapses that section).
+  //    Use 'floating' mode: fixed-position button anchored to the viewport.
+  if (desktop) return { anchor: document.body, mode: 'floating' };
+
+  // 6. Nothing found yet — caller should retry
   return null;
 }
 
@@ -838,6 +865,7 @@ function injectDownloadAllButton() {
 
   const btn = document.createElement('button');
   btn.className = 'btn btn--soft mpage__follow-btn cdl-dl-all-btn';
+  if (mode === 'floating') btn.classList.add('cdl-floating');
   btn.type = 'button';
   btn.title = 'Télécharger tous les chapitres en un ZIP';
   btn.innerHTML = `${ICON_DOWNLOAD} Download All`;
@@ -871,7 +899,8 @@ function injectDownloadAllButton() {
     _launchDownloadAll();
   });
 
-  if (mode === 'append') anchor.appendChild(btn);
+  if (mode === 'floating') document.body.appendChild(btn);
+  else if (mode === 'append') anchor.appendChild(btn);
   else anchor.insertAdjacentElement('afterend', btn);
 }
 
