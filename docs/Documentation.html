@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Documentation · Comix Downloader</title>
+<link rel="icon" href="assets/icon128.png">
+<link rel="stylesheet" href="site.css">
+<style>
+  .doc-wrap {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 0 28px;
+    display: grid;
+    grid-template-columns: 232px 1fr;
+    gap: 56px;
+    align-items: start;
+  }
+
+  /* sidebar */
+  .toc {
+    position: sticky;
+    top: 90px;
+    align-self: start;
+  }
+  .toc .toc-label {
+    font: 600 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); padding: 0 12px 12px;
+  }
+  .toc a {
+    display: block;
+    padding: 7px 12px;
+    font-size: 14px;
+    color: var(--ink-soft);
+    border-radius: 7px;
+    border-left: 2px solid transparent;
+    transition: background .14s, color .14s;
+  }
+  .toc a:hover { background: var(--surface-2); color: var(--ink); }
+  .toc a.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-wash); font-weight: 600; }
+  .toc .sub { padding-left: 24px; font-size: 13px; }
+
+  /* content */
+  .doc-main { padding: 44px 0 0; min-width: 0; }
+  .doc-main .lede-block { padding-bottom: 30px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+  .doc-main h1 { font-size: 38px; font-weight: 800; letter-spacing: -0.03em; }
+  .doc-main .sub { color: var(--ink-soft); font-size: 17px; margin-top: 12px; max-width: 60ch; }
+
+  .doc-sec { padding-top: 56px; scroll-margin-top: 84px; }
+  .doc-sec > h2 {
+    font-size: 25px; font-weight: 800; letter-spacing: -0.02em;
+    padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 22px;
+  }
+  .doc-sec h3 { font-size: 17.5px; font-weight: 700; letter-spacing: -0.01em; margin: 30px 0 10px; }
+  .doc-sec p { color: var(--ink-soft); margin-bottom: 14px; }
+  .doc-sec p strong, .doc-sec li strong { color: var(--ink); font-weight: 600; }
+
+  /* ordered step lists */
+  ol.steps { list-style: none; counter-reset: s; display: grid; gap: 12px; margin: 6px 0 8px; }
+  ol.steps li {
+    counter-increment: s;
+    position: relative;
+    padding: 14px 16px 14px 50px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    font-size: 14.5px;
+    color: var(--ink-soft);
+  }
+  ol.steps li::before {
+    content: counter(s);
+    position: absolute; left: 14px; top: 13px;
+    width: 22px; height: 22px;
+    background: var(--accent-wash);
+    border: 1px solid var(--accent-line);
+    color: var(--accent);
+    border-radius: 6px;
+    font: 700 12px/22px var(--mono);
+    text-align: center;
+  }
+  ol.steps li strong { color: var(--ink); }
+
+  pre {
+    background: oklch(22% 0.018 290);
+    color: oklch(88% 0.02 290);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    overflow-x: auto;
+    font: 500 13px/1.5 var(--mono);
+    margin: 6px 0 14px;
+  }
+  pre .c { color: oklch(62% 0.03 290); }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+
+  ul.plain { list-style: none; display: grid; gap: 9px; margin: 6px 0 14px; }
+  ul.plain li { display: flex; gap: 11px; align-items: flex-start; font-size: 14.5px; color: var(--ink-soft); }
+  ul.plain li svg { width: 18px; height: 18px; color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+
+  /* platform tabs as cards */
+  .anchor-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 4px 0 8px; }
+  .anchor-cards a {
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 16px; background: var(--surface);
+    transition: border-color .15s, box-shadow .15s, transform .15s;
+  }
+  .anchor-cards a:hover { border-color: var(--accent-line); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+  .anchor-cards .pf { font: 600 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .anchor-cards .pt { font-size: 16px; font-weight: 700; color: var(--ink); margin-top: 8px; letter-spacing: -0.01em; }
+
+  /* FAQ */
+  details {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    margin-bottom: 10px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  details summary {
+    cursor: pointer; list-style: none;
+    padding: 16px 18px;
+    font-weight: 600; font-size: 15.5px;
+    display: flex; align-items: center; justify-content: space-between;
+    color: var(--ink);
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::after {
+    content: '+'; font: 400 22px/1 var(--mono); color: var(--accent); transition: transform .2s;
+  }
+  details[open] summary::after { content: '–'; }
+  details .ans { padding: 0 18px 18px; color: var(--ink-soft); font-size: 14.5px; }
+  details .ans p { margin-bottom: 10px; }
+  details .ans p:last-child { margin-bottom: 0; }
+
+  @media (max-width: 880px) {
+    .doc-wrap { grid-template-columns: 1fr; gap: 0; }
+    .toc { display: none; }
+    .anchor-cards { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="Home A.html">
+      <img src="assets/icon128.png" alt="">
+      Comix Downloader
+      <span class="ver">v1.1.2</span>
+    </a>
+    <nav class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="Documentation.html" class="active">Documentation</a>
+      <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="doc-wrap">
+
+  <!-- sidebar TOC -->
+  <aside class="toc">
+    <div class="toc-label">Documentation</div>
+    <nav id="toc-nav">
+      <a href="#overview">Overview</a>
+      <a href="#install">Install</a>
+      <a href="#firefox" class="sub">— Firefox</a>
+      <a href="#chrome" class="sub">— Chrome</a>
+      <a href="#android" class="sub">— Android</a>
+      <a href="#usage">How to use</a>
+      <a href="#warning">The background-tab warning</a>
+      <a href="#faq">Troubleshooting &amp; FAQ</a>
+    </nav>
+  </aside>
+
+  <!-- content -->
+  <main class="doc-main">
+    <div class="lede-block">
+      <h1>Documentation</h1>
+      <p class="sub">Everything you need to install Comix Downloader and start saving chapters from comix.to. Pick your platform below.</p>
+    </div>
+
+    <!-- overview -->
+    <section class="doc-sec" id="overview">
+      <h2>Overview</h2>
+      <p>Comix Downloader is a Manifest&nbsp;V3 browser extension that adds download buttons directly to every <a href="https://comix.to" target="_blank" rel="noopener">comix.to</a> title page. You can grab a single chapter, or download an entire series at once — every chapter is fetched, packaged into its own folder, and bundled into a single ZIP, named and sorted.</p>
+      <div class="anchor-cards">
+        <a href="#firefox"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/firefox.svg" alt="" onerror="this.parentElement.style.display='none'"></span>Desktop</div><div class="pt">Firefox →</div></a>
+        <a href="#chrome"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/chrome.svg" alt="" onerror="this.parentElement.style.display='none'"></span>Desktop</div><div class="pt">Chrome →</div></a>
+        <a href="#android"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/android-icon.svg" alt="" onerror="this.parentElement.style.display='none'"></span>Mobile</div><div class="pt">Android →</div></a>
+      </div>
+    </section>
+
+    <!-- install -->
+    <section class="doc-sec" id="install">
+      <h2>Install</h2>
+      <p>The fastest path is the signed Firefox add-on. Chrome and Android each take a couple of extra steps, covered below.</p>
+
+      <h3 id="firefox">Firefox (desktop)</h3>
+      <p>The extension is published and signed on Mozilla Add-ons — one click to install.</p>
+      <ol class="steps">
+        <li>Open the listing on <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">addons.mozilla.org</a>.</li>
+        <li>Click <strong>Add to Firefox</strong> and confirm the permissions prompt.</li>
+        <li>Visit any <strong>comix.to</strong> title page — the buttons appear automatically.</li>
+      </ol>
+
+      <h3 id="chrome">Chrome (load unpacked)</h3>
+      <p>Chrome installs from the source folder in developer mode.</p>
+      <ol class="steps">
+        <li><a href="https://github.com/N3uralCreativity/comix-downloader/archive/refs/heads/master.zip" target="_blank" rel="noopener"><strong>Download the repo ZIP</strong></a> and unzip it.</li>
+        <li>Open Chrome and go to <code>chrome://extensions</code>.</li>
+        <li>Toggle <strong>Developer mode</strong> on (top-right).</li>
+        <li>Click <strong>Load unpacked</strong> and select the unzipped folder.</li>
+        <li>Head to any comix.to title page — buttons appear automatically.</li>
+      </ol>
+
+      <h3 id="android">Android</h3>
+      <p>There are three ways to read on Android, depending on what you want.</p>
+
+      <p><strong>Option A — Mihon</strong> (recommended for offline reading). You get the same download capability through Mihon's native UI, with auto-updates.</p>
+      <ol class="steps">
+        <li>Install <a href="https://mihon.app/download" target="_blank" rel="noopener"><strong>Mihon</strong></a> on your device.</li>
+        <li>Open Mihon → <strong>More → Settings → Browse → Extension repos</strong>.</li>
+        <li>Tap <strong>+</strong> and paste the source URL below.</li>
+        <li>Go to <strong>Browse → Extensions</strong> and install <strong>Comix</strong>.</li>
+        <li>Open <strong>Browse → Comix</strong> and start reading or downloading.</li>
+      </ol>
+      <pre><code>https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json</code></pre>
+      <p>To download in Mihon: open a title → tap the <strong>⋮</strong> menu → <strong>Download → All</strong> (or Next / Unread / a custom range). Files land under <code>Mihon/downloads/Comix/&lt;Manga&gt;/&lt;Chapter&gt;/</code>.</p>
+
+      <p><strong>Option B — Kiwi Browser</strong> if you specifically want the same in-page buttons as desktop.</p>
+      <ol class="steps">
+        <li>Install <a href="https://play.google.com/store/apps/details?id=com.kiwibrowser.browser" target="_blank" rel="noopener"><strong>Kiwi Browser</strong></a> from the Play Store.</li>
+        <li>Download this repo ZIP on your phone and extract it.</li>
+        <li>Open Kiwi → go to <code>chrome://extensions</code> → toggle <strong>Developer mode</strong> on.</li>
+        <li>Tap <strong>Load unpacked</strong> and select the extracted folder.</li>
+        <li>Open any comix.to title page — buttons appear automatically.</li>
+      </ol>
+
+      <p><strong>Option C — Firefox for Android.</strong> The signed add-on also runs on <strong>Firefox for Android</strong> — the same one-click install as desktop, with the in-page buttons working natively on your phone.</p>
+      <ol class="steps">
+        <li>Install <a href="https://play.google.com/store/apps/details?id=org.mozilla.firefox" target="_blank" rel="noopener"><strong>Firefox for Android</strong></a> from the Play Store.</li>
+        <li>Open the <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">add-on listing</a> in Firefox and tap <strong>Add to Firefox</strong>.</li>
+        <li>Visit any comix.to title page — buttons appear automatically.</li>
+      </ol>
+
+      <p style="font-size:13.5px;color:var(--muted);">Note: iOS isn't supported — Safari doesn't allow extension-based downloads.</p>
+    </section>
+
+    <!-- usage -->
+    <section class="doc-sec" id="usage">
+      <h2>How to use</h2>
+      <p>Once installed, head to any comix.to title page. The extension injects its controls automatically — there's nothing to configure.</p>
+
+      <h3>Download an entire series</h3>
+      <ul class="plain">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Click <strong>Download All</strong> in the sidebar of the title page.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Every chapter is fetched, foldered, named and padded, then bundled into one ZIP.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Open the extension popup to watch live progress and the activity log.</li>
+      </ul>
+
+      <h3>Download a single chapter</h3>
+      <ul class="plain">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Each chapter row has its own download button on the right.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Click it to grab just that chapter as a ZIP.</li>
+      </ul>
+
+      <div class="shot" style="margin-top:18px;max-width:520px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">extension popup — live progress</span></div>
+        <img src="assets/progress.png" alt="Download progress popup with activity log">
+      </div>
+    </section>
+
+    <!-- warning -->
+    <section class="doc-sec" id="warning">
+      <h2>The background-tab warning</h2>
+      <div class="callout">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div>
+          <strong>Don't close the browser while a series download is in progress.</strong>
+          <p style="margin-top:8px;">During a download session the extension automatically opens and closes background browser tabs to extract each chapter. This is completely normal. Your current tab is never touched, but you may notice tabs briefly appearing in your taskbar.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="doc-sec" id="faq">
+      <h2>Troubleshooting &amp; FAQ</h2>
+
+      <details>
+        <summary>The download buttons aren't showing up</summary>
+        <div class="ans">
+          <p>Make sure you're on a <strong>title page</strong> (a URL like <code>comix.to/title/…</code>) — the buttons only inject there, not on the homepage or reader. Refresh the page once after installing.</p>
+          <p>If they're still missing, confirm the extension is enabled in your browser's extensions page and that it has permission to run on comix.to.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Tabs keep opening and closing during a download — is that a problem?</summary>
+        <div class="ans">
+          <p>No, that's expected. The extension opens hidden background tabs to extract each chapter's images, then closes them. Just don't close the browser until the download finishes. See <a href="#warning">the warning above</a>.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>A series download stopped partway through</summary>
+        <div class="ans">
+          <p>The most common cause is the browser being closed or going to sleep mid-session. Keep the window open and your machine awake during large downloads. You can re-run <strong>Download All</strong> — or grab the missing chapters individually.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Where do my files end up?</summary>
+        <div class="ans">
+          <p>On desktop, chapters arrive as a single ZIP in your browser's normal downloads folder, with each chapter in its own named, padded subfolder.</p>
+          <p>In Mihon on Android, downloads are stored under <code>Mihon/downloads/Comix/&lt;Manga&gt;/&lt;Chapter&gt;/</code> for offline reading.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Is there an iOS version?</summary>
+        <div class="ans">
+          <p>No. Safari doesn't allow extension-based downloads, so an iOS build isn't possible. Use a desktop browser or an Android device instead.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Is it free? What's the license?</summary>
+        <div class="ans">
+          <p>Yes, completely free and open source under the <strong>MIT License</strong>. The full source lives on <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>.</p>
+        </div>
+      </details>
+    </section>
+
+  </main>
+</div>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span class="brand" style="font-weight:700;"><img src="assets/icon128.png" alt="" style="width:20px;height:20px;border-radius:5px;">Comix Downloader</span>
+    <span class="sep">·</span>
+    <span>MIT © N3uralCreativity</span>
+    <div class="right">
+      <a href="index.html">Home</a>
+      <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">Firefox</a>
+      <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // scroll-spy for the sidebar TOC
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('#toc-nav a'));
+    var map = {};
+    links.forEach(function (a) {
+      var id = a.getAttribute('href').slice(1);
+      var el = document.getElementById(id);
+      if (el) map[id] = a;
+    });
+    var ids = Object.keys(map);
+    function onScroll() {
+      var top = window.scrollY + 110;
+      var current = ids[0];
+      ids.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el && el.offsetTop <= top) current = id;
+      });
+      links.forEach(function (a) { a.classList.remove('active'); });
+      if (map[current]) map[current].classList.add('active');
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  })();
+</script>
+
+</body>
+</html>
