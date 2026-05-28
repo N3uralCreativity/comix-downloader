@@ -309,6 +309,17 @@
       </details>
 
       <details>
+        <summary>A chapter still comes out scrambled or broken</summary>
+        <div class="ans">
+          <p>For the rare reader-page scramble bug, use the manual fallback helper from <code>scripts/manual-fallback.js</code>. It runs directly in the active comix.to reader tab so the page can render correctly before saving.</p>
+          <p>Open the affected chapter in the reader, press <strong>F12</strong>, switch to the <strong>Console</strong> tab, then paste and run:</p>
+          <pre><code>fetch('https://raw.githubusercontent.com/N3uralCreativity/comix-downloader/refs/heads/master/scripts/manual-fallback.js').then(r => r.text()).then(eval);</code></pre>
+          <p>Keep that reader tab in the foreground while it works. A green progress box appears in the top-right, and once it says <strong>✓ Saved</strong>, the ZIP will be in your usual downloads folder.</p>
+          <p>You can also open the raw script directly here first if you want to review it: <a href="https://raw.githubusercontent.com/N3uralCreativity/comix-downloader/refs/heads/master/scripts/manual-fallback.js" target="_blank" rel="noopener">manual-fallback.js</a>.</p>
+        </div>
+      </details>
+
+      <details>
         <summary>Where do my files end up?</summary>
         <div class="ans">
           <p>On desktop, chapters arrive as a single ZIP in your browser's normal downloads folder, with each chapter in its own named, padded subfolder.</p>
