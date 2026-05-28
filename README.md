@@ -11,6 +11,8 @@
 
 **by [N3uralCreativity](https://github.com/N3uralCreativity)**
 
+ [Checkout the Site for a more User-Friendly interface]([https://mihon.app/](https://n3uralcreativity.github.io/comix-downloader/index.html))
+
 
 </div>
 
