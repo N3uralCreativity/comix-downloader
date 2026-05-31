@@ -989,6 +989,18 @@ async function extractFromTab(url, cfg) {
   const tab = await chrome.tabs.create({ url, active: false });
   const tabId = tab.id;
 
+  // A freshly created background tab can briefly report status:"complete" while
+  // still on its initial about:blank document, before the navigation to `url`
+  // commits — this happens on Firefox in particular. Injecting at that point
+  // throws "Missing host permission for the tab" (about:blank is not covered by
+  // host_permissions), which previously failed every Download-All chapter.
+  // Only inject once the tab is actually on a real http(s) page.
+  const isRealPageComplete = (t, changeInfo) => {
+    const status = (changeInfo && changeInfo.status) || (t && t.status);
+    if (status !== 'complete') return false;
+    return /^https?:/i.test((t && t.url) || '');
+  };
+
   return new Promise((resolve, reject) => {
     let settled = false;
     const settle = (fn, val) => {
@@ -1004,8 +1016,9 @@ async function extractFromTab(url, cfg) {
       settle(reject, new Error('Timeout chargement onglet'));
     }, tabTimeout);
 
-    const onUpdated = async (updatedId, changeInfo) => {
-      if (updatedId !== tabId || changeInfo.status !== 'complete') return;
+    const onUpdated = async (updatedId, changeInfo, updatedTab) => {
+      if (updatedId !== tabId) return;
+      if (!isRealPageComplete(updatedTab, changeInfo)) return;
       try {
         const results = await chrome.scripting.executeScript({
           target: { tabId },
@@ -1022,9 +1035,12 @@ async function extractFromTab(url, cfg) {
 
     chrome.tabs.onUpdated.addListener(onUpdated);
 
-    // Protection contre la race condition : si l'onglet est déjà chargé
+    // Race guard: if the tab is already sitting on the real chapter page (e.g.
+    // served from cache) the "complete" event may have fired before the listener
+    // was attached. Re-check the current state — but only act on a real page,
+    // never the initial about:blank, otherwise injection fails on Firefox.
     chrome.tabs.get(tabId).then(t => {
-      if (t?.status === 'complete') onUpdated(tabId, { status: 'complete' });
+      if (isRealPageComplete(t, null)) onUpdated(tabId, { status: 'complete' }, t);
     }).catch(() => {});
   });
 }
