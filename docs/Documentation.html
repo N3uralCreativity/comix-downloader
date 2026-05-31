@@ -131,6 +131,21 @@
   details .ans p { margin-bottom: 10px; }
   details .ans p:last-child { margin-bottom: 0; }
 
+  /* risk badges + settings tab list */
+  .badge {
+    display: inline-block; vertical-align: middle; margin-left: 7px;
+    font: 700 10px/1.5 var(--mono); letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 1px 7px; border-radius: 5px;
+  }
+  .badge.risky   { color: #c4302b; background: rgba(220,38,38,0.10); border: 1px solid rgba(220,38,38,0.32); }
+  .badge.glitchy { color: #9a6207; background: rgba(245,158,11,0.13); border: 1px solid rgba(245,158,11,0.38); }
+  ul.tab-list { list-style: none; display: grid; gap: 10px; margin: 8px 0 16px; }
+  ul.tab-list li {
+    padding: 13px 16px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); font-size: 14.5px; color: var(--ink-soft);
+  }
+  ul.tab-list li strong { color: var(--ink); font-weight: 700; }
+
   @media (max-width: 880px) {
     .doc-wrap { grid-template-columns: 1fr; gap: 0; }
     .toc { display: none; }
@@ -167,6 +182,7 @@
       <a href="#chrome" class="sub">— Chrome</a>
       <a href="#android" class="sub">— Android</a>
       <a href="#usage">How to use</a>
+      <a href="#settings">Settings</a>
       <a href="#warning">The background-tab warning</a>
       <a href="#faq">Troubleshooting &amp; FAQ</a>
     </nav>
@@ -249,7 +265,7 @@
     <!-- usage -->
     <section class="doc-sec" id="usage">
       <h2>How to use</h2>
-      <p>Once installed, head to any comix.to title page. The extension injects its controls automatically — there's nothing to configure.</p>
+      <p>Once installed, head to any comix.to title page. The extension injects its controls automatically — it works out of the box, and you can fine-tune everything from the <a href="#settings">Settings</a> page.</p>
 
       <h3>Download an entire series</h3>
       <ul class="plain">
@@ -267,6 +283,61 @@
       <div class="shot" style="margin-top:18px;max-width:520px;">
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">extension popup — live progress</span></div>
         <img src="assets/progress.png" alt="Download progress popup with activity log">
+      </div>
+    </section>
+
+    <!-- settings -->
+    <section class="doc-sec" id="settings">
+      <h2>Settings</h2>
+      <p><strong>New in v2.0.0.</strong> Comix Downloader now has a full settings page that opens in its own browser tab. Everything is optional — <strong>every default reproduces the original behavior</strong>, so the extension keeps working exactly as before until you change something. Your settings are stored locally in your browser.</p>
+
+      <h3>Opening the settings</h3>
+      <p>Click the extension icon in your toolbar to open the popup, then press <strong>Settings</strong>. (You can also reach it from your browser's extensions menu under <em>Options</em>.) The popup also keeps a live activity log of your recent downloads.</p>
+
+      <div class="shot" style="margin-top:16px;max-width:330px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">extension popup</span></div>
+        <img src="assets/popup.png" alt="Extension popup with the Settings button and activity log">
+      </div>
+
+      <h3>How it's organized</h3>
+      <p>Settings are grouped into clearly labelled tabs:</p>
+      <ul class="tab-list">
+        <li><strong>Download &amp; ZIP</strong> — how a full-series download is packaged: multiple ZIP parts (default) or one single ZIP, and the chapter/size limit per part.</li>
+        <li><strong>Performance</strong> — how many images download in parallel, the pacing between chapters, and network timeouts.</li>
+        <li><strong>Retries</strong> — automatically re-attempt images or chapters that fail.</li>
+        <li><strong>Naming</strong> — image-number padding plus templates for chapter folders and ZIP file names, with a live preview.</li>
+        <li><strong>Appearance</strong> — the on-page buttons and the progress panel (see below).</li>
+        <li><strong>Advanced</strong> — powerful, riskier options such as image re-encoding and scramble handling.</li>
+        <li><strong>About &amp; Backup</strong> — export or import your settings as a file, and reset everything to defaults.</li>
+      </ul>
+
+      <div class="shot" style="margin-top:6px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings — Download &amp; ZIP</span></div>
+        <img src="assets/settings-overview.png" alt="Settings page, Download and ZIP tab">
+      </div>
+
+      <div class="callout" style="margin-top:24px;">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div>
+          <strong>Risky options are clearly marked.</strong>
+          <p style="margin-top:8px;">Options that can reduce reliability or quality are tagged <span class="badge risky">Risky</span> or <span class="badge glitchy">Glitchy</span>, each with an inline explanation. Saving such a change asks you to confirm first, and a <strong>Reset to defaults</strong> button (also confirmed) is always available under <em>About &amp; Backup</em>.</p>
+        </div>
+      </div>
+
+      <h3>Appearance &amp; customization</h3>
+      <p>Make the extension fit how you read. You can switch the per-chapter button between icon-only and icon&nbsp;+&nbsp;text, choose a custom accent color, scale the buttons, rename the <strong>Download All</strong> button, turn off animations, and move, resize or auto-hide the download-progress panel.</p>
+
+      <div class="shot" style="margin-top:6px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings — Appearance</span></div>
+        <img src="assets/settings-appearance.png" alt="Settings page, Appearance tab">
+      </div>
+
+      <h3>Advanced — use with care</h3>
+      <p>The Advanced tab exposes options for unusual situations. <strong>Preserve original</strong> image format keeps the best quality and is recommended; re-encoding to PNG or JPG is slower and lossy. Leaving scramble correction on keeps protected pages readable. Every risky option spells out exactly what can go wrong before you enable it.</p>
+
+      <div class="shot" style="margin-top:6px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings — Advanced</span></div>
+        <img src="assets/settings-advanced.png" alt="Settings page, Advanced tab with risk warnings">
       </div>
     </section>
 
@@ -324,6 +395,13 @@
         <div class="ans">
           <p>On desktop, chapters arrive as a single ZIP in your browser's normal downloads folder, with each chapter in its own named, padded subfolder.</p>
           <p>In Mihon on Android, downloads are stored under <code>Mihon/downloads/Comix/&lt;Manga&gt;/&lt;Chapter&gt;/</code> for offline reading.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Can I change how downloads are packaged, named, or look?</summary>
+        <div class="ans">
+          <p>Yes — open the <a href="#settings">Settings</a> page (the <strong>Settings</strong> button in the extension popup). You can switch a series download from multiple ZIP parts to a single ZIP, set file-name templates, customize the buttons and progress panel, and more. Riskier options are clearly marked and ask for confirmation before they apply.</p>
         </div>
       </details>
 
