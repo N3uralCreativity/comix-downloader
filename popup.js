@@ -1,10 +1,9 @@
-// popup.js — Script de la popup de l'extension Comix Downloader
+// popup.js — Comix Downloader toolbar popup
 'use strict';
 
 const GITHUB_URL = 'https://github.com/N3uralCreativity/comix-downloader';
-const MAX_LOGS   = 500;
 
-// ── Utilitaires ──────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
@@ -17,26 +16,24 @@ function badgeLabel(level) {
   return { info: 'INFO', ok: 'OK', warn: 'WARN', error: 'ERR' }[level] || level.toUpperCase();
 }
 
-// ── Rendu des logs ────────────────────────────────────────────────────────────
+// ── Logs rendering ──────────────────────────────────────────────────────────
 
 function renderLogs(logs) {
   const wrap  = document.getElementById('logs-wrap');
   const empty = document.getElementById('log-empty');
   const count = document.getElementById('log-count');
 
-  count.textContent = `${logs.length} entr${logs.length === 1 ? 'y' : 'ies'}`;
+  count.textContent = `${logs.length} ${logs.length === 1 ? 'entry' : 'entries'}`;
 
   if (logs.length === 0) {
     empty.style.display = '';
-    // Remove all real entries
     [...wrap.querySelectorAll('.log-entry')].forEach(el => el.remove());
     return;
   }
 
   empty.style.display = 'none';
 
-  // Rebuild list (newest first)
-  const reversed = [...logs].reverse();
+  const reversed = [...logs].reverse(); // newest first
   const frag = document.createDocumentFragment();
 
   for (const entry of reversed) {
@@ -55,18 +52,29 @@ function renderLogs(logs) {
     frag.appendChild(div);
   }
 
-  // Replace existing entries (keep empty placeholder in DOM)
   [...wrap.querySelectorAll('.log-entry')].forEach(el => el.remove());
   wrap.appendChild(frag);
 }
 
-// ── Initialisation ────────────────────────────────────────────────────────────
+function openSettings() {
+  if (chrome.runtime.openOptionsPage) {
+    chrome.runtime.openOptionsPage();
+  } else {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
+  }
+  window.close();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
   // Version from manifest
   const manifest = chrome.runtime.getManifest();
   const verEl = document.getElementById('ext-version');
   if (verEl) verEl.textContent = `v${manifest.version}`;
+
+  // Settings button → options page (opens in a browser tab)
+  document.getElementById('btn-settings').addEventListener('click', openSettings);
 
   // GitHub button
   const btnGithub = document.getElementById('btn-github');
@@ -80,17 +88,15 @@ async function init() {
   const { cdlLogs = [] } = await chrome.storage.local.get('cdlLogs');
   renderLogs(cdlLogs);
 
-  // Clear logs button
+  // Clear logs
   document.getElementById('btn-clear').addEventListener('click', async () => {
     await chrome.storage.local.set({ cdlLogs: [] });
     renderLogs([]);
   });
 
-  // Live-update via storage change events (if background writes while popup is open)
+  // Live updates while the popup is open
   chrome.storage.onChanged.addListener((changes) => {
-    if (changes.cdlLogs) {
-      renderLogs(changes.cdlLogs.newValue || []);
-    }
+    if (changes.cdlLogs) renderLogs(changes.cdlLogs.newValue || []);
   });
 }
 

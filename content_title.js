@@ -36,6 +36,89 @@ const ICON_ERROR = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="1
   <line x1="6" y1="6" x2="18" y2="18"/>
 </svg>`;
 
+// ── User settings (loaded async; v1.1.2 defaults until then) ────────────────────
+let CFG = (typeof CDLSettings !== 'undefined') ? Object.assign({}, CDLSettings.DEFAULTS) : {};
+
+function getAccent() {
+  const c = CFG['appearance.accentColor'];
+  return (CFG['appearance.accentMode'] === 'custom' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c || '')) ? c : '#60a5fa';
+}
+function _clampScale(v) { v = parseFloat(v); return isFinite(v) ? Math.min(1.5, Math.max(0.8, v)) : 1; }
+function _clampInt(v, min, max, d) { v = parseInt(v, 10); return isFinite(v) ? Math.min(max, Math.max(min, v)) : d; }
+function getAllLabel() { const l = CFG['appearance.allLabel']; return (l && String(l).trim()) ? String(l).trim() : 'Download All'; }
+function isIconText() { return CFG['appearance.btnStyle'] === 'icon+text'; }
+function getIdleContent() {
+  return ICON_DOWNLOAD + (isIconText() ? '<span class="cdl-btn-text">Download</span>' : '') + `<span class="${PROGRESS_SPAN_CLASS}"></span>`;
+}
+function applyBtnTextClass(btn) { btn.classList.toggle('cdl-has-text', isIconText()); }
+function buildSingleZipName(mangaName, chapterLabel) {
+  const num = String(chapterLabel || '').replace(/^ch/i, '');
+  if (typeof CDLSettings !== 'undefined') {
+    const slug = slugify(mangaName);
+    const base = CDLSettings.renderName(CFG['naming.singleZipTpl'] || '{manga}-Ch{chapter}', { manga: slug, chapter: num, num: num }, 196);
+    return (base || slug || 'comix') + '.zip';
+  }
+  return `${slugify(mangaName)}-${chapterLabel}.zip`;
+}
+function buildAllZipName(mangaName) {
+  if (typeof CDLSettings !== 'undefined') {
+    const slug = slugify(mangaName);
+    const base = CDLSettings.renderName(CFG['naming.allZipTpl'] || '{manga}', { manga: slug }, 196);
+    return (base || slug || 'comix') + '.zip';
+  }
+  return `${slugify(mangaName)}.zip`;
+}
+
+// Dynamic, settings-driven CSS layered on top of the static styles. Re-injected
+// whenever settings change so accent color, button scale, the progress-frame
+// position/width and animation toggles update live.
+function applyDynamicStyles() {
+  const prev = document.getElementById('cdl-dyn-styles');
+  if (prev) prev.remove();
+  const accent = getAccent();
+  const scale = _clampScale(CFG['appearance.btnScale']);
+  const noAnim = !!CFG['appearance.disableAnim'];
+  const W = _clampInt(CFG['frame.width'], 300, 560, 380);
+  const pos = CFG['frame.position'] || 'bottom-right';
+  const vy = pos.indexOf('top') === 0 ? 'top:24px;bottom:auto;' : 'bottom:24px;top:auto;';
+  const vx = /left$/.test(pos) ? 'left:24px;right:auto;' : 'right:24px;left:auto;';
+  const btnW = Math.round(36 * scale), svgS = Math.round(16 * scale), loadW = Math.round(68 * scale);
+  const fontS = Math.max(10, Math.round(12 * scale));
+  const style = document.createElement('style');
+  style.id = 'cdl-dyn-styles';
+  style.textContent = `
+    .${DOWNLOAD_BTN_CLASS} { width:${btnW}px; min-width:${btnW}px; }
+    .${DOWNLOAD_BTN_CLASS} svg { width:${svgS}px; height:${svgS}px; }
+    .${DOWNLOAD_BTN_CLASS}[data-state="loading"] { width:${loadW}px; min-width:${loadW}px; color:${accent}; }
+    .${PROGRESS_SPAN_CLASS} { color:${accent}; }
+    .cdl-ap-bar { background:${accent}; }
+    .cdl-ap-log-item.active { color:${accent}; }
+    .${DOWNLOAD_BTN_CLASS}.cdl-has-text { width:auto; min-width:0; gap:6px; padding:0 9px; }
+    .${DOWNLOAD_BTN_CLASS}.cdl-has-text[data-state="loading"] { width:auto; min-width:0; }
+    .cdl-btn-text { font-size:${fontS}px; font-weight:600; }
+    #cdl-all-popup { width:${W}px; ${vy} ${vx} }
+    ${noAnim ? `.${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg{animation:none!important;} .${DOWNLOAD_BTN_CLASS},.cdl-ap-bar,.cdl-ap-close{transition:none!important;}` : ''}
+  `;
+  document.head.appendChild(style);
+}
+
+// Re-apply everything that depends on settings (called on storage change).
+function onSettingsChanged() {
+  applyDynamicStyles();
+  const all = document.querySelector('.cdl-dl-all-btn');
+  if (all && !all.disabled) all.innerHTML = `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`;
+  document.querySelectorAll(`.${DOWNLOAD_BTN_CLASS}`).forEach((b) => {
+    const st = b.getAttribute('data-state');
+    if (!st || st === 'idle') { b.innerHTML = getIdleContent(); applyBtnTextClass(b); }
+  });
+}
+
+// Auto-hide the progress frame N seconds after it reaches a terminal state.
+function maybeAutoHideFrame(popup) {
+  const sec = _clampInt(CFG['frame.autoHideSec'], 0, 60, 0);
+  if (sec > 0) setTimeout(() => { dismissDownloadAllSession(); popup.remove(); }, sec * 1000);
+}
+
 // ── Styles injectés ───────────────────────────────────────────────────────────
 
 function injectStyles() {
@@ -301,7 +384,8 @@ function getMangaName() {
 
 // ── Slugification pour le nom de fichier ZIP ──────────────────────────────────
 
-function slugify(str) {
+function slugify(str, maxLen) {
+  const cap = maxLen || (CFG && CFG['naming.slugMaxLen']) || 60;
   return str
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -309,7 +393,7 @@ function slugify(str) {
     .trim()
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
-    .substring(0, 60);
+    .substring(0, cap);
 }
 
 // ── Extraction du numéro de chapitre depuis une URL ───────────────────────────
@@ -349,23 +433,22 @@ function injectButtonForRow(bookmarkBtn) {
   // On s'assure que l'URL est bien un chapitre (contient un ID numérique + "chapter")
   if (!/\/\d+-chapter-/i.test(chapterUrl)) return;
 
-  const mangaName = getMangaName();
   const chapterLabel = extractChapterLabel(chapterUrl);
-  const zipName = `${slugify(mangaName)}-${chapterLabel}.zip`;
 
   // Créer le bouton
   const btn = document.createElement('button');
   btn.className = DOWNLOAD_BTN_CLASS;
-  btn.title = `Télécharger ${chapterLabel}`;
+  btn.title = `Download ${chapterLabel}`;
   btn.setAttribute('data-state', 'idle');
   btn.setAttribute('data-chapter-url', chapterUrl);
-  btn.innerHTML = ICON_DOWNLOAD + `<span class="${PROGRESS_SPAN_CLASS}"></span>`;
+  btn.innerHTML = getIdleContent();
+  applyBtnTextClass(btn);
 
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (btn.getAttribute('data-state') === 'loading') return;
-    startDownload(btn, chapterUrl, zipName);
+    startDownload(btn, chapterUrl, buildSingleZipName(getMangaName(), chapterLabel));
   });
 
   bookmarkBtn.insertAdjacentElement('afterend', btn);
@@ -377,7 +460,7 @@ function startDownload(btn, chapterUrl, zipName) {
   // Si le contexte de l'extension a été invalidé (ex. rechargement en cours de session),
   // chrome.runtime.id est undefined et sendMessage lèverait une exception.
   if (!chrome.runtime?.id) {
-    setButtonState(btn, 'error', 'Extension rechargée — actualisez la page');
+    setButtonState(btn, 'error', 'Extension reloaded — refresh the page');
     return;
   }
   setButtonState(btn, 'loading', null);
@@ -391,12 +474,12 @@ function startDownload(btn, chapterUrl, zipName) {
       },
       (response) => {
         if (chrome.runtime.lastError) {
-          setButtonState(btn, 'error', 'Erreur de connexion à l\'extension');
+          setButtonState(btn, 'error', 'Connection to the extension failed');
         }
       }
     );
   } catch (e) {
-    setButtonState(btn, 'error', 'Extension rechargée — actualisez la page');
+    setButtonState(btn, 'error', 'Extension reloaded — refresh the page');
   }
 }
 
@@ -410,23 +493,25 @@ function setButtonState(btn, state, extra) {
     btn.innerHTML = getSpinnerSVG() + `<span class="${PROGRESS_SPAN_CLASS}">${extra || ''}</span>`;
   } else if (state === 'done') {
     btn.innerHTML = ICON_DONE;
-    btn.title = 'Téléchargé !';
+    btn.title = 'Downloaded!';
     // Revenir à l'icône download après 2.5s
     setTimeout(() => {
       if (btn.getAttribute('data-state') === 'done') {
-        btn.innerHTML = ICON_DOWNLOAD + `<span class="${PROGRESS_SPAN_CLASS}"></span>`;
+        btn.innerHTML = getIdleContent();
+        applyBtnTextClass(btn);
         btn.setAttribute('data-state', 'idle');
-        btn.title = `Télécharger`;
+        btn.title = 'Download';
         btn.style.pointerEvents = '';
       }
     }, 2500);
   } else if (state === 'error') {
     btn.innerHTML = ICON_ERROR;
-    btn.title = extra || 'Erreur lors du téléchargement';
+    btn.title = extra || 'Download error';
     btn.style.pointerEvents = '';
   } else {
     // idle
-    btn.innerHTML = ICON_DOWNLOAD + `<span class="${PROGRESS_SPAN_CLASS}"></span>`;
+    btn.innerHTML = getIdleContent();
+    applyBtnTextClass(btn);
   }
 }
 
@@ -783,10 +868,10 @@ function _launchDownloadAll() {
   try {
     chrome.runtime.sendMessage(
       { action: 'downloadAllChapters', chapters, mangaName, zipName },
-      (res) => { if (chrome.runtime.lastError) updateDownloadAllPopupError('Erreur de connexion \u00e0 l\'extension'); }
+      (res) => { if (chrome.runtime.lastError) updateDownloadAllPopupError('Connection to the extension failed'); }
     );
   } catch (_) {
-    updateDownloadAllPopupError('Extension recharg\u00e9e \u2014 actualisez la page');
+    updateDownloadAllPopupError('Extension reloaded \u2014 refresh the page');
   }
 }
 
@@ -862,18 +947,19 @@ function injectDownloadAllButton() {
   // Cancel any pending retry — we found the anchor
   if (_dlAllInjRetryTimer) { clearTimeout(_dlAllInjRetryTimer); _dlAllInjRetryTimer = null; }
   const { anchor, mode } = found;
+  if (mode === 'floating' && CFG['appearance.allowFloating'] === false) return;
 
   const btn = document.createElement('button');
   btn.className = 'btn btn--soft mpage__follow-btn cdl-dl-all-btn';
   if (mode === 'floating') btn.classList.add('cdl-floating');
   btn.type = 'button';
-  btn.title = 'Télécharger tous les chapitres en un ZIP';
-  btn.innerHTML = `${ICON_DOWNLOAD} Download All`;
+  btn.title = 'Download all chapters as a ZIP';
+  btn.innerHTML = `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`;
 
   btn.addEventListener('click', async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!chrome?.runtime?.id) { alert('Extension rechargée — actualisez la page.'); return; }
+    if (!chrome?.runtime?.id) { alert('Extension reloaded — please refresh the page.'); return; }
     if (document.getElementById('cdl-all-popup')) return; // déjà en cours
 
     // Indicateur de chargement pendant la collecte des chapitres
@@ -887,13 +973,13 @@ function injectDownloadAllButton() {
       chapters = [];
     } finally {
       btn.disabled = false;
-      btn.innerHTML = `${ICON_DOWNLOAD} Download All`;
+      btn.innerHTML = `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`;
     }
 
-    if (chapters.length === 0) { alert('Aucun chapitre trouvé sur cette page.'); return; }
+    if (chapters.length === 0) { alert('No chapters found on this page.'); return; }
 
     const mangaName = getMangaName();
-    const zipName   = `${slugify(mangaName)}.zip`;
+    const zipName   = buildAllZipName(mangaName);
     _lastDlAllParams = { chapters, mangaName, zipName };
     showDownloadAllPopup(mangaName, chapters.length);
     _launchDownloadAll();
@@ -915,7 +1001,7 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
   popup.innerHTML = `
     <div class="cdl-ap-header">
       <div class="cdl-ap-title">${ICON_DOWNLOAD}&nbsp;Downloading All Chapters</div>
-      <button class="cdl-ap-close" title="Réduire">−</button>
+      <button class="cdl-ap-close" title="Minimize">−</button>
     </div>
     <div class="cdl-ap-body">
       <div class="cdl-ap-manga-name">${escapeHtml(mangaName)}</div>
@@ -995,6 +1081,7 @@ function updateDownloadAllPopupDone(zipName) {
   const i = document.getElementById('cdl-ap-img-status');
   if (i) i.textContent = `Saved as: ${zipName || 'manga.zip'}`;
   _dlAllSetFooterClose(popup);
+  maybeAutoHideFrame(popup);
 }
 
 function updateDownloadAllPopupCancelled() {
@@ -1006,6 +1093,7 @@ function updateDownloadAllPopupCancelled() {
     s.style.color = '';
   }
   _dlAllSetFooterClose(popup);
+  maybeAutoHideFrame(popup);
 }
 
 function updateDownloadAllPopup(msg) {
@@ -1070,10 +1158,10 @@ function updateDownloadAllPopup(msg) {
         el('cdl-ap-bar').style.width            = '99%';
         try {
           chrome.runtime.sendMessage({ action: 'retryZip' }, (res) => {
-            if (chrome.runtime.lastError) updateDownloadAllPopupError('Erreur de connexion à l\'extension');
+            if (chrome.runtime.lastError) updateDownloadAllPopupError('Connection to the extension failed');
             else { retryBtn.disabled = false; retryBtn.textContent = '↺ Retry'; }
           });
-        } catch (_) { updateDownloadAllPopupError('Extension rechargée — actualisez la page'); }
+        } catch (_) { updateDownloadAllPopupError('Extension reloaded — refresh the page'); }
       });
       footer.insertBefore(retryBtn, footer.firstChild);
     }
@@ -1132,14 +1220,14 @@ function updateDownloadAllPopupError(errMsg, options = {}) {
       }
       try {
         chrome.runtime.sendMessage({ action: 'retryZip' }, () => {
-          if (chrome.runtime.lastError) updateDownloadAllPopupError('Erreur de connexion à l\'extension');
+          if (chrome.runtime.lastError) updateDownloadAllPopupError('Connection to the extension failed');
           else {
             retryBtn.disabled = false;
             retryBtn.textContent = 'Retry ZIP';
           }
         });
       } catch (_) {
-        updateDownloadAllPopupError('Extension rechargée — actualisez la page');
+        updateDownloadAllPopupError('Extension reloaded — refresh the page');
       }
     });
     footer.appendChild(retryBtn);
@@ -1266,7 +1354,7 @@ function observeDOM() {
 
 // ── Point d'entrée ────────────────────────────────────────────────────────────
 
-(function init() {
+(async function init() {
   // Ne pas s'exécuter sur les pages de lecture de chapitre
   // URL format de chapitre : /title/{slug}/{chapterId}
   const pathParts = location.pathname.split('/').filter(Boolean);
@@ -1276,7 +1364,13 @@ function observeDOM() {
     return;
   }
 
+  if (typeof CDLSettings !== 'undefined') {
+    try { CFG = await CDLSettings.getSettings(); } catch (_) {}
+    CDLSettings.onChange((next) => { CFG = next; onSettingsChanged(); });
+  }
+
   injectStyles();
+  applyDynamicStyles();
   scanAndInject();
   observeDOM();
   restoreDownloadAllPopupFromBackground();

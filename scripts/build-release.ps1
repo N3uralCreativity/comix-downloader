@@ -36,6 +36,10 @@ function Copy-ReleaseFiles([string]$Destination) {
     "offscreen.js",
     "popup.html",
     "popup.js",
+    "settings.js",
+    "options.html",
+    "options.js",
+    "options.css",
     "icons",
     "lib"
   )
@@ -93,6 +97,7 @@ $firefoxManifest = $manifest | ConvertTo-Json -Depth 20 | ConvertFrom-Json
 $firefoxManifest.background = [ordered]@{
   scripts = @(
     "lib/jszip.min.js",
+    "settings.js",
     "background.js"
   )
 }

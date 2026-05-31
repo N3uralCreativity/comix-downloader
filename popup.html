@@ -7,10 +7,17 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --bg: #0e1018; --panel: #13151f; --line: rgba(255,255,255,0.07);
+      --line-2: rgba(255,255,255,0.12); --fg: #d6dae8; --fg-strong: #eef1f8;
+      --muted: #7a82a0; --muted-2: #4a5270; --accent: #60a5fa;
+      --accent-bg: rgba(59,130,246,0.16); --ok: #4ade80; --warn: #fbbf24; --err: #f87171;
+    }
+
     body {
-      width: 320px;
-      background: #0e1018;
-      color: #c8cde0;
+      width: 340px;
+      background: var(--bg);
+      color: var(--fg);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       font-size: 13px;
       overflow-x: hidden;
@@ -18,228 +25,97 @@
 
     /* ── Header ── */
     .header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 16px 16px 12px;
-      background: #13151f;
-      border-bottom: 1px solid rgba(255,255,255,0.07);
+      display: flex; align-items: center; gap: 12px;
+      padding: 15px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
     }
-    .header-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      flex-shrink: 0;
-    }
+    .header-icon { width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0; }
     .header-info { flex: 1; min-width: 0; }
-    .header-title {
-      font-size: 15px;
-      font-weight: 700;
-      color: #e8ecf4;
-      letter-spacing: 0.01em;
-    }
-    .header-sub {
-      font-size: 11px;
-      color: #4a5270;
-      margin-top: 2px;
-    }
+    .header-title { font-size: 15px; font-weight: 700; color: var(--fg-strong); letter-spacing: .01em; }
+    .header-sub { font-size: 11px; color: var(--muted-2); margin-top: 2px; }
     .header-version {
-      font-size: 10px;
-      background: rgba(59,130,246,0.18);
-      color: #60a5fa;
-      border: 1px solid rgba(59,130,246,0.3);
-      border-radius: 4px;
-      padding: 2px 6px;
-      font-weight: 600;
-      flex-shrink: 0;
+      font-size: 10px; font-weight: 600; color: var(--accent);
+      background: var(--accent-bg); border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 5px; padding: 2px 6px; flex-shrink: 0;
     }
 
-    /* ── Credits ── */
-    .credits {
-      padding: 11px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: rgba(59,130,246,0.06);
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-    .credits-text {
-      font-size: 12px;
-      color: #7a82a0;
-    }
-    .credits-text strong {
-      color: #93c5fd;
-      font-weight: 600;
-    }
-
-    /* ── Buttons row ── */
-    .btn-row {
-      display: flex;
-      gap: 8px;
-      padding: 12px 16px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
+    /* ── Actions ── */
+    .btn-row { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
     .btn {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 7px 10px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      text-decoration: none;
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 9px 10px; border-radius: 9px; font-size: 12.5px; font-weight: 600;
+      cursor: pointer; text-decoration: none; border: 1px solid transparent;
       transition: background .15s, border-color .15s;
-      border: 1px solid transparent;
     }
-    .btn-github {
-      background: rgba(255,255,255,0.06);
-      border-color: rgba(255,255,255,0.12);
-      color: #c8cde0;
-    }
-    .btn-github:hover {
-      background: rgba(255,255,255,0.11);
-      border-color: rgba(255,255,255,0.2);
-    }
-    .btn-github svg { flex-shrink: 0; }
+    .btn svg { flex-shrink: 0; }
+    .btn-primary { background: var(--accent); color: #07101f; }
+    .btn-primary:hover { background: #7cb5fb; }
+    .btn-ghost { background: rgba(255,255,255,0.05); border-color: var(--line-2); color: var(--fg); }
+    .btn-ghost:hover { background: rgba(255,255,255,0.1); }
 
-    /* ── Logs section ── */
-    .logs-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 16px 8px;
-    }
-    .logs-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: #7a82a0;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-    .logs-actions { display: flex; gap: 6px; align-items: center; }
-    .logs-count {
-      font-size: 11px;
-      color: #3a4060;
-      background: rgba(255,255,255,0.04);
-      border-radius: 4px;
-      padding: 1px 6px;
-    }
+    /* ── Logs ── */
+    .logs-header { display: flex; align-items: center; justify-content: space-between; padding: 11px 16px 7px; }
+    .logs-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+    .logs-actions { display: flex; gap: 7px; align-items: center; }
+    .logs-count { font-size: 11px; color: var(--muted-2); background: rgba(255,255,255,0.04); border-radius: 4px; padding: 1px 6px; }
     .btn-clear {
-      background: rgba(239,68,68,0.1);
-      border: 1px solid rgba(239,68,68,0.2);
-      color: #f87171;
-      border-radius: 6px;
-      padding: 3px 9px;
-      font-size: 11px;
-      cursor: pointer;
-      transition: background .15s;
+      background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: var(--err);
+      border-radius: 6px; padding: 3px 9px; font-size: 11px; cursor: pointer; transition: background .15s;
     }
     .btn-clear:hover { background: rgba(239,68,68,0.2); }
 
-    .logs-wrap {
-      height: 260px;
-      overflow-y: auto;
-      padding: 0 8px 10px;
-      scrollbar-width: thin;
-      scrollbar-color: #2c3050 transparent;
-    }
-
-    .log-empty {
-      text-align: center;
-      color: #2e3450;
-      font-size: 12px;
-      padding: 40px 0;
-    }
-
-    .log-entry {
-      display: flex;
-      gap: 6px;
-      padding: 4px 8px;
-      border-radius: 5px;
-      margin-bottom: 1px;
-      font-size: 11px;
-      line-height: 1.4;
-      word-break: break-word;
-    }
+    .logs-wrap { height: 252px; overflow-y: auto; padding: 0 8px 8px; scrollbar-width: thin; scrollbar-color: #2c3050 transparent; }
+    .log-empty { text-align: center; color: var(--muted-2); font-size: 12px; padding: 44px 0; }
+    .log-entry { display: flex; gap: 6px; padding: 4px 8px; border-radius: 5px; margin-bottom: 1px; font-size: 11px; line-height: 1.4; word-break: break-word; }
     .log-entry:hover { background: rgba(255,255,255,0.03); }
-    .log-ts {
-      color: #2e3450;
-      flex-shrink: 0;
-      font-variant-numeric: tabular-nums;
-    }
-    .log-badge {
-      flex-shrink: 0;
-      font-weight: 700;
-      font-size: 10px;
-      padding: 0 4px;
-      border-radius: 3px;
-      line-height: 1.6;
-      align-self: flex-start;
-    }
+    .log-ts { color: var(--muted-2); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .log-badge { flex-shrink: 0; font-weight: 700; font-size: 10px; padding: 0 4px; border-radius: 3px; line-height: 1.6; align-self: flex-start; }
     .log-msg { color: #8892b0; flex: 1; }
-
-    .log-entry.info  .log-badge { background: rgba(59,130,246,.18); color: #60a5fa; }
-    .log-entry.ok    .log-badge { background: rgba(74,222,128,.18); color: #4ade80; }
-    .log-entry.warn  .log-badge { background: rgba(251,191,36,.18); color: #fbbf24; }
-    .log-entry.error .log-badge { background: rgba(239,68,68,.18);  color: #f87171; }
-    .log-entry.info  .log-msg   { color: #7a8cb0; }
-    .log-entry.ok    .log-msg   { color: #6aaa84; }
-    .log-entry.warn  .log-msg   { color: #9a8060; }
-    .log-entry.error .log-msg   { color: #9a5858; }
+    .log-entry.info  .log-badge { background: rgba(59,130,246,.18); color: var(--accent); }
+    .log-entry.ok    .log-badge { background: rgba(74,222,128,.18); color: var(--ok); }
+    .log-entry.warn  .log-badge { background: rgba(251,191,36,.18); color: var(--warn); }
+    .log-entry.error .log-badge { background: rgba(239,68,68,.18);  color: var(--err); }
+    .log-entry.info  .log-msg { color: #7a8cb0; }
+    .log-entry.ok    .log-msg { color: #6aaa84; }
+    .log-entry.warn  .log-msg { color: #9a8060; }
+    .log-entry.error .log-msg { color: #9a5858; }
 
     /* ── Footer ── */
-    .footer {
-      padding: 8px 16px 12px;
-      border-top: 1px solid rgba(255,255,255,0.05);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .footer-note {
-      font-size: 10px;
-      color: #2a2e40;
-    }
-    .footer-dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: #4ade80;
-      box-shadow: 0 0 6px #4ade8060;
-    }
+    .footer { padding: 9px 16px 11px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
+    .footer-note { font-size: 10px; color: var(--muted-2); }
+    .footer-note strong { color: var(--muted); font-weight: 600; }
+    .footer-status { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted-2); }
+    .footer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px rgba(74,222,128,.4); }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
   <div class="header">
-    <img class="header-icon" src="icons/icon48.png" alt="icon">
+    <img class="header-icon" src="icons/icon48.png" alt="">
     <div class="header-info">
       <div class="header-title">Comix Downloader</div>
       <div class="header-sub">comix.to chapter downloader</div>
     </div>
-    <span class="header-version" id="ext-version">v1.0</span>
+    <span class="header-version" id="ext-version">v2.0.0</span>
   </div>
 
-  <!-- Credits -->
-  <div class="credits">
-    <span class="credits-text">by <strong>N3uralCreativity</strong></span>
-    <span class="credits-text" style="font-size:11px; color:#2e3450;">MIT License</span>
-  </div>
-
-  <!-- Action buttons -->
   <div class="btn-row">
-    <a class="btn btn-github" id="btn-github" href="#" target="_blank">
-      <!-- GitHub icon -->
+    <button class="btn btn-primary" id="btn-settings" type="button">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      Settings
+    </button>
+    <a class="btn btn-ghost" id="btn-github" href="#" target="_blank" rel="noopener">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
       </svg>
-      GitHub Repo
+      GitHub
     </a>
   </div>
 
-  <!-- Logs -->
   <div class="logs-header">
     <span class="logs-title">Activity Log</span>
     <div class="logs-actions">
@@ -251,10 +127,9 @@
     <div class="log-empty" id="log-empty">No activity yet</div>
   </div>
 
-  <!-- Footer -->
   <div class="footer">
-    <span class="footer-note">Logs persist across sessions</span>
-    <div class="footer-dot" id="status-dot" title="Extension active"></div>
+    <span class="footer-note">by <strong>N3uralCreativity</strong> · MIT</span>
+    <span class="footer-status"><span class="footer-dot" title="Extension active"></span> Active</span>
   </div>
 
   <script src="popup.js"></script>

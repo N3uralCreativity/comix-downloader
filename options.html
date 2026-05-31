@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comix Downloader — Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-icon" src="icons/icon48.png" alt="" />
+        <div class="brand-text">
+          <h1>Comix Downloader</h1>
+          <span class="brand-sub">Settings</span>
+        </div>
+        <span class="ver" id="ver">v2.0.0</span>
+      </div>
+      <div class="topbar-note">
+        Settings are stored in this browser only.
+        <span class="hl warn">Glitchy</span> and <span class="hl">risky</span> options are marked.
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="sidebar" id="sidebar" aria-label="Settings sections"></nav>
+      <main class="content" id="content"></main>
+    </div>
+
+    <div class="savebar" id="savebar" hidden>
+      <span class="savebar-msg" id="savebar-msg">You have unsaved changes</span>
+      <div class="savebar-actions">
+        <button class="btn ghost" id="btn-discard" type="button">Discard</button>
+        <button class="btn primary" id="btn-save" type="button">Save changes</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 class="modal-title" id="modal-title"></h2>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="modal-cancel" type="button">Cancel</button>
+        <button class="btn" id="modal-confirm" type="button">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
+  <input type="file" id="import-file" accept="application/json,.json" hidden />
+
+  <script src="settings.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

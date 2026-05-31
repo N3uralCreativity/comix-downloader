@@ -14,7 +14,24 @@ if (typeof importScripts === 'function' && typeof JSZip === 'undefined') {
   importScripts('lib/jszip.min.js');
 }
 
+// Shared settings module (CDLSettings). Chrome loads it here; Firefox loads it
+// via manifest.background.scripts (jszip, settings, background — in that order).
+if (typeof importScripts === 'function' && typeof CDLSettings === 'undefined') {
+  importScripts('settings.js');
+}
+
 'use strict';
+
+// Read the user's settings fresh for each download operation. The service worker
+// can restart mid-session, so we never cache config across operations (the one
+// exception is the log cap below, used by the very frequent fire-and-forget log).
+async function loadCfg() {
+  if (typeof CDLSettings !== 'undefined') {
+    try { return await CDLSettings.getSettings(); }
+    catch (_) { return CDLSettings.DEFAULTS; }
+  }
+  return {};
+}
 
 // Firefox exposes `browser` in addition to `chrome`; Chrome does not.
 // In Firefox Android, blob: URLs created in a service worker cannot be resolved
@@ -36,12 +53,21 @@ let downloadAllAbortFlag = false;
 /** ZIP en attente de génération — conservé pour permettre un retry uniquement sur l'étape ZIP */
 let _pendingZip = null;
 
+// Fallback defaults (mirror CDLSettings.DEFAULTS). The active values for batch
+// size and ZIP splitting are read from settings per operation; these remain as
+// safety fallbacks. MAX_LOG_ENTRIES is cached and kept in sync via onChange.
 const BATCH_SIZE = 3;
-const MAX_LOG_ENTRIES = 500;
+let MAX_LOG_ENTRIES = 500;
 const ZIP_PART_MAX_CHAPTERS = 5;
 const ZIP_PART_MAX_BYTES = 300 * 1024 * 1024;
 const DOWNLOAD_ALL_LOG_LIMIT = 150;
 const DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS = 2 * 60 * 1000;
+
+// Keep the activity-log cap in sync with user settings (cheap, read often).
+if (typeof CDLSettings !== 'undefined') {
+  CDLSettings.getSettings().then((cfg) => { MAX_LOG_ENTRIES = cfg['logs.maxEntries'] || 500; }).catch(() => {});
+  CDLSettings.onChange((cfg) => { MAX_LOG_ENTRIES = cfg['logs.maxEntries'] || 500; });
+}
 
 let downloadAllSession = null;
 
@@ -303,6 +329,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function handleDownloadRequest(chapterUrl, zipName, originTabId) {
   cdlLog('info', `Download started: ${zipName}`);
+  const cfg = await loadCfg();
   try {
     // Ouvrir un onglet en arrière-plan
     const tab = await chrome.tabs.create({
@@ -311,7 +338,7 @@ async function handleDownloadRequest(chapterUrl, zipName, originTabId) {
       pinned: false,
     });
 
-    pendingDownloads.set(tab.id, { chapterUrl, zipName, originTabId });
+    pendingDownloads.set(tab.id, { chapterUrl, zipName, originTabId, cfg });
   } catch (err) {
     console.error('[ComixDL] Impossible d\'ouvrir l\'onglet:', err);
     cdlLog('error', `Cannot open tab: ${err.message}`);
@@ -329,7 +356,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   if (!pendingDownloads.has(tabId)) return;
   if (changeInfo.status !== 'complete') return;
 
-  const { chapterUrl, zipName, originTabId } = pendingDownloads.get(tabId);
+  const { chapterUrl, zipName, originTabId, cfg } = pendingDownloads.get(tabId);
   pendingDownloads.delete(tabId);
 
   try {
@@ -337,6 +364,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: extractChapterImagesFromPage,
+      args: [{ aggressive: !!(cfg && cfg['advanced.aggressiveRetrieval']) }],
     });
 
     // Fermer l'onglet dès que possible
@@ -349,7 +377,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
 
     cdlLog('info', `Extracted ${images.length} images for ${zipName}`);
     // Lancer le téléchargement + ZIP directement dans le service worker
-    scheduleDownload({ images, chapterUrl, zipName, originTabId });
+    scheduleDownload({ images, chapterUrl, zipName, originTabId, cfg });
   } catch (err) {
     chrome.tabs.remove(tabId).catch(() => {});
     console.error('[ComixDL] Extraction échouée:', err);
@@ -374,7 +402,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // On récupère l'URL de la 1ère image chargée, on en déduit le pattern (base + numérotation),
 // et on reconstruit séquentiellement toutes les URLs.
 
-async function extractChapterImagesFromPage() {
+async function extractChapterImagesFromPage(opts) {
+  opts = opts || {};
+  const aggressive = !!opts.aggressive;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ── STRATÉGIE 1 : __NEXT_DATA__ de Next.js ──────────────────────────────────
@@ -487,12 +517,13 @@ async function extractChapterImagesFromPage() {
   // ── STRATÉGIE 2 : pattern d'URL + énumération séquentielle ──────────────────
 
   // 1. Attendre qu'au moins un img[alt^="Page"] soit dans le DOM
-  let retries = 25;
+  // (aggressive mode shortens the waits — faster but may miss late-loading pages)
+  let retries = aggressive ? 8 : 25;
   while (retries-- > 0) {
     if (document.querySelectorAll('img[alt^="Page"]').length > 0) break;
-    await sleep(400);
+    await sleep(aggressive ? 200 : 400);
   }
-  await sleep(300);
+  await sleep(aggressive ? 150 : 300);
 
   // 2. Scroll léger pour déclencher le chargement de la 1ère image visible
   window.scrollTo(0, 0);
@@ -632,24 +663,23 @@ function processDownloadQueue() {
 
 // ── Téléchargement + création du ZIP ─────────────────────────────────────────
 
-async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId }) {
+async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, cfg }) {
+  cfg = cfg || {};
+  const batchSize = cfg['perf.batchSize'] || BATCH_SIZE;
+  const padDigits = cfg['naming.imagePadDigits'] || 3;
+  const imageRetries = cfg['retry.imageRetries'] || 0;
   const zip = new JSZip();
   const total = images.length;
   let done = 0;
 
-  for (let i = 0; i < images.length; i += BATCH_SIZE) {
-    const batch = images.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < images.length; i += batchSize) {
+    const batch = images.slice(i, i + batchSize);
     await Promise.allSettled(
       batch.map(async ({ src, index }) => {
-        const paddedIndex = String(index).padStart(3, '0');
-        try {
-          const image = await fetchImageForZip(src);
-          zip.file(`${paddedIndex}.${image.ext}`, image.buffer);
-        } catch (err) {
-          // Image introuvable (ex. numéro de page hors limites) → on l'ignore,
-          // pas de fichier vide dans le ZIP.
-          console.warn(`[ComixDL] Image ${index} ignorée:`, err.message);
-        }
+        const paddedIndex = String(index).padStart(padDigits, '0');
+        // Image introuvable (ex. numéro de page hors limites) → on l'ignore,
+        // pas de fichier vide dans le ZIP.
+        await fetchImageIntoZip(zip, paddedIndex, src, cfg, imageRetries);
         done++;
         notifyTab(originTabId, { action: 'downloadProgress', chapterUrl, current: done, total });
       })
@@ -680,11 +710,35 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId })
   notifyTab(originTabId, { action: 'downloadDone', chapterUrl });
 }
 
+// Fetch one image (with optional retries) and add it to the given JSZip
+// container (the zip root or a chapter folder). Returns bytes written, 0 on fail.
+async function fetchImageIntoZip(container, paddedIndex, src, cfg, retries) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= (retries || 0); attempt++) {
+    try {
+      const image = await fetchImageForZip(src, cfg);
+      container.file(`${paddedIndex}.${image.ext}`, image.buffer);
+      return image.buffer.byteLength || 0;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (lastErr) console.warn(`[ComixDL] image ${paddedIndex} skipped:`, lastErr.message);
+  return 0;
+}
+
 // Fetch an image and, when comix.to marks it as scrambled, redraw the CDN
 // tile mosaic back into normal page order before it goes into the ZIP.
-async function fetchImageForZip(src) {
+// Honors user settings: fetch timeout, disable-scramble, and image re-encoding.
+async function fetchImageForZip(src, cfg) {
+  cfg = cfg || {};
+  const timeoutMs = cfg['perf.imageTimeoutMs'] || 30000;
+  const disableScramble = !!cfg['advanced.disableScramble'];
+  const fmt = cfg['advanced.imageFormat'] || 'preserve';
+  const quality = cfg['advanced.jpgQuality'] || 0.85;
+
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(src, {
@@ -699,36 +753,58 @@ async function fetchImageForZip(src) {
 
     const contentType = response.headers.get('content-type') || '';
     const rawExt = getImageExtension(src, contentType);
-    const scramble = getScrambleInfo(response.headers);
+    const scramble = disableScramble ? null : getScrambleInfo(response.headers);
 
     if (!scramble) {
-      return {
-        buffer: await response.arrayBuffer(),
-        ext: rawExt,
-        scrambled: false,
-      };
+      if (fmt === 'preserve') {
+        return { buffer: await response.arrayBuffer(), ext: rawExt, scrambled: false };
+      }
+      // Re-encode every image to a single format (lossy/heavy — opt-in only).
+      const re = await reencodeImageBlob(await response.blob(), fmt, quality);
+      return { buffer: re.buffer, ext: re.ext, scrambled: false };
     }
 
     const blob = await response.blob();
     try {
       const fixed = await unscrambleImageBlob(blob, scramble);
-      return {
-        buffer: fixed.buffer,
-        ext: fixed.ext,
-        scrambled: true,
-      };
+      if (fmt === 'jpg') {
+        const re = await reencodeImageBlob(new Blob([fixed.buffer], { type: 'image/png' }), fmt, quality);
+        return { buffer: re.buffer, ext: re.ext, scrambled: true };
+      }
+      // preserve / png → the unscramble step already outputs PNG
+      return { buffer: fixed.buffer, ext: fixed.ext, scrambled: true };
     } catch (err) {
       cdlLog('warn', `Scrambled page fallback used (${scramble.seed}/${scramble.cols}x${scramble.rows}): ${err.message}`);
       console.warn('[ComixDL] Scrambled image could not be redrawn, keeping raw bytes:', err);
-      return {
-        buffer: await blob.arrayBuffer(),
-        ext: rawExt,
-        scrambled: false,
-        scrambleFailed: true,
-      };
+      if (fmt === 'preserve') {
+        return { buffer: await blob.arrayBuffer(), ext: rawExt, scrambled: false, scrambleFailed: true };
+      }
+      const re = await reencodeImageBlob(blob, fmt, quality);
+      return { buffer: re.buffer, ext: re.ext, scrambled: false, scrambleFailed: true };
     }
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+// Re-encode an image blob to PNG or JPG. Falls back to the original bytes when
+// the platform can't decode here, so opting in never silently drops pages.
+async function reencodeImageBlob(blob, fmt, quality) {
+  if (typeof createImageBitmap !== 'function') {
+    const ext = (blob.type && blob.type.split('/')[1]) || 'webp';
+    return { buffer: await blob.arrayBuffer(), ext };
+  }
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = createZipCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('2D canvas context is unavailable');
+    ctx.drawImage(bitmap, 0, 0);
+    const type = fmt === 'jpg' ? 'image/jpeg' : 'image/png';
+    const out = await canvasToBlob(canvas, type, fmt === 'jpg' ? quality : undefined);
+    return { buffer: await out.arrayBuffer(), ext: fmt === 'jpg' ? 'jpg' : 'png' };
+  } finally {
+    bitmap.close?.();
   }
 }
 
@@ -810,16 +886,16 @@ function createZipCanvas(width, height) {
   throw new Error('canvas is unavailable');
 }
 
-function canvasToBlob(canvas, type) {
+function canvasToBlob(canvas, type, quality) {
   if (typeof canvas.convertToBlob === 'function') {
-    return canvas.convertToBlob({ type });
+    return canvas.convertToBlob(quality != null ? { type, quality } : { type });
   }
   if (typeof canvas.toBlob === 'function') {
     return new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
         if (blob) resolve(blob);
         else reject(new Error('canvas encoding failed'));
-      }, type);
+      }, type, quality);
     });
   }
   throw new Error('canvas blob export is unavailable');
@@ -878,6 +954,24 @@ function getZipPartName(zipName, partNumber) {
   return `${base}-part-${String(partNumber).padStart(2, '0')}.zip`;
 }
 
+// Build the per-chapter folder name inside the ZIP from the user's template.
+// Default 'Ch{num4}{rest}' reproduces the legacy padded "Ch0012" behavior.
+// Falls back to the raw (sanitized) label when there is no Ch<number> prefix.
+function buildChapterFolderName(folderFmt, chapterLabel, mangaName) {
+  const m = String(chapterLabel || '').match(/^Ch([\d.]+)(.*)/i);
+  if (!m) {
+    const safe = (typeof CDLSettings !== 'undefined')
+      ? CDLSettings.sanitizeFilename(chapterLabel, 80)
+      : String(chapterLabel || 'Chapter');
+    return safe || 'Chapter';
+  }
+  if (typeof CDLSettings !== 'undefined') {
+    return CDLSettings.renderName(folderFmt, { num: m[1], rest: m[2], chapter: chapterLabel, manga: mangaName }, 80);
+  }
+  // Legacy fallback if the settings module is somehow unavailable.
+  return `Ch${m[1].padStart(4, '0')}${m[2]}`;
+}
+
 // ── Notification vers un onglet ───────────────────────────────────────────────
 
 function notifyTab(tabId, message) {
@@ -888,7 +982,10 @@ function notifyTab(tabId, message) {
 // ── Extraction Promise-based (pour download-all) ──────────────────────────────
 // Ouvre un onglet, attend le chargement complet, injecte le script d'extraction,
 // retourne les images ou lance une exception.
-async function extractFromTab(url) {
+async function extractFromTab(url, cfg) {
+  cfg = cfg || {};
+  const tabTimeout = cfg['perf.tabLoadTimeoutMs'] || 120000;
+  const aggressive = !!cfg['advanced.aggressiveRetrieval'];
   const tab = await chrome.tabs.create({ url, active: false });
   const tabId = tab.id;
 
@@ -905,7 +1002,7 @@ async function extractFromTab(url) {
     const timer = setTimeout(() => {
       chrome.tabs.remove(tabId).catch(() => {});
       settle(reject, new Error('Timeout chargement onglet'));
-    }, 120_000);
+    }, tabTimeout);
 
     const onUpdated = async (updatedId, changeInfo) => {
       if (updatedId !== tabId || changeInfo.status !== 'complete') return;
@@ -913,6 +1010,7 @@ async function extractFromTab(url) {
         const results = await chrome.scripting.executeScript({
           target: { tabId },
           func:   extractChapterImagesFromPage,
+          args:   [{ aggressive }],
         });
         chrome.tabs.remove(tabId).catch(() => {});
         settle(resolve, results?.[0]?.result || []);
@@ -933,6 +1031,16 @@ async function extractFromTab(url) {
 
 // ── Téléchargement de tous les chapitres ──────────────────────────────────────
 async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabId) {
+  const cfg = await loadCfg();
+  const batchSize = cfg['perf.batchSize'] || BATCH_SIZE;
+  const padDigits = cfg['naming.imagePadDigits'] || 3;
+  const imageRetries = cfg['retry.imageRetries'] || 0;
+  const chapterRetries = cfg['retry.chapterRetries'] || 0;
+  const splitMode = cfg['download.splitMode'] || 'multipart';
+  const maxChapters = splitMode === 'single' ? Infinity : (cfg['download.chaptersPerPart'] || ZIP_PART_MAX_CHAPTERS);
+  const maxBytes = splitMode === 'single' ? Infinity : (cfg['download.mbPerPart'] || 300) * 1024 * 1024;
+  const folderFmt = cfg['naming.chapterFolderFmt'] || 'Ch{num4}{rest}';
+
   startDownloadAllSession({ originTabId, mangaName, zipName, totalChapters: chapters.length });
   cdlLog('info', `Download All started: "${mangaName}" — ${chapters.length} chapters`);
   let zip = new JSZip();
@@ -967,23 +1075,29 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     return true;
   };
 
-  // Rate limiting dynamique entre chapitres
-  let rateDelay = 1500;  // ms
-  const MIN_DELAY = 800, MAX_DELAY = 8000;
+  // Rate limiting entre chapitres (dynamic / fixed / off)
+  const rateMode = cfg['perf.rateLimitMode'] || 'dynamic';
+  let rateDelay = cfg['perf.rateBaseMs'] != null ? cfg['perf.rateBaseMs'] : 1500;  // ms
+  const MIN_DELAY = cfg['perf.rateMinMs'] != null ? cfg['perf.rateMinMs'] : 800;
+  const MAX_DELAY = cfg['perf.rateMaxMs'] || 8000;
 
   for (let i = 0; i < chapters.length; i++) {
     if (downloadAllAbortFlag) { notifyDownloadAllCancelled(originTabId); return; }
 
     const { chapterUrl, chapterLabel } = chapters[i];
-    // Nom de dossier avec numéro paddé pour tri alphabétique correct
-    const folderName = chapterLabel.replace(/^Ch([\d.]+)(.*)/i,
-      (_, n, rest) => `Ch${n.padStart(4, '0')}${rest}`);
+    // Nom de dossier (template) avec numéro paddé pour tri alphabétique correct
+    const folderName = buildChapterFolderName(folderFmt, chapterLabel, mangaName);
 
     notify({ phase: 'extracting', chapterIndex: i + 1, totalChapters: chapters.length,
              chapterLabel, imagesDone: 0, imagesTotal: 0 });
 
     try {
-      const images = await extractFromTab(chapterUrl);
+      let images = null, extractErr = null;
+      for (let attempt = 0; attempt <= chapterRetries; attempt++) {
+        try { images = await extractFromTab(chapterUrl, cfg); extractErr = null; break; }
+        catch (e) { extractErr = e; images = null; }
+      }
+      if (extractErr) throw extractErr;
       if (!images || images.length === 0) {
         cdlLog('warn', `No images found, skipping ${chapterLabel}`);
         notify({ phase: 'skipped', chapterIndex: i + 1, totalChapters: chapters.length,
@@ -995,18 +1109,13 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       const folder = zip.folder(folderName);
       let imgDone = 0;
 
-      for (let j = 0; j < images.length; j += BATCH_SIZE) {
+      for (let j = 0; j < images.length; j += batchSize) {
         if (downloadAllAbortFlag) break;
-        const batch = images.slice(j, j + BATCH_SIZE);
+        const batch = images.slice(j, j + batchSize);
         await Promise.allSettled(batch.map(async ({ src, index }) => {
-          const paddedIndex = String(index).padStart(3, '0');
-          try {
-            const image = await fetchImageForZip(src);
-            folder.file(`${paddedIndex}.${image.ext}`, image.buffer);
-            zipPartBytes += image.buffer.byteLength;
-          } catch (err) {
-            console.warn(`[ComixDL-All] ${chapterLabel} img ${index} ignorée:`, err.message);
-          }
+          const paddedIndex = String(index).padStart(padDigits, '0');
+          const bytes = await fetchImageIntoZip(folder, paddedIndex, src, cfg, imageRetries);
+          zipPartBytes += bytes;
           imgDone++;
           notify({ phase: 'downloading', chapterIndex: i + 1, totalChapters: chapters.length,
                    chapterLabel, imagesDone: imgDone, imagesTotal: images.length });
@@ -1017,24 +1126,24 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
                chapterLabel, imagesDone: imgDone, imagesTotal: images.length });
       cdlLog('ok', `${chapterLabel}: done (${imgDone} images)`);
       zipPartChapters++;
-      rateDelay = Math.max(MIN_DELAY, rateDelay - 100); // succès → légèrement plus rapide
+      if (rateMode === 'dynamic') rateDelay = Math.max(MIN_DELAY, rateDelay - 100); // succès → légèrement plus rapide
 
     } catch (err) {
       console.warn(`[ComixDL-All] Chapitre ${chapterLabel} échoué:`, err.message);
       cdlLog('error', `${chapterLabel} failed: ${err.message}`);
-      rateDelay = Math.min(MAX_DELAY, Math.round(rateDelay * 1.5)); // échec → ralentir
+      if (rateMode === 'dynamic') rateDelay = Math.min(MAX_DELAY, Math.round(rateDelay * 1.5)); // échec → ralentir
       notify({ phase: 'error', chapterIndex: i + 1, totalChapters: chapters.length,
                chapterLabel, imagesDone: 0, imagesTotal: 0 });
     }
 
     if (i < chapters.length - 1 &&
-        (zipPartChapters >= ZIP_PART_MAX_CHAPTERS || zipPartBytes >= ZIP_PART_MAX_BYTES)) {
+        (zipPartChapters >= maxChapters || zipPartBytes >= maxBytes)) {
       const saved = await saveCurrentZipPart(false);
       if (!saved) return;
     }
 
     // Pause entre chapitres (rate limiting)
-    if (i < chapters.length - 1 && !downloadAllAbortFlag) {
+    if (rateMode !== 'off' && i < chapters.length - 1 && !downloadAllAbortFlag) {
       await new Promise(r => setTimeout(r, rateDelay));
     }
   }

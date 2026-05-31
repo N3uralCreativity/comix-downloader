@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Comix Chapter Downloader",
-  "version": "1.1.2",
-  "description": "Ajoute un bouton de téléchargement pour chaque chapitre sur comix.to",
+  "version": "2.0.0",
+  "description": "Adds a download button to every chapter on comix.to, with a full settings page.",
   "permissions": [
     "tabs",
     "downloads",
@@ -27,10 +27,14 @@
   "content_scripts": [
     {
       "matches": ["*://comix.to/title/*"],
-      "js": ["content_title.js"],
+      "js": ["settings.js", "content_title.js"],
       "run_at": "document_idle"
     }
   ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
   "web_accessible_resources": [
     {
       "resources": ["lib/jszip.min.js"],

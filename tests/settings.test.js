@@ -1,0 +1,108 @@
+'use strict';
+/**
+ * Node unit tests for settings.js (run: `node tests/settings.test.js`).
+ * Not shipped in the extension package (build-release.ps1 uses a file allowlist).
+ */
+
+// ── Minimal in-memory chrome.storage.local shim ──────────────────────────────
+const store = {};
+let listeners = [];
+global.chrome = {
+  storage: {
+    local: {
+      get(key) {
+        if (key == null) return Promise.resolve(Object.assign({}, store));
+        if (typeof key === 'string') return Promise.resolve(key in store ? { [key]: store[key] } : {});
+        return Promise.resolve({});
+      },
+      set(obj) {
+        const changes = {};
+        for (const k in obj) { changes[k] = { oldValue: store[k], newValue: obj[k] }; store[k] = obj[k]; }
+        listeners.forEach((l) => l(changes, 'local'));
+        return Promise.resolve();
+      }
+    },
+    onChanged: {
+      addListener(fn) { listeners.push(fn); },
+      removeListener(fn) { listeners = listeners.filter((x) => x !== fn); }
+    }
+  },
+  runtime: {}
+};
+
+const S = require('../settings.js');
+
+let pass = 0, fail = 0;
+function check(name, cond) {
+  if (cond) { pass++; } else { fail++; console.error('FAIL:', name); }
+}
+
+// 1. Defaults
+check('validate({}) deep-equals DEFAULTS', JSON.stringify(S.validate({})) === JSON.stringify(S.DEFAULTS));
+
+// 2. Numeric clamping / rounding
+check('int clamp high', S.validate({ 'perf.batchSize': 999 })['perf.batchSize'] === 8);
+check('int clamp low', S.validate({ 'perf.batchSize': -5 })['perf.batchSize'] === 1);
+check('int round', S.validate({ 'download.chaptersPerPart': 3.7 })['download.chaptersPerPart'] === 4);
+check('float clamp', S.validate({ 'advanced.jpgQuality': 2 })['advanced.jpgQuality'] === 1.0);
+
+// 3. Enums / bools / colors
+check('enum bad -> default', S.validate({ 'perf.rateLimitMode': 'nope' })['perf.rateLimitMode'] === 'dynamic');
+check('enum good', S.validate({ 'perf.rateLimitMode': 'off' })['perf.rateLimitMode'] === 'off');
+check('bool cast', S.validate({ 'appearance.disableAnim': 1 })['appearance.disableAnim'] === true);
+check('color bad -> default', S.validate({ 'appearance.accentColor': 'red' })['appearance.accentColor'] === '#60a5fa');
+check('color good', S.validate({ 'appearance.accentColor': '#abc' })['appearance.accentColor'] === '#abc');
+
+// 4. Merge drops unknown, keeps known
+const merged = S.validate({ 'unknown.key': 5, 'perf.batchSize': 4 });
+check('drops unknown key', !('unknown.key' in merged));
+check('keeps known key', merged['perf.batchSize'] === 4);
+
+// 5. Templates / names
+check('renderTemplate tokens', S.renderTemplate('{manga}-Ch{chapter}', { manga: 'Solo', chapter: '12' }) === 'Solo-Ch12');
+check('renderTemplate unknown literal', S.renderTemplate('{foo}', {}) === '{foo}');
+check('templateContext pads', S.templateContext({ num: 7 }).num4 === '0007');
+check('renderName basic', S.renderName('Ch{num4}', { num: 3 }) === 'Ch0003');
+check('renderName sanitizes', S.renderName('{manga}', { manga: 'a/b:c*?' }) === 'a_b_c__');
+check('renderName maxLen', S.renderName('{manga}', { manga: 'x'.repeat(100) }, 60).length === 60);
+check('string maxLen', S.validate({ 'appearance.allLabel': 'y'.repeat(100) })['appearance.allLabel'].length === 40);
+
+// 6. Async API + onChange broadcast + export/import
+(async () => {
+  let changes = 0;
+  const off = S.onChange(() => { changes++; });
+
+  await S.saveSettings({ 'perf.batchSize': 6 });
+  let got = await S.getSettings();
+  check('save/get roundtrip', got['perf.batchSize'] === 6);
+
+  await S.patchSettings({ 'frame.width': 420 });
+  got = await S.getSettings();
+  check('patch preserves other keys', got['perf.batchSize'] === 6 && got['frame.width'] === 420);
+
+  await S.resetDefaults();
+  got = await S.getSettings();
+  check('resetDefaults', got['perf.batchSize'] === 3 && got['frame.width'] === 380);
+  check('onChange fired', changes >= 3);
+  off();
+
+  await S.saveSettings({ 'naming.imagePadDigits': 4, 'download.splitMode': 'single' });
+  const json = await S.exportJSON();
+  await S.resetDefaults();
+  await S.importJSON(json);
+  got = await S.getSettings();
+  check('export/import roundtrip', got['naming.imagePadDigits'] === 4 && got['download.splitMode'] === 'single');
+
+  let rejected = false;
+  try { await S.importJSON('not json'); } catch (e) { rejected = true; }
+  check('import rejects bad json', rejected);
+
+  // Schema/tab integrity
+  const allTabKeys = S.TABS.reduce((a, t) => a.concat(t.keys), []);
+  check('every DEFAULT has a SCHEMA entry', Object.keys(S.DEFAULTS).every((k) => S.SCHEMA[k]));
+  check('every DEFAULT appears in a TAB', Object.keys(S.DEFAULTS).every((k) => allTabKeys.indexOf(k) !== -1));
+  check('no stray TAB keys', allTabKeys.every((k) => S.DEFAULTS[k] !== undefined));
+
+  console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
+  process.exit(fail === 0 ? 0 : 1);
+})();
