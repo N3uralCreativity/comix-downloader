@@ -91,13 +91,12 @@ function applyDynamicStyles() {
     .${DOWNLOAD_BTN_CLASS} svg { width:${svgS}px; height:${svgS}px; }
     .${DOWNLOAD_BTN_CLASS}[data-state="loading"] { width:${loadW}px; min-width:${loadW}px; color:${accent}; }
     .${PROGRESS_SPAN_CLASS} { color:${accent}; }
-    .cdl-ap-bar { background:${accent}; }
-    .cdl-ap-log-item.active { color:${accent}; }
+    #cdl-all-popup { --cdl-accent:${accent}; }
     .${DOWNLOAD_BTN_CLASS}.cdl-has-text { width:auto; min-width:0; gap:6px; padding:0 9px; }
     .${DOWNLOAD_BTN_CLASS}.cdl-has-text[data-state="loading"] { width:auto; min-width:0; }
     .cdl-btn-text { font-size:${fontS}px; font-weight:600; }
     #cdl-all-popup { width:${W}px; ${vy} ${vx} }
-    ${noAnim ? `.${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg{animation:none!important;} .${DOWNLOAD_BTN_CLASS},.cdl-ap-bar,.cdl-ap-close{transition:none!important;}` : ''}
+    ${noAnim ? `.${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg{animation:none!important;} #cdl-all-popup{animation:none!important;} .${DOWNLOAD_BTN_CLASS},.cdl-ap-bar,.cdl-ap-close{transition:none!important;}` : ''}
   `;
   document.head.appendChild(style);
 }
@@ -212,29 +211,71 @@ function injectStyles() {
     }
     /* ── Popup progression Download All ──────────────────────────────────── */
     #cdl-all-popup {
+      /* Palette flips with the host site via [data-cdl-theme]; dark is default. */
+      --cdl-bg: #13151f;
+      --cdl-header-bg: rgba(255,255,255,0.025);
+      --cdl-text: #d6dae8;
+      --cdl-text-strong: #eef1f8;
+      --cdl-muted: #8088a4;
+      --cdl-faint: #5a6280;
+      --cdl-border: rgba(255,255,255,0.10);
+      --cdl-border-soft: rgba(255,255,255,0.06);
+      --cdl-track: rgba(255,255,255,0.09);
+      --cdl-log-bg: rgba(255,255,255,0.03);
+      --cdl-hover: rgba(255,255,255,0.08);
+      --cdl-shadow: 0 12px 34px rgba(0,0,0,0.42), 0 2px 8px rgba(0,0,0,0.30);
+      --cdl-accent: #60a5fa;
+      --cdl-ok: #4ade80;   --cdl-ok-bg: rgba(74,222,128,0.12);  --cdl-ok-bgh: rgba(74,222,128,0.20);  --cdl-ok-border: rgba(74,222,128,0.28);
+      --cdl-warn: #fbbf24; --cdl-warn-bg: rgba(251,191,36,0.12); --cdl-warn-bgh: rgba(251,191,36,0.20); --cdl-warn-border: rgba(251,191,36,0.30);
+      --cdl-err: #f87171;  --cdl-err-bg: rgba(239,68,68,0.12);   --cdl-err-bgh: rgba(239,68,68,0.20);   --cdl-err-border: rgba(239,68,68,0.28);
+      --cdl-skip: #5a6280;
+
       position: fixed;
       bottom: 24px;
       right: 24px;
       width: 380px;
-      background: #13151f;
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 16px;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04);
+      background: var(--cdl-bg);
+      border: 1px solid var(--cdl-border);
+      border-radius: 14px;
+      box-shadow: var(--cdl-shadow);
       z-index: 2147483647;
       font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
       font-size: 13px;
-      color: #c8cde0;
+      color: var(--cdl-text);
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      animation: cdl-ap-in .22s cubic-bezier(.16,.84,.44,1) both;
+    }
+    #cdl-all-popup[data-cdl-theme="light"] {
+      --cdl-bg: #ffffff;
+      --cdl-header-bg: #f7f8fb;
+      --cdl-text: #2b3146;
+      --cdl-text-strong: #14171f;
+      --cdl-muted: #6b7180;
+      --cdl-faint: #98a0b2;
+      --cdl-border: rgba(17,20,32,0.12);
+      --cdl-border-soft: rgba(17,20,32,0.08);
+      --cdl-track: rgba(17,20,32,0.09);
+      --cdl-log-bg: #f5f6f9;
+      --cdl-hover: rgba(17,20,32,0.05);
+      --cdl-shadow: 0 14px 36px rgba(24,28,45,0.16), 0 2px 8px rgba(24,28,45,0.08);
+      --cdl-ok: #16a34a;   --cdl-ok-bg: rgba(22,163,74,0.09);  --cdl-ok-bgh: rgba(22,163,74,0.16);  --cdl-ok-border: rgba(22,163,74,0.24);
+      --cdl-warn: #b45309; --cdl-warn-bg: rgba(180,83,9,0.09); --cdl-warn-bgh: rgba(180,83,9,0.16); --cdl-warn-border: rgba(180,83,9,0.24);
+      --cdl-err: #dc2626;  --cdl-err-bg: rgba(220,38,38,0.08); --cdl-err-bgh: rgba(220,38,38,0.15); --cdl-err-border: rgba(220,38,38,0.22);
+      --cdl-skip: #98a0b2;
+    }
+    @keyframes cdl-ap-in {
+      from { opacity: 0; transform: translateY(10px) scale(.98); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
     }
     .cdl-ap-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 13px 16px 11px;
-      background: rgba(255,255,255,0.03);
-      border-bottom: 1px solid rgba(255,255,255,0.07);
+      padding: 12px 15px;
+      background: var(--cdl-header-bg);
+      border-bottom: 1px solid var(--cdl-border-soft);
       gap: 10px;
     }
     .cdl-ap-title {
@@ -242,24 +283,25 @@ function injectStyles() {
       align-items: center;
       gap: 8px;
       font-weight: 600;
-      font-size: 14px;
-      color: #e8ecf0;
+      font-size: 13.5px;
+      color: var(--cdl-text-strong);
     }
+    .cdl-ap-title svg { width: 16px; height: 16px; color: var(--cdl-accent); }
     .cdl-ap-close {
       background: none;
       border: none;
       cursor: pointer;
-      color: #555;
+      color: var(--cdl-faint);
       font-size: 18px;
       line-height: 1;
-      padding: 2px 7px;
-      border-radius: 4px;
+      padding: 2px 8px;
+      border-radius: 6px;
       transition: color .15s,background .15s;
       flex-shrink: 0;
     }
-    .cdl-ap-close:hover { color: #e0e0e0; background: rgba(255,255,255,0.08); }
+    .cdl-ap-close:hover { color: var(--cdl-text-strong); background: var(--cdl-hover); }
     .cdl-ap-body {
-      padding: 14px 16px;
+      padding: 14px 15px;
       display: flex;
       flex-direction: column;
       gap: 9px;
@@ -267,7 +309,7 @@ function injectStyles() {
     .cdl-ap-manga-name {
       font-weight: 600;
       font-size: 12px;
-      color: #5a6280;
+      color: var(--cdl-muted);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -275,90 +317,87 @@ function injectStyles() {
     .cdl-ap-status-chapter {
       font-size: 13px;
       font-weight: 500;
-      color: #c0c8e0;
+      color: var(--cdl-text);
       min-height: 18px;
     }
+    .cdl-ap-status-chapter.error { color: var(--cdl-err); }
     .cdl-ap-status-line {
       font-size: 12px;
-      color: #7a82a0;
+      color: var(--cdl-muted);
       min-height: 16px;
     }
     .cdl-ap-bar-wrap {
       height: 6px;
-      background: rgba(255,255,255,0.08);
-      border-radius: 3px;
+      background: var(--cdl-track);
+      border-radius: 4px;
       overflow: hidden;
     }
     .cdl-ap-bar {
       height: 100%;
-      background: linear-gradient(90deg,#3b82f6,#60a5fa);
-      border-radius: 3px;
+      width: 0;
+      background: var(--cdl-accent);
+      border-radius: 4px;
       transition: width .5s ease;
     }
     .cdl-ap-counter {
       font-size: 11px;
-      color: #4a5270;
+      color: var(--cdl-faint);
       text-align: right;
+      font-variant-numeric: tabular-nums;
     }
     .cdl-ap-log {
       overflow-y: auto;
       max-height: 150px;
       min-height: 56px;
-      background: rgba(0,0,0,0.25);
-      border-radius: 8px;
+      background: var(--cdl-log-bg);
+      border: 1px solid var(--cdl-border-soft);
+      border-radius: 9px;
       padding: 8px 10px;
       display: flex;
       flex-direction: column;
       gap: 2px;
       scrollbar-width: thin;
-      scrollbar-color: #2c3050 transparent;
+      scrollbar-color: var(--cdl-faint) transparent;
     }
-    .cdl-ap-log-item { font-size: 11px; padding: 1px 0; color: #4a5270; }
-    .cdl-ap-log-item.done    { color: #4ade80; }
-    .cdl-ap-log-item.active  { color: #60a5fa; }
-    .cdl-ap-log-item.error   { color: #f87171; }
-    .cdl-ap-log-item.skipped { color: #3a4060; }
+    .cdl-ap-log-item { font-size: 11px; padding: 1px 0; color: var(--cdl-muted); font-variant-numeric: tabular-nums; }
+    .cdl-ap-log-item.done    { color: var(--cdl-ok); }
+    .cdl-ap-log-item.active  { color: var(--cdl-accent); }
+    .cdl-ap-log-item.error   { color: var(--cdl-err); }
+    .cdl-ap-log-item.skipped { color: var(--cdl-skip); }
     .cdl-ap-footer {
-      padding: 10px 16px 14px;
-      border-top: 1px solid rgba(255,255,255,0.07);
+      padding: 11px 15px 13px;
+      border-top: 1px solid var(--cdl-border-soft);
       display: flex;
       justify-content: flex-end;
       gap: 8px;
     }
-    .cdl-ap-cancel-btn {
-      background: rgba(239,68,68,0.12);
-      border: 1px solid rgba(239,68,68,0.25);
-      color: #f87171;
+    .cdl-ap-cancel-btn, .cdl-ap-done-btn, .cdl-ap-retry-btn {
       border-radius: 8px;
       padding: 6px 18px;
       font-size: 12px;
+      font-weight: 600;
       cursor: pointer;
-      transition: background .15s;
+      transition: background .15s, border-color .15s;
     }
-    .cdl-ap-cancel-btn:hover:not(:disabled) { background: rgba(239,68,68,0.22); }
+    .cdl-ap-cancel-btn {
+      background: var(--cdl-err-bg);
+      border: 1px solid var(--cdl-err-border);
+      color: var(--cdl-err);
+    }
+    .cdl-ap-cancel-btn:hover:not(:disabled) { background: var(--cdl-err-bgh); border-color: var(--cdl-err); }
     .cdl-ap-cancel-btn:disabled { opacity: .4; cursor: default; }
     .cdl-ap-done-btn {
-      background: rgba(74,222,128,0.12);
-      border: 1px solid rgba(74,222,128,0.25);
-      color: #4ade80;
-      border-radius: 8px;
-      padding: 6px 18px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: background .15s;
+      background: var(--cdl-ok-bg);
+      border: 1px solid var(--cdl-ok-border);
+      color: var(--cdl-ok);
     }
-    .cdl-ap-done-btn:hover { background: rgba(74,222,128,0.22); }
+    .cdl-ap-done-btn:hover { background: var(--cdl-ok-bgh); border-color: var(--cdl-ok); }
     .cdl-ap-retry-btn {
-      background: rgba(251,191,36,0.10);
-      border: 1px solid rgba(251,191,36,0.28);
-      color: #fbbf24;
-      border-radius: 8px;
-      padding: 6px 18px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: background .15s;
+      background: var(--cdl-warn-bg);
+      border: 1px solid var(--cdl-warn-border);
+      color: var(--cdl-warn);
     }
-    .cdl-ap-retry-btn:hover { background: rgba(251,191,36,0.22); }
+    .cdl-ap-retry-btn:hover { background: var(--cdl-warn-bgh); border-color: var(--cdl-warn); }
   `;
   document.head.appendChild(style);
 }
@@ -992,12 +1031,76 @@ function injectDownloadAllButton() {
 
 // ── Popup Download All ────────────────────────────────────────────────────────
 
+// ── Theme sync : keep the popup's palette aligned with the host site ──────────
+// comix.to (like most sites) flips between light/dark by swapping the page
+// background and/or a class on <html>. We sample that at runtime so the popup
+// matches, and re-check whenever the site toggles its theme.
+let _cdlThemeWatching = false;
+
+function _cdlRelLuminance(r, g, b) {
+  const a = [r, g, b].map((v) => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+}
+
+// Returns 'dark' | 'light'. The page's actual background is the source of truth
+// (it's what the popup sits on); class/attribute hints and the OS preference are
+// fallbacks for when the background is transparent.
+function _cdlDetectSiteTheme() {
+  for (const el of [document.body, document.documentElement]) {
+    if (!el) continue;
+    const m = (getComputedStyle(el).backgroundColor || '').match(/rgba?\(([^)]+)\)/i);
+    if (!m) continue;
+    const p = m[1].split(',').map((s) => parseFloat(s));
+    if (p.length >= 4 && p[3] === 0) continue; // transparent → keep looking
+    if (p.length >= 3) return _cdlRelLuminance(p[0], p[1], p[2]) < 0.5 ? 'dark' : 'light';
+  }
+  const de = document.documentElement;
+  const hint = (
+    (de.getAttribute('data-theme') || de.getAttribute('data-color-mode') ||
+     de.getAttribute('data-bs-theme') || de.className || '') + ' ' +
+    ((document.body && document.body.className) || '')
+  ).toLowerCase();
+  if (/\bdark\b/.test(hint)) return 'dark';
+  if (/\blight\b/.test(hint)) return 'light';
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  } catch (_) { return 'dark'; }
+}
+
+function _cdlApplyPopupTheme() {
+  const popup = document.getElementById('cdl-all-popup');
+  if (popup) popup.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
+}
+
+// Re-sync on site theme toggles (class/attr/style swaps on <html>/<body>) and on
+// OS-level scheme changes. Installed once; it's a no-op while no popup exists.
+function _cdlEnsureThemeWatcher() {
+  if (_cdlThemeWatching) return;
+  _cdlThemeWatching = true;
+  try {
+    const mo = new MutationObserver(() => _cdlApplyPopupTheme());
+    const opts = { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-color-mode', 'data-bs-theme', 'data-mode'] };
+    mo.observe(document.documentElement, opts);
+    if (document.body) mo.observe(document.body, opts);
+  } catch (_) {}
+  try {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => _cdlApplyPopupTheme();
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  } catch (_) {}
+}
+
 function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
   const allowFullRetry = options.allowFullRetry !== false;
   document.getElementById('cdl-all-popup')?.remove();
 
   const popup = document.createElement('div');
   popup.id = 'cdl-all-popup';
+  popup.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
   popup.innerHTML = `
     <div class="cdl-ap-header">
       <div class="cdl-ap-title">${ICON_DOWNLOAD}&nbsp;Downloading All Chapters</div>
@@ -1015,6 +1118,8 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
       <button class="cdl-ap-cancel-btn" id="cdl-ap-cancel-btn">Cancel</button>
     </div>`;
   document.body.appendChild(popup);
+  _cdlEnsureThemeWatcher();
+  requestAnimationFrame(_cdlApplyPopupTheme);
 
   // Bouton −  : réduire/agrandir le corps du popup
   popup.querySelector('.cdl-ap-close').addEventListener('click', () => {
@@ -1076,7 +1181,7 @@ function updateDownloadAllPopupDone(zipName) {
   const s = document.getElementById('cdl-ap-chapter-status');
   if (s) {
     s.textContent = 'Download complete!';
-    s.style.color = '';
+    s.classList.remove('error');
   }
   const i = document.getElementById('cdl-ap-img-status');
   if (i) i.textContent = `Saved as: ${zipName || 'manga.zip'}`;
@@ -1090,7 +1195,7 @@ function updateDownloadAllPopupCancelled() {
   const s = document.getElementById('cdl-ap-chapter-status');
   if (s) {
     s.textContent = 'Download cancelled.';
-    s.style.color = '';
+    s.classList.remove('error');
   }
   _dlAllSetFooterClose(popup);
   maybeAutoHideFrame(popup);
@@ -1200,7 +1305,7 @@ function updateDownloadAllPopupError(errMsg, options = {}) {
   if (!popup) return;
   clearTimeout(popup._cdlRetryTimer);
   const s = document.getElementById('cdl-ap-chapter-status');
-  if (s) { s.textContent = `Error: ${errMsg}`; s.style.color = '#f87171'; }
+  if (s) { s.textContent = `Error: ${errMsg}`; s.classList.add('error'); }
 
   const footer = popup.querySelector('.cdl-ap-footer');
   if (!footer) return;
@@ -1216,7 +1321,7 @@ function updateDownloadAllPopupError(errMsg, options = {}) {
       const status = document.getElementById('cdl-ap-chapter-status');
       if (status) {
         status.textContent = 'Building ZIP file...';
-        status.style.color = '';
+        status.classList.remove('error');
       }
       try {
         chrome.runtime.sendMessage({ action: 'retryZip' }, () => {
