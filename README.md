@@ -4,7 +4,7 @@
 
 ### Download your mangas from [comix.to](https://comix.to) 
 
-[![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-brightgreen?logo=googlechrome&logoColor=white)](https://github.com/N3uralCreativity/comix-downloader)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp)
 [![Firefox Add-on](https://img.shields.io/badge/Firefox-Add--on-FF7139?logo=firefox-browser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -82,6 +82,10 @@ Mihon will fetch new versions automatically whenever a new release is published 
 
 If you specifically want the in-page buttons that the desktop extension provides, the WebExtension works as-is on Android via **[Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser)**:
 
+**Easiest:** open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp) in Kiwi and tap **Add to Chrome** — Kiwi installs Chrome Web Store extensions directly.
+
+Or load it unpacked:
+
 1. Install [Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser) from the Play Store.
 2. On your phone, download this repo ZIP and extract it.
 3. Open Kiwi → go to `chrome://extensions`.
@@ -101,12 +105,26 @@ If you specifically want the in-page buttons that the desktop extension provides
 
 [![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
 
-### Chrome (unpacked)
+### Chrome
+
+[![Get the Extension](https://img.shields.io/badge/Chrome-Get%20the%20Extension-4285F4?logo=googlechrome&logoColor=white&style=for-the-badge)](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp)
+
+The extension is on the **Chrome Web Store** — one click to install.
+
+1. Open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp).
+2. Click **Add to Chrome** and confirm the permissions prompt.
+3. Head to any [comix.to](https://comix.to) title page — buttons appear automatically.
+
+<details>
+<summary>Or install manually (unpacked / developer mode)</summary>
+
 1. [Download this repo](https://github.com/N3uralCreativity/comix-downloader/archive/refs/heads/master.zip) and unzip it
 2. Open Chrome → go to `chrome://extensions`
 3. Toggle **Developer mode** on (top-right)
 4. Click **Load unpacked** → select the unzipped folder
 5. Head to any [comix.to](https://comix.to) title page — buttons appear automatically
+
+</details>
 
 ---
 
