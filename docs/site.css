@@ -245,7 +245,36 @@ code {
   color: var(--accent-deep);
 }
 
+/* ── hamburger button ───────────────────────────────── */
+.nav-burger {
+  display: none;
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  transition: background .15s;
+}
+.nav-burger:hover { background: var(--surface-2); }
+.nav-burger svg { width: 22px; height: 22px; display: block; }
+
 @media (max-width: 720px) {
-  .nav-links a { padding: 7px 9px; }
+  .nav-burger { display: block; }
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 62px;
+    left: 0; right: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    flex-direction: column;
+    padding: 12px 20px;
+    gap: 4px;
+    box-shadow: var(--shadow-md);
+  }
+  .nav-links.open { display: flex; }
+  .nav-links a { padding: 12px 14px; width: 100%; border-radius: var(--radius-sm); }
   .container { padding: 0 20px; }
 }
