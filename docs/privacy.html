@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy &amp; Legal Notice — Comix Downloader</title>
+<meta name="description" content="Privacy Policy and Legal Notice for the Comix Downloader browser extension. The extension collects no personal data and stores everything locally on your device.">
+<link rel="icon" href="assets/icon128.png">
+<link rel="stylesheet" href="site.css">
+<style>
+  /* ── Privacy / legal page ── */
+  .legal-hero { padding: 54px 0 6px; }
+  .legal-hero .eyebrow { display: inline-block; margin-bottom: 18px; }
+  .legal-hero h1 { font-size: clamp(32px, 4.2vw, 48px); line-height: 1.04; letter-spacing: -0.03em; font-weight: 800; }
+  .legal-hero .updated { margin-top: 16px; font: 500 12.5px/1 var(--mono); color: var(--muted); }
+  .legal-hero .lede { margin-top: 18px; font-size: 17px; color: var(--ink-soft); max-width: 64ch; }
+
+  .summary {
+    display: flex; gap: 14px; margin: 30px 0 6px;
+    padding: 20px 22px; border-radius: var(--radius);
+    background: var(--accent-wash); border: 1px solid var(--accent-line);
+  }
+  .summary .ico { flex-shrink: 0; width: 22px; height: 22px; color: var(--accent-deep); margin-top: 1px; }
+  .summary strong { color: var(--accent-deep); }
+  .summary p { color: var(--ink-soft); font-size: 14.5px; }
+  .summary p + p { margin-top: 7px; }
+
+  .layout { display: grid; grid-template-columns: 248px 1fr; gap: 50px; align-items: start; padding: 28px 0 0; }
+
+  .toc { position: sticky; top: 84px; }
+  .toc .kicker { display: block; margin-bottom: 12px; }
+  .toc ol { list-style: none; display: grid; gap: 4px; counter-reset: toc; }
+  .toc a {
+    display: block; color: var(--ink-soft); font-size: 13.5px; line-height: 1.35;
+    padding: 6px 10px; border-radius: 6px; border-left: 2px solid transparent;
+    transition: background .14s, color .14s, border-color .14s;
+  }
+  .toc a:hover { background: var(--surface-2); color: var(--ink); }
+  .toc a::before { counter-increment: toc; content: counter(toc) ". "; color: var(--faint); font: 600 12px var(--mono); }
+
+  .legal-body section { padding: 28px 0; border-top: 1px solid var(--line); scroll-margin-top: 80px; }
+  .legal-body section:first-child { border-top: none; padding-top: 6px; }
+  .legal-body h2 { font-size: 21px; font-weight: 750; letter-spacing: -0.02em; line-height: 1.2; display: flex; align-items: baseline; gap: 11px; }
+  .legal-body h2 .num { color: var(--accent); font: 700 15px/1 var(--mono); flex-shrink: 0; }
+  .legal-body h3 { font-size: 15.5px; font-weight: 700; color: var(--ink); margin-top: 22px; }
+  .legal-body p { color: var(--ink-soft); font-size: 15px; margin-top: 11px; }
+  .legal-body ul { margin: 13px 0 0; padding: 0; list-style: none; display: grid; gap: 9px; }
+  .legal-body ul li { display: flex; gap: 11px; align-items: flex-start; color: var(--ink-soft); font-size: 15px; }
+  .legal-body ul li::before { content: ""; flex-shrink: 0; width: 6px; height: 6px; margin-top: 9px; border-radius: 50%; background: var(--accent); }
+  .legal-body a { font-weight: 600; }
+
+  .dl { margin-top: 14px; display: grid; gap: 2px; }
+  .dl > div { padding: 13px 0; border-bottom: 1px dashed var(--line); display: grid; grid-template-columns: 200px 1fr; gap: 18px; }
+  .dl > div:last-child { border-bottom: none; }
+  .dl dt { font-weight: 700; color: var(--ink); font-size: 14px; }
+  .dl dt code { font-size: 12px; }
+  .dl dd { color: var(--ink-soft); font-size: 14.5px; }
+
+  .ph { background: var(--accent-wash); border: 1px dashed var(--accent-line); color: var(--accent-deep); padding: 1px 7px; border-radius: 5px; font: 600 0.85em var(--mono); }
+
+  .legal-note {
+    margin-top: 16px; padding: 16px 18px; border-radius: var(--radius);
+    background: var(--surface-2); border: 1px solid var(--line);
+    font-size: 13.5px; color: var(--ink-soft);
+  }
+  .legal-note strong { color: var(--ink); }
+  .uc { text-transform: uppercase; letter-spacing: 0.01em; font-size: 12.5px; line-height: 1.7; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; gap: 8px; }
+    .toc { position: static; margin: 8px 0 4px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+    .toc ol { grid-template-columns: 1fr 1fr; }
+    .dl > div { grid-template-columns: 1fr; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <img src="assets/icon128.png" alt="">
+      Comix Downloader
+      <span class="ver">v2.0.0</span>
+    </a>
+    <nav class="nav-links">
+      <a href="privacy.html" class="active">Privacy</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="legal-hero">
+    <span class="eyebrow">Legal</span>
+    <h1>Privacy Policy &amp; Legal Notice</h1>
+    <div class="updated">Last updated: 31 May 2026 · Effective: 31 May 2026</div>
+    <p class="lede">This document explains how the Comix Downloader browser extension handles information, the browser permissions it uses, and the legal terms that apply to its use. Please read it carefully.</p>
+
+    <div class="summary">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      <div>
+        <p><strong>In short:</strong> Comix Downloader does not collect, transmit, sell, or share any personal information. It has no servers, no analytics, and no tracking. Everything it does happens locally inside your own browser, and the only data it stores (your settings and an activity log) stays on your device and never leaves it.</p>
+        <p><strong>Also important:</strong> The extension is a general-purpose tool. You are solely responsible for using it lawfully and in accordance with the terms of any website you access. See the Legal Disclaimer and Acceptable Use sections below.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="layout">
+
+    <!-- Table of contents -->
+    <aside class="toc">
+      <span class="kicker">Contents</span>
+      <ol>
+        <li><a href="#scope">Who we are &amp; scope</a></li>
+        <li><a href="#definitions">Definitions</a></li>
+        <li><a href="#data">Information the extension handles</a></li>
+        <li><a href="#permissions">Browser permissions &amp; why</a></li>
+        <li><a href="#not-collected">What we do not collect or do</a></li>
+        <li><a href="#third-party">comix.to &amp; third parties</a></li>
+        <li><a href="#storage">Storage, retention &amp; your control</a></li>
+        <li><a href="#sharing">Data sharing &amp; disclosure</a></li>
+        <li><a href="#security">Security</a></li>
+        <li><a href="#children">Children's privacy</a></li>
+        <li><a href="#gdpr">International users &amp; GDPR</a></li>
+        <li><a href="#ccpa">California privacy rights</a></li>
+        <li><a href="#stores">Browser-store disclosures</a></li>
+        <li><a href="#cookies">Cookies &amp; tracking</a></li>
+        <li><a href="#disclaimer">Legal disclaimer &amp; liability</a></li>
+        <li><a href="#acceptable-use">Acceptable use &amp; copyright</a></li>
+        <li><a href="#dmca">Copyright / DMCA complaints</a></li>
+        <li><a href="#license">Open-source license</a></li>
+        <li><a href="#changes">Changes to this policy</a></li>
+        <li><a href="#law">Governing law</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ol>
+    </aside>
+
+    <!-- Body -->
+    <div class="legal-body">
+
+      <section id="scope">
+        <h2><span class="num">01</span> Who we are &amp; scope</h2>
+        <p>“Comix Downloader” (the “<strong>Extension</strong>”) is a free, open-source browser extension published by <strong>N3uralCreativity</strong> (the “<strong>Developer</strong>”, “we”, “us”). It adds download controls to title pages on the third-party website comix.to so that you can save comic chapters to your own device.</p>
+        <p>This Privacy Policy &amp; Legal Notice (the “<strong>Policy</strong>”) applies to the Extension as distributed through the Chrome Web Store, the Mozilla Firefox Add-ons site (AMO), the project's GitHub repository, and any other channel where we publish it. It does <strong>not</strong> apply to comix.to or to any other website, service, or software you may use alongside the Extension.</p>
+        <p>By installing or using the Extension, you acknowledge that you have read and understood this Policy.</p>
+      </section>
+
+      <section id="definitions">
+        <h2><span class="num">02</span> Definitions</h2>
+        <dl class="dl">
+          <div><dt>Personal data</dt><dd>Any information relating to an identified or identifiable natural person (e.g. name, email, IP address, account identifiers).</dd></div>
+          <div><dt>Local storage</dt><dd>Storage provided by your browser (the <code>storage.local</code> area) that resides only on your device and is not synchronized to us.</dd></div>
+          <div><dt>Process</dt><dd>To read, transform, or act upon data in your browser's memory at the moment of a download — without retaining or transmitting it.</dd></div>
+          <div><dt>Third-party site</dt><dd>Any website not operated by the Developer, including comix.to and its content-delivery networks (CDNs).</dd></div>
+        </dl>
+      </section>
+
+      <section id="data">
+        <h2><span class="num">03</span> Information the extension handles</h2>
+        <p>The Extension is designed to function with the least information possible. There are two categories:</p>
+
+        <h3>a) Data stored locally on your device</h3>
+        <p>Stored in your browser's private <code>storage.local</code> area. It is never sent anywhere and is readable only by the Extension on your machine:</p>
+        <ul>
+          <li><strong>Your settings</strong> (<code>cdlSettings</code>) — your chosen preferences (download behavior, naming, appearance, etc.). These contain no personal data.</li>
+          <li><strong>Activity log</strong> (<code>cdlLogs</code>) — a short, rolling, technical log of recent download events (e.g. “ZIP saved”, “chapter failed”) shown in the popup to help you and us diagnose issues. It contains no personal data and is capped to a small number of entries.</li>
+        </ul>
+
+        <h3>b) Data processed transiently (not stored)</h3>
+        <p>While you actively trigger a download, the Extension reads the following in your browser's memory and then discards it once the download completes:</p>
+        <ul>
+          <li>The web address (URL) and on-page data of the comix.to chapter you ask it to download, in order to locate the page images.</li>
+          <li>The image files themselves, which are fetched from comix.to's CDNs and assembled into a ZIP archive entirely within your browser.</li>
+        </ul>
+        <p>This transient data is handed to your browser's own download manager to save the resulting file. The Developer never receives any of it.</p>
+      </section>
+
+      <section id="permissions">
+        <h2><span class="num">04</span> Browser permissions &amp; why</h2>
+        <p>The Extension requests the minimum permissions required to do its job. Each is used only for the purpose described:</p>
+        <dl class="dl">
+          <div><dt><code>storage</code></dt><dd>To save your settings and the activity log locally on your device.</dd></div>
+          <div><dt><code>downloads</code></dt><dd>To save the ZIP archive it builds to your computer using the browser's normal download mechanism.</dd></div>
+          <div><dt><code>scripting</code></dt><dd>To read the list of page images from a chapter page so the correct files can be downloaded.</dd></div>
+          <div><dt><code>tabs</code></dt><dd>To briefly open background tabs that load each chapter (so their images can be extracted) and to send progress updates to the page you started from. These tabs are closed automatically.</dd></div>
+          <div><dt>Host access<br><span style="font-weight:400;color:var(--muted)">comix.to &amp; its image CDNs</span></dt><dd>To fetch chapter pages and image files. The Extension runs only on comix.to title pages and only contacts comix.to and the image hosts it uses.</dd></div>
+        </dl>
+        <p>The Extension does not request access to your browsing history, bookmarks, cookies, microphone, camera, location, or any site other than comix.to and its image hosts.</p>
+      </section>
+
+      <section id="not-collected">
+        <h2><span class="num">05</span> What we do not collect or do</h2>
+        <ul>
+          <li>We do <strong>not</strong> collect, store, or transmit any personal data.</li>
+          <li>We do <strong>not</strong> operate any server that receives data from the Extension; there is no backend.</li>
+          <li>We use <strong>no</strong> analytics, telemetry, crash reporting, advertising, fingerprinting, or tracking of any kind.</li>
+          <li>We do <strong>not</strong> create user accounts or profiles, and we do not require sign-in.</li>
+          <li>We do <strong>not</strong> sell, rent, share, or monetize any information. There is nothing to sell.</li>
+          <li>We do <strong>not</strong> read pages other than comix.to title pages, and we do not modify the content you download.</li>
+        </ul>
+      </section>
+
+      <section id="third-party">
+        <h2><span class="num">06</span> comix.to &amp; third parties</h2>
+        <p>The Extension interacts with the third-party website <strong>comix.to</strong> and its content-delivery networks in order to fetch the pages and images you ask it to download. The Developer does not own, operate, or control comix.to, and is not affiliated with, endorsed by, or sponsored by it.</p>
+        <p>Your use of comix.to is governed by comix.to's own terms of service and privacy policy, not by this Policy. Any data that comix.to or your network provider may collect about your visits (for example, server logs or your IP address when your browser requests a page or image) is outside the Developer's control and responsibility. We encourage you to review the policies of any third-party site you use.</p>
+      </section>
+
+      <section id="storage">
+        <h2><span class="num">07</span> Storage, retention &amp; your control</h2>
+        <p>All data the Extension keeps is stored locally and remains under your control:</p>
+        <ul>
+          <li><strong>Settings</strong> persist until you change them, reset them to defaults, or remove the Extension.</li>
+          <li><strong>Activity log</strong> is a small rolling buffer; older entries are dropped automatically, and you can clear it at any time from the popup.</li>
+          <li><strong>Reset:</strong> the settings page includes a “Reset to defaults” action (with confirmation) that restores all preferences.</li>
+          <li><strong>Removal:</strong> uninstalling the Extension deletes all of its locally stored data from your browser.</li>
+        </ul>
+        <p>Because nothing is ever transmitted to us, there is no server-side copy of any of your information to request, export, or delete.</p>
+      </section>
+
+      <section id="sharing">
+        <h2><span class="num">08</span> Data sharing &amp; disclosure</h2>
+        <p>We do not share data with anyone, because we do not collect or receive any. The only “transfer” that occurs is the ZIP file the Extension hands to your browser's download manager to save on your own device, at your request.</p>
+        <p>We have no data that could be disclosed in response to a legal request, sold in a corporate transaction, or exposed in a breach of our systems, because we hold none.</p>
+      </section>
+
+      <section id="security">
+        <h2><span class="num">09</span> Security</h2>
+        <p>Because the Extension stores data only in your browser's local storage and transmits nothing externally, the principal safeguard for that data is the security of your own device and browser profile. The Extension's source code is publicly available for inspection on GitHub. Network requests to fetch comic images are made over the connections provided by comix.to and its image hosts.</p>
+        <p>No method of electronic storage or transmission is ever completely secure, and we cannot guarantee absolute security.</p>
+      </section>
+
+      <section id="children">
+        <h2><span class="num">10</span> Children's privacy</h2>
+        <p>The Extension is a utility intended for a general audience and is not directed to children. It does not knowingly collect any information from anyone, including children under the age of 13 (or the equivalent minimum age in your jurisdiction). Because the Extension collects no personal data at all, it cannot knowingly collect personal data from children.</p>
+        <p>Note that the comic content available on comix.to is published by a third party and may include material that is not appropriate for minors. Supervision of access to such third-party content is the responsibility of a parent or guardian.</p>
+      </section>
+
+      <section id="gdpr">
+        <h2><span class="num">11</span> International users &amp; GDPR / UK GDPR</h2>
+        <p>The Extension can be used worldwide. Because it performs all processing locally on your device and does not transmit any personal data to the Developer, the Developer does not act as a “data controller” or “data processor” of your personal data within the meaning of the EU General Data Protection Regulation (GDPR), the UK GDPR, or similar laws — there is no personal data processing by us to which those obligations attach.</p>
+        <p>For transparency, the data-subject rights such laws provide (access, rectification, erasure, restriction, portability, and objection) would, in practice, be satisfied entirely by the local controls described in Section 7 (changing settings, clearing the log, or uninstalling), since you alone hold any data the Extension uses. If you believe you have a privacy concern, you may contact us using the details in Section 21.</p>
+      </section>
+
+      <section id="ccpa">
+        <h2><span class="num">12</span> California privacy rights (CCPA / CPRA)</h2>
+        <p>We do not collect “personal information” as defined by the California Consumer Privacy Act (CCPA), as amended by the CPRA. We have not sold or shared personal information in the preceding twelve months, and we do not do so now. Consequently, there is no California consumer information for us to disclose, delete, correct, or opt you out of selling. California residents are nonetheless welcome to contact us with any questions.</p>
+      </section>
+
+      <section id="stores">
+        <h2><span class="num">13</span> Browser-store disclosures</h2>
+        <h3>Google Chrome Web Store — Limited Use</h3>
+        <p>The Extension's use of information obtained through it complies with the Chrome Web Store User Data Policy, including the Limited Use requirements. The Extension does not collect or transmit user data; it does not use or transfer data for advertising, creditworthiness, or any purpose unrelated to its single function of letting you download comic chapters.</p>
+        <h3>Mozilla Add-ons (AMO)</h3>
+        <p>Consistent with the data-collection declaration in the Extension's Firefox package, the Extension collects <strong>no</strong> user data. All settings and logs remain in local browser storage on your device.</p>
+      </section>
+
+      <section id="cookies">
+        <h2><span class="num">14</span> Cookies &amp; tracking technologies</h2>
+        <p>The Extension does not set cookies, does not use web beacons or pixels, and does not employ any tracking or fingerprinting technology. The local browser storage it uses for your settings and log is not a cookie and is not used to track you across sites or sessions.</p>
+      </section>
+
+      <section id="disclaimer">
+        <h2><span class="num">15</span> Legal disclaimer &amp; limitation of liability</h2>
+        <p class="legal-note"><strong>This document is provided for transparency and does not constitute legal advice.</strong> It is not a substitute for advice from a qualified lawyer regarding your specific circumstances.</p>
+        <p class="uc">The extension is provided “as is” and “as available”, without warranty of any kind, whether express, implied, or statutory, including but not limited to the implied warranties of merchantability, fitness for a particular purpose, title, and non-infringement. The developer does not warrant that the extension will be uninterrupted, error-free, secure, or compatible with any particular website (including comix.to, whose structure may change at any time and break the extension).</p>
+        <p class="uc">To the maximum extent permitted by applicable law, in no event shall the developer be liable for any direct, indirect, incidental, special, consequential, exemplary, or punitive damages, or for any loss of data, profits, or goodwill, arising out of or relating to your use of, or inability to use, the extension — even if advised of the possibility of such damages. Your sole and exclusive remedy is to stop using and uninstall the extension.</p>
+        <p>Some jurisdictions do not allow the exclusion of certain warranties or the limitation of certain liabilities; in those jurisdictions, the above exclusions and limitations apply to the fullest extent permitted by law and nothing in this Policy limits any rights you have that cannot lawfully be limited.</p>
+      </section>
+
+      <section id="acceptable-use">
+        <h2><span class="num">16</span> Acceptable use &amp; copyright responsibility</h2>
+        <p>The Extension is a neutral, general-purpose tool that automates actions you could otherwise perform manually in your browser. It does not host, store, upload, distribute, or supply any comic, manga, manhwa, image, or other content; it operates entirely on your device and only accesses content that you direct it to and that your browser is already able to reach.</p>
+        <p>You agree that you are <strong>solely responsible</strong> for your use of the Extension, including ensuring that it is lawful where you live and that it complies with the terms of service of comix.to and of any other site you access. In particular:</p>
+        <ul>
+          <li>Comics, manga, and similar works are typically protected by copyright. Downloading or retaining copies you are not authorized to make may be unlawful in your jurisdiction.</li>
+          <li>You should only download content that you are legally entitled to download — for example, content that is in the public domain, that is offered for download by the rights holder, or that you have the necessary rights or permission to copy.</li>
+          <li>The Developer does not encourage, induce, or condone copyright infringement or any other unlawful use of the Extension, and provides it for lawful personal use only.</li>
+        </ul>
+        <p>If you do not agree to take this responsibility, do not use the Extension.</p>
+      </section>
+
+      <section id="dmca">
+        <h2><span class="num">17</span> Copyright / DMCA complaints</h2>
+        <p>The Extension does not host or distribute any content, so there is no content hosted by the Developer to remove. If comic content is accessible to you, it is served by comix.to or another third party; copyright complaints about that content should be directed to the operator of the site that hosts it.</p>
+        <p>If you are a rights holder and believe the Extension's <em>source code</em> or its <em>listing text</em> itself infringes your rights, please contact us using the details in Section 21 with: (a) identification of the work; (b) the material you object to; (c) your contact information; and (d) a statement of your good-faith belief and authority to act. We will review and respond in good faith.</p>
+      </section>
+
+      <section id="license">
+        <h2><span class="num">18</span> Open-source license</h2>
+        <p>The Extension is free and open-source software released under the <strong>MIT License</strong>. The full license text is included with the source code in the project's GitHub repository. The MIT License governs your rights to use, copy, modify, and redistribute the Extension's <em>code</em>; it does not grant any rights in third-party comic content.</p>
+      </section>
+
+      <section id="changes">
+        <h2><span class="num">19</span> Changes to this policy</h2>
+        <p>We may update this Policy from time to time — for example, to reflect new features or legal requirements. When we do, we will revise the “Last updated” date at the top of this page and publish the new version here. Material changes may also be noted in the project's release notes. Your continued use of the Extension after an update takes effect constitutes acceptance of the revised Policy.</p>
+      </section>
+
+      <section id="law">
+        <h2><span class="num">20</span> Governing law</h2>
+        <p>This Policy and any dispute arising out of or relating to it or the Extension are governed by the laws of <span class="ph">FRANCE</span>, without regard to its conflict-of-laws rules, and subject to any mandatory consumer-protection rights you have in your place of residence.</p>
+      </section>
+
+      <section id="contact">
+        <h2><span class="num">21</span> Contact</h2>
+        <p>Questions, privacy concerns, or legal notices regarding the Extension can be sent to:</p>
+        <ul>
+          <li><strong>GitHub:</strong> <a href="https://github.com/N3uralCreativity/comix-downloader/issues" target="_blank" rel="noopener">github.com/N3uralCreativity/comix-downloader/issues</a> (preferred for general questions)</li>
+          <li><strong>Developer:</strong> N3uralCreativity</li>
+        </ul>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span class="brand" style="font-weight:700;"><img src="assets/icon128.png" alt="" style="width:20px;height:20px;border-radius:5px;">Comix Downloader</span>
+    <span class="sep">·</span>
+    <span>MIT © N3uralCreativity</span>
+    <div class="right">
+      <a href="privacy.html">Privacy</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
