@@ -73,6 +73,7 @@ img { display: block; max-width: 100%; }
   margin: 0 auto;
   padding: 0 28px;
   height: 62px;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -81,6 +82,7 @@ img { display: block; max-width: 100%; }
   display: flex;
   align-items: center;
   gap: 11px;
+  min-width: 0;
   font-weight: 700;
   color: var(--ink);
   letter-spacing: -0.01em;
@@ -249,32 +251,57 @@ code {
 .nav-burger {
   display: none;
   margin-left: auto;
-  background: none;
-  border: none;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
   cursor: pointer;
   padding: 8px;
   border-radius: var(--radius-sm);
   color: var(--ink);
-  transition: background .15s;
+  box-shadow: var(--shadow-sm);
+  transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
 }
-.nav-burger:hover { background: var(--surface-2); }
+.nav-burger:hover {
+  background: var(--surface-2);
+  border-color: var(--accent-line);
+}
+.nav-burger[aria-expanded="true"] {
+  background: var(--accent-wash);
+  border-color: var(--accent-line);
+  color: var(--accent-deep);
+}
 .nav-burger svg { width: 22px; height: 22px; display: block; }
 
 @media (max-width: 720px) {
+  .nav-inner {
+    gap: 10px;
+    padding: 0 20px;
+  }
+  .brand {
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .brand .ver { margin-left: auto; }
   .nav-burger { display: block; }
   .nav-links {
     display: none;
     position: absolute;
-    top: 62px;
-    left: 0; right: 0;
+    top: calc(100% + 1px);
+    left: 20px;
+    right: 20px;
     background: var(--surface);
-    border-bottom: 1px solid var(--line);
+    border: 1px solid var(--line);
+    border-radius: 0 0 var(--radius) var(--radius);
     flex-direction: column;
-    padding: 12px 20px;
+    padding: 12px;
     gap: 4px;
     box-shadow: var(--shadow-md);
   }
   .nav-links.open { display: flex; }
   .nav-links a { padding: 12px 14px; width: 100%; border-radius: var(--radius-sm); }
   .container { padding: 0 20px; }
+}
+
+@media (max-width: 420px) {
+  .brand .ver { display: none; }
 }
