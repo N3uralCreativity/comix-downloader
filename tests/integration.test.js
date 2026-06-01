@@ -38,6 +38,11 @@ const ctKeys = refsIn(read('content_title.js'), 'CFG');
 check('content_title.js reads a meaningful number of settings', ctKeys.length >= 9);
 ctKeys.forEach((k) => check('content_title.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
 
+// 2b. content_features.js (content script) feature-flag keys
+const cfKeys = refsIn(read('content_features.js'), 'cfg');
+check('content_features.js reads the feature flags', cfKeys.length >= 3);
+cfKeys.forEach((k) => check('content_features.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
+
 // 3. options.js dependency + preview maps must reference real keys
 const opt = read('options.js');
 function blockKeys(src, marker) {
@@ -69,7 +74,7 @@ check('default chapter folder keeps decimal suffix',
 // 5. manifest wiring sanity
 const mf = JSON.parse(read('manifest.json'));
 check('manifest version is 2.x', /^2\./.test(mf.version));
-check('settings.js loads before content_title.js', JSON.stringify(mf.content_scripts[0].js) === JSON.stringify(['settings.js', 'content_title.js']));
+check('content_scripts load in dependency order', JSON.stringify(mf.content_scripts[0].js) === JSON.stringify(['settings.js', 'cdl-features-core.js', 'content_title.js', 'content_features.js']));
 check('options_ui opens in a tab', mf.options_ui && mf.options_ui.page === 'options.html' && mf.options_ui.open_in_tab === true);
 
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`);

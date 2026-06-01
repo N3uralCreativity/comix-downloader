@@ -69,7 +69,12 @@
     'advanced.aggressiveRetrieval': false,
 
     // Logs
-    'logs.maxEntries': 500                 // MAX_LOG_ENTRIES
+    'logs.maxEntries': 500,                // MAX_LOG_ENTRIES
+
+    // Additional Features (comix.to site enhancements — all OFF by default)
+    'features.dedupeChapters': false,      // hide duplicate chapters in the title list
+    'features.enforceChapterOrder': false, // force ascending numeric order in the list
+    'features.fixReaderNav': false         // accurate reader next/prev w/ source switching
   };
 
   // ── SCHEMA (type, bounds, risk, label, help) ─────────────────────────────────
@@ -161,7 +166,15 @@
       warn: 'Speeds up extraction but may occasionally grab the wrong images or extra pages.' },
 
     'logs.maxEntries': { type: 'int', min: 50, max: 2000, risk: 'none',
-      label: 'Activity log size', help: 'How many log entries to keep.' }
+      label: 'Activity log size', help: 'How many log entries to keep.' },
+
+    'features.dedupeChapters': { type: 'bool', risk: 'none',
+      label: 'Hide duplicate chapters', help: 'On a title page, show only one row per chapter number (the same chapter from other sources is hidden). Affects only what you see — your downloads are unchanged.' },
+    'features.enforceChapterOrder': { type: 'bool', risk: 'none',
+      label: 'Force numeric chapter order', help: 'Reorder the title-page chapter list strictly by chapter number when the site renders it out of order.' },
+    'features.fixReaderNav': { type: 'bool', risk: 'glitchy',
+      label: 'Accurate next/prev in reader', help: 'Make the reader’s next / previous go to the true neighbouring chapter number, switching source if the current one skips it.',
+      warn: 'Overrides the site’s built-in next / previous buttons and arrow keys in the reader. Turn it off to restore the native behaviour.' }
   };
 
   // ── Tab grouping for the options UI ──────────────────────────────────────────
@@ -178,6 +191,8 @@
       keys: ['appearance.btnStyle', 'appearance.accentMode', 'appearance.accentColor', 'appearance.btnScale', 'appearance.disableAnim', 'appearance.allLabel', 'appearance.allowFloating', 'frame.position', 'frame.width', 'frame.autoHideSec'] },
     { id: 'advanced', label: 'Advanced', icon: 'warn',
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
+    { id: 'features', label: 'Additional Features', icon: 'sparkles',
+      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav'] },
     { id: 'about', label: 'About & Backup', icon: 'info',
       keys: ['logs.maxEntries'] }
   ];

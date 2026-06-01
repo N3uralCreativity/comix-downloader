@@ -88,6 +88,13 @@ async function init() {
   const { cdlLogs = [] } = await chrome.storage.local.get('cdlLogs');
   renderLogs(cdlLogs);
 
+  // "New Additional Features page" indicator (cleared once the user views that tab).
+  try {
+    const { cdlFeaturesNotice } = await chrome.storage.local.get('cdlFeaturesNotice');
+    const pill = document.getElementById('settings-new');
+    if (pill && cdlFeaturesNotice && cdlFeaturesNotice.active) pill.hidden = false;
+  } catch (_) {}
+
   // Clear logs
   document.getElementById('btn-clear').addEventListener('click', async () => {
     await chrome.storage.local.set({ cdlLogs: [] });

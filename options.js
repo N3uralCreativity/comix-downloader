@@ -13,6 +13,11 @@
   var draft = {};     // staged edits
   var controls = {};  // key -> { setValue, setEnabled, row }
 
+  // Separate storage key (NOT in cdlSettings — validate() would drop it). Tracks the
+  // one-time "there's a new Additional Features page" notice set by background.js on update.
+  var NOTICE_KEY = 'cdlFeaturesNotice';
+  var noticeActive = false;
+
   // ── Tiny DOM helpers ──────────────────────────────────────────────────────
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -40,7 +45,8 @@
     tag: '<path d="M20.6 13.4L11 3.8A2 2 0 0 0 9.6 3H4a1 1 0 0 0-1 1v5.6a2 2 0 0 0 .6 1.4l9.6 9.6a2 2 0 0 0 2.8 0l4.6-4.6a2 2 0 0 0 0-2.6z"/><circle cx="7.5" cy="7.5" r="1.2"/>',
     brush: '<path d="M3 21c3 0 5-2 5-5 0-1.5-1-2.5-2.5-2.5S3 14.5 3 16"/><path d="M14 3l7 7-9 9"/>',
     warn: '<path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/>',
-    info: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12" y2="8"/>'
+    info: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12" y2="8"/>',
+    sparkles: '<path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M18.5 13.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>'
   };
   function icon(name) {
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || ICONS.info) + '</svg>';
@@ -54,6 +60,7 @@
     naming: 'File and folder names inside the ZIPs.',
     appearance: 'Customize the on-page download buttons and the progress panel.',
     advanced: 'Powerful options that can break downloads or hurt quality. Read each warning.',
+    features: 'Extra tweaks that make comix.to nicer to use — not about downloading. All off by default, so turn on what you like.',
     about: 'Back up your configuration, and information about the extension.'
   };
 
@@ -252,6 +259,7 @@
     document.querySelectorAll('.nav-item').forEach(function (n) { n.classList.toggle('active', n.getAttribute('data-tab') === id); });
     document.querySelectorAll('.panel').forEach(function (p) { p.classList.toggle('active', p.getAttribute('data-tab') === id); });
     document.getElementById('content').scrollTo ? window.scrollTo(0, 0) : null;
+    if (id === 'features') clearFeaturesNotice();
   }
 
   // ── Draft / sync ──────────────────────────────────────────────────────────
@@ -424,6 +432,45 @@
     setTimeout(function () { t.remove(); }, 2600);
   }
 
+  // ── "New Additional Features page" one-time notice ────────────────────────
+  function readFeaturesNotice() {
+    try {
+      chrome.storage.local.get(NOTICE_KEY, function (res) {
+        var n = res && res[NOTICE_KEY];
+        if (n && n.active) { noticeActive = true; showFeaturesNotice(); }
+      });
+    } catch (e) {}
+  }
+
+  function showFeaturesNotice() {
+    var nav = document.querySelector('.nav-item[data-tab="features"]');
+    if (nav) nav.classList.add('has-badge');
+    var panel = document.querySelector('.panel[data-tab="features"]');
+    if (panel && !panel.querySelector('.features-banner')) {
+      var banner = el('div', { class: 'features-banner', html: icon('sparkles') +
+        '<span><strong>New page.</strong> These comix.to enhancements were just added — all off by default. Turn on what you like.</span>' });
+      var head = panel.querySelector('.panel-head');
+      if (head) head.insertAdjacentElement('afterend', banner);
+      else panel.insertBefore(banner, panel.firstChild);
+    }
+  }
+
+  function clearFeaturesNotice() {
+    if (!noticeActive) return;
+    noticeActive = false;
+    var nav = document.querySelector('.nav-item[data-tab="features"]');
+    if (nav) nav.classList.remove('has-badge');
+    var banner = document.querySelector('.features-banner');
+    if (banner) banner.remove();
+    try {
+      var payload = {};
+      payload[NOTICE_KEY] = { active: false, seenVersion: chrome.runtime.getManifest().version };
+      chrome.storage.local.set(payload);
+    } catch (e) {}
+    // chrome.action is callable from extension pages in MV3; clear the toolbar badge too.
+    try { if (chrome.action && chrome.action.setBadgeText) chrome.action.setBadgeText({ text: '' }); } catch (e) {}
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
   function init() {
     if (!S) { document.getElementById('content').textContent = 'Settings module failed to load.'; return; }
@@ -431,6 +478,7 @@
     document.getElementById('ver').textContent = 'v' + m.version;
 
     buildUI();
+    readFeaturesNotice();
 
     document.getElementById('btn-save').addEventListener('click', onSave);
     document.getElementById('btn-discard').addEventListener('click', onDiscard);
