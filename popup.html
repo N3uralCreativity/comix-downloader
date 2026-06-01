@@ -53,6 +53,8 @@
     .btn-primary:hover { background: #7cb5fb; }
     .btn-ghost { background: rgba(255,255,255,0.05); border-color: var(--line-2); color: var(--fg); }
     .btn-ghost:hover { background: rgba(255,255,255,0.1); }
+    .pill-new { font-size: 9px; font-weight: 800; letter-spacing: .04em; color: #07101f; background: #fff; padding: 1px 5px; border-radius: 4px; }
+    .pill-new[hidden] { display: none; }
 
     /* ── Logs ── */
     .logs-header { display: flex; align-items: center; justify-content: space-between; padding: 11px 16px 7px; }
@@ -97,7 +99,7 @@
       <div class="header-title">Comix Downloader</div>
       <div class="header-sub">comix.to chapter downloader</div>
     </div>
-    <span class="header-version" id="ext-version">v2.0.0</span>
+    <span class="header-version" id="ext-version">v2.0.2</span>
   </div>
 
   <div class="btn-row">
@@ -107,6 +109,7 @@
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
       Settings
+      <span class="pill-new" id="settings-new" hidden>NEW</span>
     </button>
     <a class="btn btn-ghost" id="btn-github" href="#" target="_blank" rel="noopener">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">

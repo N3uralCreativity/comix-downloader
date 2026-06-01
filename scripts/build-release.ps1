@@ -1,7 +1,11 @@
 [CmdletBinding()]
 param(
   [string]$OutputDir = "dist/release",
-  [string]$Suffix = ""
+  [string]$Suffix = "",
+  # When supplied (by the release workflow, derived from the tag) this OVERRIDES the
+  # committed manifest version so both browser packages and the zip filenames always
+  # match the release. Empty = fall back to the committed manifest.json version.
+  [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +35,8 @@ function Copy-ReleaseFiles([string]$Destination) {
   $runtimePaths = @(
     "background.js",
     "content_title.js",
+    "cdl-features-core.js",
+    "content_features.js",
     "manifest.json",
     "offscreen.html",
     "offscreen.js",
@@ -77,11 +83,17 @@ function New-Zip([string]$SourceDir, [string]$ZipPath) {
 
 $manifestPath = Join-Path $Root "manifest.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$version = $manifest.version
+
+# Release tag is the source of truth: -Version (from the workflow) wins over the committed
+# manifest so a stale committed version can never mislabel the artifacts again.
+if ($Version) { $version = $Version } else { $version = $manifest.version }
 
 if (-not ($version -match '^\d+(\.\d+){1,3}$')) {
-  throw "manifest.json version must be Firefox-compatible numeric dotted format. Found: $version"
+  throw "Version must be Firefox-compatible numeric dotted format. Found: $version"
 }
+
+# Stamp the effective version onto the in-memory manifest so every staged copy inherits it.
+$manifest.version = $version
 
 $outputFull = Reset-Directory $OutputDir
 $stagingFull = Reset-Directory "dist/package-work"
@@ -92,6 +104,9 @@ New-Item -ItemType Directory -Path $chromeDir, $firefoxDir -Force | Out-Null
 
 Copy-ReleaseFiles $chromeDir
 Copy-ReleaseFiles $firefoxDir
+
+# Chrome: overwrite the verbatim-copied manifest with the version-stamped one.
+Write-JsonFile $manifest (Join-Path $chromeDir "manifest.json")
 
 $firefoxManifest = $manifest | ConvertTo-Json -Depth 20 | ConvertFrom-Json
 $firefoxManifest.background = [ordered]@{

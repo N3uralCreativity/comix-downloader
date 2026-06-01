@@ -71,6 +71,29 @@ if (typeof CDLSettings !== 'undefined') {
 
 let downloadAllSession = null;
 
+// ── "New Additional Features page" notice ─────────────────────────────────────
+// On install/update, flag the new Additional Features settings page and badge the
+// toolbar icon so existing users notice it. The options page clears both the flag and
+// the badge once the user opens that tab (see options.js clearFeaturesNotice).
+const FEATURES_NOTICE_VERSION = '2.0.2';
+
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason !== 'install' && details.reason !== 'update') return;
+  chrome.storage.local.get('cdlFeaturesNotice').then((res) => {
+    const prev = res && res.cdlFeaturesNotice;
+    if (prev && prev.seenVersion === FEATURES_NOTICE_VERSION) return; // already acknowledged
+    chrome.storage.local.set({
+      cdlFeaturesNotice: { active: true, seenVersion: (prev && prev.seenVersion) || null }
+    });
+    try {
+      if (chrome.action && chrome.action.setBadgeText) {
+        chrome.action.setBadgeText({ text: 'NEW' });
+        if (chrome.action.setBadgeBackgroundColor) chrome.action.setBadgeBackgroundColor({ color: '#60a5fa' });
+      }
+    } catch (_) {}
+  }).catch(() => {});
+});
+
 // ── Système de logs persistants ──────────────────────────────────────────────
 // Stocke les entrées dans chrome.storage.local (clé 'cdlLogs').
 // Fire-and-forget : aucun await requis côté appelant.

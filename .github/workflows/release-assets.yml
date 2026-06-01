@@ -23,8 +23,11 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          $suffix = if ($env:RELEASE_TAG -match '-([A-Za-z][A-Za-z0-9]*)$') { "_$($matches[1])" } else { "" }
-          ./scripts/build-release.ps1 -Suffix $suffix
+          $tag = $env:RELEASE_TAG
+          $suffix = if ($tag -match '-([A-Za-z][A-Za-z0-9]*)$') { "_$($matches[1])" } else { "" }
+          # The tag is the source of truth — stamp it into both manifests + filenames.
+          $version = ($tag -replace '^v', '') -replace '-[A-Za-z].*$', ''
+          ./scripts/build-release.ps1 -Version $version -Suffix $suffix
 
       - name: Upload ZIPs to release
         shell: pwsh
@@ -94,7 +97,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          version="$(node -p "require('./manifest.json').version")"
+          version="$(echo "$RELEASE_TAG" | sed -E 's/^v//; s/-[A-Za-z].*$//')"
           suffix=""
           if [[ "$RELEASE_TAG" =~ -([A-Za-z][A-Za-z0-9]*)$ ]]; then
             suffix="_${BASH_REMATCH[1]}"
@@ -155,7 +158,7 @@ jobs:
       - name: Pick the unsuffixed APK
         id: pickapk
         run: |
-          version="$(node -p "require('./manifest.json').version")"
+          version="$(echo "$RELEASE_TAG" | sed -E 's/^v//; s/-[A-Za-z].*$//')"
           file="downloaded/comix-mihon-v${version}.apk"
           if [ ! -f "$file" ]; then
             file="$(ls downloaded/comix-mihon-v*.apk 2>/dev/null | head -n 1 || true)"
@@ -195,3 +198,41 @@ jobs:
           git add .
           git commit -q -m "Publish Comix Mihon repo for $RELEASE_TAG"
           git push -f origin repo
+
+  sync-version:
+    name: Sync committed version + docs site
+    runs-on: ubuntu-latest
+    # Only full releases (no prerelease suffix) update the committed repo + Pages site.
+    if: ${{ !contains(github.event.release.tag_name, '-') }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: master
+
+      - name: Stamp manifest + docs to the release version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          $version = ($env:RELEASE_TAG -replace '^v', '') -replace '-[A-Za-z].*$', ''
+          ./scripts/bump-version.ps1 -Version $version
+
+      - name: Commit and push if anything changed
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="$(echo "$RELEASE_TAG" | sed -E 's/^v//; s/-[A-Za-z].*$//')"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Already at v${version} — nothing to sync."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: sync version to v${version} [skip ci]"
+          git push origin HEAD:master
