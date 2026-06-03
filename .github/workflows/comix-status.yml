@@ -1,0 +1,39 @@
+name: Statut comix.to
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # toutes les 10 min (best-effort, cf. note)
+  workflow_dispatch:          # bouton "Run workflow" manuel
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping comix.to
+        id: ping
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+                 -A "Mozilla/5.0 (compatible; comix-status-bot)" \
+                 --max-time 20 https://comix.to || echo "000")
+          echo "HTTP $code"
+          # 2xx/3xx = OK. 403/503 = Cloudflare répond → site joignable.
+          if [[ "$code" =~ ^(2|3)[0-9][0-9]$ || "$code" == "403" || "$code" == "503" ]]; then
+            echo "message=en ligne"   >> "$GITHUB_OUTPUT"
+            echo "color=brightgreen"  >> "$GITHUB_OUTPUT"
+          else
+            echo "message=hors ligne" >> "$GITHUB_OUTPUT"
+            echo "color=red"          >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mise à jour du badge
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: d7df8d80e3e844114aa9b90c700e2b84
+          filename: comix-status.json
+          label: comix.to
+          message: ${{ steps.ping.outputs.message }}
+          color: ${{ steps.ping.outputs.color }}
