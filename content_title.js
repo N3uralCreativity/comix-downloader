@@ -39,6 +39,15 @@ const ICON_ERROR = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="1
 // ── User settings (loaded async; v1.1.2 defaults until then) ────────────────────
 let CFG = (typeof CDLSettings !== 'undefined') ? Object.assign({}, CDLSettings.DEFAULTS) : {};
 
+// Replace a node's children from a trusted HTML string without touching innerHTML.
+// All callers pass internal icon constants + escapeHtml()'d text. Parsing with
+// DOMParser('text/html') never executes scripts and isn't an innerHTML/outerHTML
+// sink, so addons-linter / CWS review stay clean.
+function _setHTML(node, html) {
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  node.replaceChildren(...parsed.body.childNodes);
+}
+
 function getAccent() {
   const c = CFG['appearance.accentColor'];
   return (CFG['appearance.accentMode'] === 'custom' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c || '')) ? c : '#60a5fa';
@@ -76,6 +85,9 @@ function applyDynamicStyles() {
   const prev = document.getElementById('cdl-dyn-styles');
   if (prev) prev.remove();
   const accent = getAccent();
+  // Only a custom accent recolors the idle buttons; auto mode keeps the neutral
+  // look that blends with the host site (default behaviour unchanged).
+  const isCustom = CFG['appearance.accentMode'] === 'custom';
   const scale = _clampScale(CFG['appearance.btnScale']);
   const noAnim = !!CFG['appearance.disableAnim'];
   const W = _clampInt(CFG['frame.width'], 300, 560, 380);
@@ -96,6 +108,11 @@ function applyDynamicStyles() {
     .${DOWNLOAD_BTN_CLASS}.cdl-has-text[data-state="loading"] { width:auto; min-width:0; }
     .cdl-btn-text { font-size:${fontS}px; font-weight:600; }
     #cdl-all-popup { width:${W}px; ${vy} ${vx} }
+    ${isCustom ? `
+    .${DOWNLOAD_BTN_CLASS}[data-state="idle"] { color:${accent}; }
+    .${DOWNLOAD_BTN_CLASS}[data-state="idle"]:hover { color:${accent}; filter:brightness(1.25); }
+    .cdl-dl-all-btn, .cdl-dl-all-btn svg { color:${accent}!important; }
+    ` : ''}
     ${noAnim ? `.${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg{animation:none!important;} #cdl-all-popup{animation:none!important;} .${DOWNLOAD_BTN_CLASS},.cdl-ap-bar,.cdl-ap-close{transition:none!important;}` : ''}
   `;
   document.head.appendChild(style);
@@ -105,10 +122,10 @@ function applyDynamicStyles() {
 function onSettingsChanged() {
   applyDynamicStyles();
   const all = document.querySelector('.cdl-dl-all-btn');
-  if (all && !all.disabled) all.innerHTML = `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`;
+  if (all && !all.disabled) _setHTML(all, `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`);
   document.querySelectorAll(`.${DOWNLOAD_BTN_CLASS}`).forEach((b) => {
     const st = b.getAttribute('data-state');
-    if (!st || st === 'idle') { b.innerHTML = getIdleContent(); applyBtnTextClass(b); }
+    if (!st || st === 'idle') { _setHTML(b, getIdleContent()); applyBtnTextClass(b); }
   });
 }
 
@@ -480,7 +497,7 @@ function injectButtonForRow(bookmarkBtn) {
   btn.title = `Download ${chapterLabel}`;
   btn.setAttribute('data-state', 'idle');
   btn.setAttribute('data-chapter-url', chapterUrl);
-  btn.innerHTML = getIdleContent();
+  _setHTML(btn, getIdleContent());
   applyBtnTextClass(btn);
 
   btn.addEventListener('click', (e) => {
@@ -529,14 +546,14 @@ function setButtonState(btn, state, extra) {
   const progressSpan = btn.querySelector(`.${PROGRESS_SPAN_CLASS}`);
 
   if (state === 'loading') {
-    btn.innerHTML = getSpinnerSVG() + `<span class="${PROGRESS_SPAN_CLASS}">${extra || ''}</span>`;
+    _setHTML(btn, getSpinnerSVG() + `<span class="${PROGRESS_SPAN_CLASS}">${escapeHtml(extra || '')}</span>`);
   } else if (state === 'done') {
-    btn.innerHTML = ICON_DONE;
+    _setHTML(btn, ICON_DONE);
     btn.title = 'Downloaded!';
     // Revenir à l'icône download après 2.5s
     setTimeout(() => {
       if (btn.getAttribute('data-state') === 'done') {
-        btn.innerHTML = getIdleContent();
+        _setHTML(btn, getIdleContent());
         applyBtnTextClass(btn);
         btn.setAttribute('data-state', 'idle');
         btn.title = 'Download';
@@ -544,12 +561,12 @@ function setButtonState(btn, state, extra) {
       }
     }, 2500);
   } else if (state === 'error') {
-    btn.innerHTML = ICON_ERROR;
+    _setHTML(btn, ICON_ERROR);
     btn.title = extra || 'Download error';
     btn.style.pointerEvents = '';
   } else {
     // idle
-    btn.innerHTML = getIdleContent();
+    _setHTML(btn, getIdleContent());
     applyBtnTextClass(btn);
   }
 }
@@ -993,7 +1010,7 @@ function injectDownloadAllButton() {
   if (mode === 'floating') btn.classList.add('cdl-floating');
   btn.type = 'button';
   btn.title = 'Download all chapters as a ZIP';
-  btn.innerHTML = `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`;
+  _setHTML(btn, `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`);
 
   btn.addEventListener('click', async (e) => {
     e.preventDefault();
@@ -1003,7 +1020,7 @@ function injectDownloadAllButton() {
 
     // Indicateur de chargement pendant la collecte des chapitres
     btn.disabled = true;
-    btn.innerHTML = `${ICON_DOWNLOAD} Loading chapters…`;
+    _setHTML(btn, `${ICON_DOWNLOAD} Loading chapters…`);
 
     let chapters;
     try {
@@ -1012,7 +1029,7 @@ function injectDownloadAllButton() {
       chapters = [];
     } finally {
       btn.disabled = false;
-      btn.innerHTML = `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`;
+      _setHTML(btn, `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`);
     }
 
     if (chapters.length === 0) { alert('No chapters found on this page.'); return; }
@@ -1101,7 +1118,7 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
   const popup = document.createElement('div');
   popup.id = 'cdl-all-popup';
   popup.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
-  popup.innerHTML = `
+  _setHTML(popup, `
     <div class="cdl-ap-header">
       <div class="cdl-ap-title">${ICON_DOWNLOAD}&nbsp;Downloading All Chapters</div>
       <button class="cdl-ap-close" title="Minimize">−</button>
@@ -1116,7 +1133,7 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
     </div>
     <div class="cdl-ap-footer">
       <button class="cdl-ap-cancel-btn" id="cdl-ap-cancel-btn">Cancel</button>
-    </div>`;
+    </div>`);
   document.body.appendChild(popup);
   _cdlEnsureThemeWatcher();
   requestAnimationFrame(_cdlApplyPopupTheme);

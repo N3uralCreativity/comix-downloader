@@ -387,7 +387,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: extractChapterImagesFromPage,
-      args: [{ aggressive: !!(cfg && cfg['advanced.aggressiveRetrieval']) }],
+      args: [{
+        aggressive: !!(cfg && cfg['advanced.aggressiveRetrieval']),
+        pollMs: cfg && cfg['perf.pagePollMs'],
+        settleMs: cfg && cfg['perf.pageSettleMs'],
+        scrollSettleMs: cfg && cfg['perf.scrollSettleMs'],
+      }],
     });
 
     // Fermer l'onglet dès que possible
@@ -429,6 +434,14 @@ async function extractChapterImagesFromPage(opts) {
   opts = opts || {};
   const aggressive = !!opts.aggressive;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // User-tunable render/scroll waits (defaults == previous hardcoded literals).
+  // Aggressive mode halves the poll/settle waits, exactly as before.
+  const pollMs        = aggressive ? Math.round((opts.pollMs   || 400) / 2) : (opts.pollMs   || 400);
+  const settleMs      = aggressive
+    ? Math.round((opts.settleMs != null ? opts.settleMs : 300) / 2)
+    : (opts.settleMs != null ? opts.settleMs : 300);
+  const scrollSettleMs = opts.scrollSettleMs != null ? opts.scrollSettleMs : 800;
 
   // ── STRATÉGIE 1 : __NEXT_DATA__ de Next.js ──────────────────────────────────
   // comix.to est un site Next.js : les props de page (incl. URLs des images)
@@ -544,15 +557,15 @@ async function extractChapterImagesFromPage(opts) {
   let retries = aggressive ? 8 : 25;
   while (retries-- > 0) {
     if (document.querySelectorAll('img[alt^="Page"]').length > 0) break;
-    await sleep(aggressive ? 200 : 400);
+    await sleep(pollMs);
   }
-  await sleep(aggressive ? 150 : 300);
+  await sleep(settleMs);
 
   // 2. Scroll léger pour déclencher le chargement de la 1ère image visible
   window.scrollTo(0, 0);
   await sleep(200);
   window.scrollTo(0, 500);
-  await sleep(800);
+  await sleep(scrollSettleMs);
   window.scrollTo(0, 0);
   await sleep(400);
 
@@ -621,7 +634,7 @@ async function extractChapterImagesFromPage(opts) {
   // Si aucune image chargée : scroll supplémentaire
   if (!baseSrc) {
     for (let y = 0; y <= 1500; y += 200) { window.scrollTo(0, y); await sleep(250); }
-    await sleep(800);
+    await sleep(scrollSettleMs);
     window.scrollTo(0, 0);
     for (const img of [...document.querySelectorAll('img[alt^="Page"]')]) {
       baseSrc = findSrc(img);
@@ -1046,7 +1059,12 @@ async function extractFromTab(url, cfg) {
         const results = await chrome.scripting.executeScript({
           target: { tabId },
           func:   extractChapterImagesFromPage,
-          args:   [{ aggressive }],
+          args:   [{
+            aggressive,
+            pollMs: cfg['perf.pagePollMs'],
+            settleMs: cfg['perf.pageSettleMs'],
+            scrollSettleMs: cfg['perf.scrollSettleMs'],
+          }],
         });
         chrome.tabs.remove(tabId).catch(() => {});
         settle(resolve, results?.[0]?.result || []);

@@ -19,12 +19,19 @@
   var noticeActive = false;
 
   // ── Tiny DOM helpers ──────────────────────────────────────────────────────
+  // Swap a node's children from a trusted HTML string without using innerHTML.
+  // Values here are internal icon SVGs + escapeHtml()'d text; DOMParser('text/html')
+  // never runs scripts and isn't an innerHTML sink, so the AMO/CWS linters stay clean.
+  function _setHTML(node, html) {
+    var parsed = new DOMParser().parseFromString(html, 'text/html');
+    node.replaceChildren.apply(node, parsed.body.childNodes);
+  }
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
     if (attrs) {
       for (var k in attrs) {
         if (k === 'class') node.className = attrs[k];
-        else if (k === 'html') node.innerHTML = attrs[k];
+        else if (k === 'html') _setHTML(node, attrs[k]);
         else if (k === 'text') node.textContent = attrs[k];
         else if (k.slice(0, 2) === 'on' && typeof attrs[k] === 'function') node.addEventListener(k.slice(2), attrs[k]);
         else if (attrs[k] != null) node.setAttribute(k, attrs[k]);

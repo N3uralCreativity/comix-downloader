@@ -45,6 +45,10 @@ check('int clamp high', S.validate({ 'perf.batchSize': 999 })['perf.batchSize'] 
 check('int clamp low', S.validate({ 'perf.batchSize': -5 })['perf.batchSize'] === 1);
 check('int round', S.validate({ 'download.chaptersPerPart': 3.7 })['download.chaptersPerPart'] === 4);
 check('float clamp', S.validate({ 'advanced.jpgQuality': 2 })['advanced.jpgQuality'] === 1.0);
+check('pagePollMs clamp high', S.validate({ 'perf.pagePollMs': 99999 })['perf.pagePollMs'] === 3000);
+check('pagePollMs clamp low', S.validate({ 'perf.pagePollMs': 1 })['perf.pagePollMs'] === 50);
+check('pageSettleMs clamp low', S.validate({ 'perf.pageSettleMs': -10 })['perf.pageSettleMs'] === 0);
+check('scrollSettleMs default', S.validate({})['perf.scrollSettleMs'] === 800);
 
 // 3. Enums / bools / colors
 check('enum bad -> default', S.validate({ 'perf.rateLimitMode': 'nope' })['perf.rateLimitMode'] === 'dynamic');

@@ -36,6 +36,9 @@
     'perf.rateMaxMs': 8000,
     'perf.imageTimeoutMs': 30000,
     'perf.tabLoadTimeoutMs': 120000,
+    'perf.pagePollMs': 400,                // poll interval waiting for first page image
+    'perf.pageSettleMs': 300,              // settle wait after page images are detected
+    'perf.scrollSettleMs': 800,            // wait after a scroll-nudge to trigger lazy loading
 
     // Retries (0 == current "skip on failure" behavior)
     'retry.imageRetries': 0,
@@ -108,6 +111,15 @@
       warn: 'A short timeout can cause more images to be skipped on slow connections.' },
     'perf.tabLoadTimeoutMs': { type: 'int', min: 30000, max: 300000, risk: 'none',
       label: 'Chapter load timeout (ms)', help: 'Give up opening a chapter tab after this long.' },
+    'perf.pagePollMs': { type: 'int', min: 50, max: 3000, risk: 'risky',
+      label: 'Page poll interval (ms)', help: 'How often to check whether the reader has rendered its first page image.',
+      warn: 'Raising this slows every download; lowering it too far can give up before slow pages appear.' },
+    'perf.pageSettleMs': { type: 'int', min: 0, max: 5000, risk: 'risky',
+      label: 'Page settle delay (ms)', help: 'Pause after the reader appears, before reading page URLs from the DOM.',
+      warn: 'Too short on a slow connection can miss late-loading pages.' },
+    'perf.scrollSettleMs': { type: 'int', min: 0, max: 5000, risk: 'risky',
+      label: 'Scroll settle delay (ms)', help: 'Pause after scrolling the reader to trigger lazy image loading.',
+      warn: 'Too short can miss pages that only load once scrolled into view.' },
 
     'retry.imageRetries': { type: 'int', min: 0, max: 5, risk: 'none',
       label: 'Retry failed images', help: 'Re-attempt a failed image this many times (0 = skip, the default).' },
@@ -182,7 +194,7 @@
     { id: 'download', label: 'Download & ZIP', icon: 'box',
       keys: ['download.splitMode', 'download.chaptersPerPart', 'download.mbPerPart'] },
     { id: 'perf', label: 'Performance', icon: 'gauge',
-      keys: ['perf.batchSize', 'perf.rateLimitMode', 'perf.rateBaseMs', 'perf.rateMinMs', 'perf.rateMaxMs', 'perf.imageTimeoutMs', 'perf.tabLoadTimeoutMs'] },
+      keys: ['perf.batchSize', 'perf.rateLimitMode', 'perf.rateBaseMs', 'perf.rateMinMs', 'perf.rateMaxMs', 'perf.imageTimeoutMs', 'perf.tabLoadTimeoutMs', 'perf.pagePollMs', 'perf.pageSettleMs', 'perf.scrollSettleMs'] },
     { id: 'retry', label: 'Retries', icon: 'repeat',
       keys: ['retry.imageRetries', 'retry.chapterRetries'] },
     { id: 'naming', label: 'Naming', icon: 'tag',
