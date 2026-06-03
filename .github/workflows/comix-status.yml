@@ -15,17 +15,32 @@ jobs:
       - name: Ping comix.to
         id: ping
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" \
-                 -A "Mozilla/5.0 (compatible; comix-status-bot)" \
-                 --max-time 20 https://comix.to || echo "000")
-          echo "HTTP $code"
-          # 2xx/3xx = OK. 403/503 = Cloudflare répond → site joignable.
-          if [[ "$code" =~ ^(2|3)[0-9][0-9]$ || "$code" == "403" || "$code" == "503" ]]; then
-            echo "message=online"     >> "$GITHUB_OUTPUT"
-            echo "color=brightgreen"  >> "$GITHUB_OUTPUT"
+          # Récupère le corps de la page dans un fichier + le code HTTP
+          code=$(curl -sL \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" \
+            --max-time 25 -o page.html -w "%{http_code}" https://comix.to || echo "000")
+
+          # --- DEBUG (visible dans les logs Actions) ---
+          echo "HTTP code: $code"
+          echo "Aperçu de la page (500 premiers caractères) :"
+          head -c 500 page.html || true
+          echo ""
+          echo "----------------------------------------"
+
+          # --- Détection maintenance : ÉDITE cette liste selon ce que tu vois ci-dessus ---
+          if grep -iqE "maintenance|be right back|under construction|temporarily unavailable|we.?ll be back" page.html; then
+            maintenance=1
           else
-            echo "message=offline"    >> "$GITHUB_OUTPUT"
-            echo "color=red"          >> "$GITHUB_OUTPUT"
+            maintenance=0
+          fi
+
+          # "online" SEULEMENT si code 2xx/3xx ET aucun marqueur de maintenance
+          if [[ "$code" =~ ^(2|3)[0-9][0-9]$ && "$maintenance" -eq 0 ]]; then
+            echo "message=online"    >> "$GITHUB_OUTPUT"
+            echo "color=brightgreen" >> "$GITHUB_OUTPUT"
+          else
+            echo "message=down"      >> "$GITHUB_OUTPUT"
+            echo "color=red"         >> "$GITHUB_OUTPUT"
           fi
 
       - name: Mise à jour du badge
