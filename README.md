@@ -8,6 +8,7 @@
 [![Firefox Add-on](https://img.shields.io/badge/Firefox-Add--on-FF7139?logo=firefox-browser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Statut comix.to](https://img.shields.io/website?url=https%3A%2F%2Fcomix.to)
 
 **by [N3uralCreativity](https://github.com/N3uralCreativity)**
 
