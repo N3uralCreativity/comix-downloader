@@ -10,6 +10,9 @@ Thumbs.db
 .vscode/
 *.swp
 
+# Claude Code per-machine local settings (permission allowlist etc. — not shared)
+.claude/settings.local.json
+
 # Build output (none currently, but just in case)
 dist/
 build/
