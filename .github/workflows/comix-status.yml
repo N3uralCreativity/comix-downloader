@@ -21,10 +21,10 @@ jobs:
           echo "HTTP $code"
           # 2xx/3xx = OK. 403/503 = Cloudflare répond → site joignable.
           if [[ "$code" =~ ^(2|3)[0-9][0-9]$ || "$code" == "403" || "$code" == "503" ]]; then
-            echo "message=en ligne"   >> "$GITHUB_OUTPUT"
+            echo "message=online"     >> "$GITHUB_OUTPUT"
             echo "color=brightgreen"  >> "$GITHUB_OUTPUT"
           else
-            echo "message=hors ligne" >> "$GITHUB_OUTPUT"
+            echo "message=offline"    >> "$GITHUB_OUTPUT"
             echo "color=red"          >> "$GITHUB_OUTPUT"
           fi
 
