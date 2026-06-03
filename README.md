@@ -9,7 +9,7 @@
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-//: # Comix status : ![Statut comix.to](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/N3uralCreativity/d7df8d80e3e844114aa9b90c700e2b84/raw/comix-status.json)
+
 
 **by [N3uralCreativity](https://github.com/N3uralCreativity)**
 
