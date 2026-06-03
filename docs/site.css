@@ -236,6 +236,28 @@ img { display: block; max-width: 100%; }
 .footer-inner .right { margin-left: auto; display: flex; gap: 18px; align-items: center; }
 .footer-inner a { color: var(--ink-soft); font-weight: 500; }
 .footer-inner a:hover { color: var(--accent); }
+.footer-inner .status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 12.5px;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.footer-inner .status-btn:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+}
+.footer-inner .status-btn .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: oklch(64% 0.17 150);
+  box-shadow: 0 0 6px oklch(64% 0.17 150 / 0.5);
+}
 
 /* code */
 code {

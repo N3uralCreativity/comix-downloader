@@ -214,7 +214,8 @@
       el('div', { class: 'links' }, [
         link('https://github.com/N3uralCreativity/comix-downloader', 'GitHub repository'),
         link('https://n3uralcreativity.github.io/comix-downloader/index.html', 'Project website'),
-        link('https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/', 'Firefox Add-on')
+        link('https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/', 'Firefox Add-on'),
+        link('https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp', 'Chrome Web Store')
       ])
     ]);
 
