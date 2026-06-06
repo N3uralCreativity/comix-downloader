@@ -13,10 +13,12 @@
   var draft = {};     // staged edits
   var controls = {};  // key -> { setValue, setEnabled, row }
 
-  // Separate storage key (NOT in cdlSettings — validate() would drop it). Tracks the
-  // one-time "there's a new Additional Features page" notice set by background.js on update.
-  var NOTICE_KEY = 'cdlFeaturesNotice';
+  // Separate storage keys (NOT in cdlSettings — validate() would drop them). Track the
+  // one-time "what's new" notices set by background.js on update.
+  var NOTICE_KEY = 'cdlFeaturesNotice';              // Additional Features tab
+  var NOTICE_KEY_CONCURRENCY = 'cdlConcurrencyNotice'; // "Chapters at once" on the Download tab
   var noticeActive = false;
+  var concurrencyNoticeActive = false;
 
   // ── Tiny DOM helpers ──────────────────────────────────────────────────────
   // Swap a node's children from a trusted HTML string without using innerHTML.
@@ -268,6 +270,7 @@
     document.querySelectorAll('.panel').forEach(function (p) { p.classList.toggle('active', p.getAttribute('data-tab') === id); });
     document.getElementById('content').scrollTo ? window.scrollTo(0, 0) : null;
     if (id === 'features') clearFeaturesNotice();
+    if (id === 'download') clearConcurrencyNotice();
   }
 
   // ── Draft / sync ──────────────────────────────────────────────────────────
@@ -468,15 +471,73 @@
     noticeActive = false;
     var nav = document.querySelector('.nav-item[data-tab="features"]');
     if (nav) nav.classList.remove('has-badge');
-    var banner = document.querySelector('.features-banner');
+    var banner = document.querySelector('.panel[data-tab="features"] .features-banner');
     if (banner) banner.remove();
     try {
       var payload = {};
       payload[NOTICE_KEY] = { active: false, seenVersion: chrome.runtime.getManifest().version };
       chrome.storage.local.set(payload);
     } catch (e) {}
-    // chrome.action is callable from extension pages in MV3; clear the toolbar badge too.
-    try { if (chrome.action && chrome.action.setBadgeText) chrome.action.setBadgeText({ text: '' }); } catch (e) {}
+    clearToolbarBadgeUnless(NOTICE_KEY_CONCURRENCY);
+  }
+
+  // ── "Chapters at once" one-time notice (Download tab) ─────────────────────
+  function readConcurrencyNotice() {
+    try {
+      chrome.storage.local.get(NOTICE_KEY_CONCURRENCY, function (res) {
+        var n = res && res[NOTICE_KEY_CONCURRENCY];
+        if (!n || !n.active) return;
+        concurrencyNoticeActive = true;
+        showConcurrencyNotice();
+        // The Download tab is shown by default, so the banner is on screen the
+        // moment Settings opens. Persist "seen" now so it won't nag next time,
+        // but leave it visible for this session (keepDom).
+        clearConcurrencyNotice(true);
+      });
+    } catch (e) {}
+  }
+
+  function showConcurrencyNotice() {
+    var nav = document.querySelector('.nav-item[data-tab="download"]');
+    if (nav) nav.classList.add('has-badge');
+    var panel = document.querySelector('.panel[data-tab="download"]');
+    if (panel && !panel.querySelector('.features-banner')) {
+      var banner = el('div', { class: 'features-banner', html: icon('sparkles') +
+        '<span><strong>New:</strong> “Download All” can now fetch several chapters at the same time — see <strong>Chapters at once</strong> below. ' +
+        'Heads-up: 2 at once is already risky, and 3–4 will most likely get your IP temporarily blocked by comix.to.</span>' });
+      var head = panel.querySelector('.panel-head');
+      if (head) head.insertAdjacentElement('afterend', banner);
+      else panel.insertBefore(banner, panel.firstChild);
+    }
+  }
+
+  function clearConcurrencyNotice(keepDom) {
+    if (!concurrencyNoticeActive) return;
+    concurrencyNoticeActive = false;
+    if (!keepDom) {
+      var nav = document.querySelector('.nav-item[data-tab="download"]');
+      if (nav) nav.classList.remove('has-badge');
+      var banner = document.querySelector('.panel[data-tab="download"] .features-banner');
+      if (banner) banner.remove();
+    }
+    try {
+      var payload = {};
+      payload[NOTICE_KEY_CONCURRENCY] = { active: false, seenVersion: chrome.runtime.getManifest().version };
+      chrome.storage.local.set(payload);
+    } catch (e) {}
+    clearToolbarBadgeUnless(NOTICE_KEY);
+  }
+
+  // Clear the toolbar "NEW" badge only if the OTHER notice isn't still active.
+  // (We check the key we did NOT just modify, so there's no read-after-write race.)
+  function clearToolbarBadgeUnless(otherKey) {
+    try {
+      chrome.storage.local.get(otherKey, function (res) {
+        var other = res && res[otherKey];
+        if (other && other.active) return;
+        try { if (chrome.action && chrome.action.setBadgeText) chrome.action.setBadgeText({ text: '' }); } catch (e) {}
+      });
+    } catch (e) {}
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
@@ -487,6 +548,7 @@
 
     buildUI();
     readFeaturesNotice();
+    readConcurrencyNotice();
 
     document.getElementById('btn-save').addEventListener('click', onSave);
     document.getElementById('btn-discard').addEventListener('click', onDiscard);

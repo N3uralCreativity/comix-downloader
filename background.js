@@ -49,6 +49,25 @@ const downloadQueue = [];
 
 /** Flag d'annulation du téléchargement groupé */
 let downloadAllAbortFlag = false;
+// Resolvers woken the instant a cancel is requested, so the worker pool / packer
+// can stop awaiting in-flight chapters immediately instead of hanging forever.
+let _downloadAllAbortResolvers = [];
+function _signalDownloadAllAbort() {
+  downloadAllAbortFlag = true;
+  const waiters = _downloadAllAbortResolvers;
+  _downloadAllAbortResolvers = [];
+  for (const fn of waiters) { try { fn(); } catch (_) {} }
+}
+function _resetDownloadAllAbort() {
+  downloadAllAbortFlag = false;
+  _downloadAllAbortResolvers = [];
+}
+// One reusable promise per Download-All run that resolves when cancellation is
+// requested. Reused across all races so we never leak a resolver per chapter.
+function _downloadAllAbortPromise() {
+  if (downloadAllAbortFlag) return Promise.resolve();
+  return new Promise((res) => _downloadAllAbortResolvers.push(res));
+}
 
 /** ZIP en attente de génération — conservé pour permettre un retry uniquement sur l'étape ZIP */
 let _pendingZip = null;
@@ -71,26 +90,41 @@ if (typeof CDLSettings !== 'undefined') {
 
 let downloadAllSession = null;
 
-// ── "New Additional Features page" notice ─────────────────────────────────────
-// On install/update, flag the new Additional Features settings page and badge the
-// toolbar icon so existing users notice it. The options page clears both the flag and
-// the badge once the user opens that tab (see options.js clearFeaturesNotice).
+// ── One-time "what's new" notices ─────────────────────────────────────────────
+// On install/update we flag headline additions and badge the toolbar icon so
+// existing users notice them. The options page clears each flag (and the badge,
+// once no notice remains) when the user opens the relevant tab.
+//   • cdlFeaturesNotice    → the Additional Features tab (see options.js)
+//   • cdlConcurrencyNotice → the "Chapters at once" option on the Download tab
 const FEATURES_NOTICE_VERSION = '2.0.2';
+const CONCURRENCY_NOTICE_VERSION = '2.1.0';
+
+function _setNewToolbarBadge() {
+  try {
+    if (chrome.action && chrome.action.setBadgeText) {
+      chrome.action.setBadgeText({ text: 'NEW' });
+      if (chrome.action.setBadgeBackgroundColor) chrome.action.setBadgeBackgroundColor({ color: '#60a5fa' });
+    }
+  } catch (_) {}
+}
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason !== 'install' && details.reason !== 'update') return;
-  chrome.storage.local.get('cdlFeaturesNotice').then((res) => {
-    const prev = res && res.cdlFeaturesNotice;
-    if (prev && prev.seenVersion === FEATURES_NOTICE_VERSION) return; // already acknowledged
-    chrome.storage.local.set({
-      cdlFeaturesNotice: { active: true, seenVersion: (prev && prev.seenVersion) || null }
-    });
-    try {
-      if (chrome.action && chrome.action.setBadgeText) {
-        chrome.action.setBadgeText({ text: 'NEW' });
-        if (chrome.action.setBadgeBackgroundColor) chrome.action.setBadgeBackgroundColor({ color: '#60a5fa' });
-      }
-    } catch (_) {}
+  chrome.storage.local.get(['cdlFeaturesNotice', 'cdlConcurrencyNotice']).then((res) => {
+    const prevF = res && res.cdlFeaturesNotice;
+    if (!(prevF && prevF.seenVersion === FEATURES_NOTICE_VERSION)) {
+      chrome.storage.local.set({
+        cdlFeaturesNotice: { active: true, seenVersion: (prevF && prevF.seenVersion) || null }
+      });
+      _setNewToolbarBadge();
+    }
+    const prevC = res && res.cdlConcurrencyNotice;
+    if (!(prevC && prevC.seenVersion === CONCURRENCY_NOTICE_VERSION)) {
+      chrome.storage.local.set({
+        cdlConcurrencyNotice: { active: true, seenVersion: (prevC && prevC.seenVersion) || null }
+      });
+      _setNewToolbarBadge();
+    }
   }).catch(() => {});
 });
 
@@ -182,6 +216,8 @@ function recordDownloadAllProgress(progress) {
     phase: progress.phase,
     chapterIndex: progress.chapterIndex ?? downloadAllSession.chapterIndex,
     totalChapters: progress.totalChapters ?? downloadAllSession.totalChapters,
+    completed: progress.completed ?? downloadAllSession.completed,
+    concurrency: progress.concurrency ?? downloadAllSession.concurrency,
     imagesDone: progress.imagesDone ?? downloadAllSession.imagesDone,
     imagesTotal: progress.imagesTotal ?? downloadAllSession.imagesTotal,
     zipPart: progress.zipPart ?? downloadAllSession.zipPart,
@@ -309,14 +345,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === 'downloadAllChapters') {
     const originTabId = sender.tab?.id ?? null;
-    downloadAllAbortFlag = false;
+    _resetDownloadAllAbort();
     handleDownloadAllRequest(message.chapters, message.mangaName, message.zipName, originTabId);
     sendResponse({ ok: true });
     return true;
   }
 
   if (message.action === 'cancelDownloadAll') {
-    downloadAllAbortFlag = true;
+    _signalDownloadAllAbort();
     recordDownloadAllCancelling();
     sendResponse({ ok: true });
     return true;
@@ -763,6 +799,25 @@ async function fetchImageIntoZip(container, paddedIndex, src, cfg, retries) {
   return 0;
 }
 
+// Like fetchImageIntoZip, but returns the image bytes instead of writing straight
+// into a JSZip container. Used by the concurrent Download-All path: images are
+// buffered in memory and added to the ZIP later, in chapter order, by a single
+// packer — so two chapters downloading at once never race on the ZIP object.
+// Returns { name, buffer, bytes } or null when the image could not be fetched.
+async function fetchImageToFile(paddedIndex, src, cfg, retries) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= (retries || 0); attempt++) {
+    try {
+      const image = await fetchImageForZip(src, cfg);
+      return { name: `${paddedIndex}.${image.ext}`, buffer: image.buffer, bytes: image.buffer.byteLength || 0 };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (lastErr) console.warn(`[ComixDL] image ${paddedIndex} skipped:`, lastErr.message);
+  return null;
+}
+
 // Fetch an image and, when comix.to marks it as scrambled, redraw the CDN
 // tile mosaic back into normal page order before it goes into the ZIP.
 // Honors user settings: fetch timeout, disable-scramble, and image re-encoding.
@@ -1087,8 +1142,17 @@ async function extractFromTab(url, cfg) {
 }
 
 // ── Téléchargement de tous les chapitres ──────────────────────────────────────
+// Up to `download.concurrentChapters` (1–4) chapters are downloaded at the same
+// time by a small worker pool. Each worker fully downloads its chapter into memory
+// and NEVER touches the shared ZIP; a single in-order "packer" adds finished
+// chapters to the ZIP strictly by chapter order and cuts ZIP parts at the split
+// points. This keeps multi-part output contiguous & ordered and removes any race
+// on the ZIP object, while a window (= concurrency) bounds how many finished but
+// not-yet-packed chapters are held in memory. concurrency === 1 reproduces the
+// original strictly-sequential behavior.
 async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabId) {
   const cfg = await loadCfg();
+  const concurrency = Math.max(1, Math.min(4, parseInt(cfg['download.concurrentChapters'], 10) || 1));
   const batchSize = cfg['perf.batchSize'] || BATCH_SIZE;
   const padDigits = cfg['naming.imagePadDigits'] || 3;
   const imageRetries = cfg['retry.imageRetries'] || 0;
@@ -1099,13 +1163,19 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   const folderFmt = cfg['naming.chapterFolderFmt'] || 'Ch{num4}{rest}';
 
   startDownloadAllSession({ originTabId, mangaName, zipName, totalChapters: chapters.length });
-  cdlLog('info', `Download All started: "${mangaName}" — ${chapters.length} chapters`);
+  cdlLog('info', `Download All started: "${mangaName}" — ${chapters.length} chapters${concurrency > 1 ? ` (${concurrency} at a time)` : ''}`);
+
   let zip = new JSZip();
   let zipPart = 1;
   let zipPartChapters = 0;
   let zipPartBytes = 0;
   const savedZipNames = [];
-  const notify = (extra) => notifyDownloadAllProgress(originTabId, extra);
+
+  // finishedCount (chapters reaching a terminal state: done/skipped/error) drives
+  // the monotonic progress bar/counter. Injected into every progress message so
+  // the popup never depends on which of the concurrent chapters reported last.
+  let finishedCount = 0;
+  const notify = (extra) => notifyDownloadAllProgress(originTabId, { completed: finishedCount, concurrency, ...extra });
 
   const saveCurrentZipPart = async (isFinal = false) => {
     if (zipPartChapters === 0) return true;
@@ -1132,82 +1202,145 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     return true;
   };
 
-  // Rate limiting entre chapitres (dynamic / fixed / off)
+  // Rate limiting between chapters (dynamic / fixed / off). Shared across workers,
+  // so the effective request rate scales roughly with `concurrency`.
   const rateMode = cfg['perf.rateLimitMode'] || 'dynamic';
   let rateDelay = cfg['perf.rateBaseMs'] != null ? cfg['perf.rateBaseMs'] : 1500;  // ms
   const MIN_DELAY = cfg['perf.rateMinMs'] != null ? cfg['perf.rateMinMs'] : 800;
   const MAX_DELAY = cfg['perf.rateMaxMs'] || 8000;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  for (let i = 0; i < chapters.length; i++) {
-    if (downloadAllAbortFlag) { notifyDownloadAllCancelled(originTabId); return; }
-
+  // Download one chapter's images into memory. Emits extracting/downloading
+  // progress; returns a result the packer can add to the ZIP. Never throws.
+  const downloadChapter = async (i) => {
     const { chapterUrl, chapterLabel } = chapters[i];
-    // Nom de dossier (template) avec numéro paddé pour tri alphabétique correct
+    // Folder name (template) with padded number so chapters sort correctly.
     const folderName = buildChapterFolderName(folderFmt, chapterLabel, mangaName);
 
     notify({ phase: 'extracting', chapterIndex: i + 1, totalChapters: chapters.length,
              chapterLabel, imagesDone: 0, imagesTotal: 0 });
 
-    try {
-      let images = null, extractErr = null;
-      for (let attempt = 0; attempt <= chapterRetries; attempt++) {
-        try { images = await extractFromTab(chapterUrl, cfg); extractErr = null; break; }
-        catch (e) { extractErr = e; images = null; }
-      }
-      if (extractErr) throw extractErr;
-      if (!images || images.length === 0) {
-        cdlLog('warn', `No images found, skipping ${chapterLabel}`);
+    let images = null, extractErr = null;
+    for (let attempt = 0; attempt <= chapterRetries; attempt++) {
+      if (downloadAllAbortFlag) break;
+      try { images = await extractFromTab(chapterUrl, cfg); extractErr = null; break; }
+      catch (e) { extractErr = e; images = null; }
+    }
+    if (extractErr) {
+      console.warn(`[ComixDL-All] Chapitre ${chapterLabel} échoué:`, extractErr.message);
+      cdlLog('error', `${chapterLabel} failed: ${extractErr.message}`);
+      return { index: i, chapterLabel, folderName, files: [], bytes: 0, imagesTotal: 0, imgDone: 0, status: 'error' };
+    }
+    if (!images || images.length === 0) {
+      cdlLog('warn', `No images found, skipping ${chapterLabel}`);
+      return { index: i, chapterLabel, folderName, files: [], bytes: 0, imagesTotal: 0, imgDone: 0, status: 'skipped' };
+    }
+    cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
+
+    const files = [];
+    let bytes = 0, imgDone = 0;
+    for (let j = 0; j < images.length; j += batchSize) {
+      if (downloadAllAbortFlag) break;
+      const batch = images.slice(j, j + batchSize);
+      await Promise.allSettled(batch.map(async ({ src, index }) => {
+        const paddedIndex = String(index).padStart(padDigits, '0');
+        const file = await fetchImageToFile(paddedIndex, src, cfg, imageRetries);
+        if (file) { files.push(file); bytes += file.bytes; }
+        imgDone++;
+        notify({ phase: 'downloading', chapterIndex: i + 1, totalChapters: chapters.length,
+                 chapterLabel, imagesDone: imgDone, imagesTotal: images.length });
+      }));
+    }
+    return { index: i, chapterLabel, folderName, files, bytes, imagesTotal: images.length, imgDone, status: 'done' };
+  };
+
+  // ── Worker pool + in-order packer ───────────────────────────────────────────
+  const results = new Array(chapters.length);
+  const resolvers = new Array(chapters.length);
+  const ready = chapters.map((_, i) => new Promise((res) => { resolvers[i] = res; }));
+  const abortPromise = _downloadAllAbortPromise();   // one reusable per-run signal
+
+  let cursor = 0;        // next chapter index to grab
+  let packedCount = 0;   // chapters consumed by the packer (packed or skipped)
+  let packFailed = false;
+  let windowWaiters = [];
+  const wakeWindow = () => { const w = windowWaiters; windowWaiters = []; w.forEach((fn) => fn()); };
+
+  // Backpressure: never let more than `concurrency` chapters be checked out but
+  // unpacked, so buffered image bytes stay bounded (~concurrency chapters).
+  const waitForWindow = async () => {
+    while (!downloadAllAbortFlag && (cursor - packedCount) >= concurrency) {
+      await Promise.race([new Promise((res) => windowWaiters.push(res)), abortPromise]);
+    }
+  };
+
+  const worker = async () => {
+    while (true) {
+      await waitForWindow();
+      if (downloadAllAbortFlag) return;
+      const i = cursor++;
+      if (i >= chapters.length) return;
+
+      const result = await downloadChapter(i);
+      results[i] = result;
+      finishedCount++;   // bump before the terminal message so the bar advances
+
+      if (result.status === 'done') {
+        notify({ phase: 'done', chapterIndex: i + 1, totalChapters: chapters.length,
+                 chapterLabel: result.chapterLabel, imagesDone: result.imgDone, imagesTotal: result.imagesTotal });
+        cdlLog('ok', `${result.chapterLabel}: done (${result.imgDone} images)`);
+        if (rateMode === 'dynamic') rateDelay = Math.max(MIN_DELAY, rateDelay - 100); // success → slightly faster
+      } else if (result.status === 'skipped') {
         notify({ phase: 'skipped', chapterIndex: i + 1, totalChapters: chapters.length,
-                 chapterLabel, imagesDone: 0, imagesTotal: 0 });
-        continue;
+                 chapterLabel: result.chapterLabel, imagesDone: 0, imagesTotal: 0 });
+      } else {
+        notify({ phase: 'error', chapterIndex: i + 1, totalChapters: chapters.length,
+                 chapterLabel: result.chapterLabel, imagesDone: 0, imagesTotal: 0 });
+        if (rateMode === 'dynamic') rateDelay = Math.min(MAX_DELAY, Math.round(rateDelay * 1.5)); // failure → back off
       }
-      cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
+      resolvers[i]();   // hand this chapter to the in-order packer
 
-      const folder = zip.folder(folderName);
-      let imgDone = 0;
+      // Pace before grabbing the next chapter (skipped once no work remains).
+      if (rateMode !== 'off' && !downloadAllAbortFlag && cursor < chapters.length) {
+        await sleep(rateDelay);
+      }
+    }
+  };
 
-      for (let j = 0; j < images.length; j += batchSize) {
-        if (downloadAllAbortFlag) break;
-        const batch = images.slice(j, j + batchSize);
-        await Promise.allSettled(batch.map(async ({ src, index }) => {
-          const paddedIndex = String(index).padStart(padDigits, '0');
-          const bytes = await fetchImageIntoZip(folder, paddedIndex, src, cfg, imageRetries);
-          zipPartBytes += bytes;
-          imgDone++;
-          notify({ phase: 'downloading', chapterIndex: i + 1, totalChapters: chapters.length,
-                   chapterLabel, imagesDone: imgDone, imagesTotal: images.length });
-        }));
+  const packer = async () => {
+    for (let i = 0; i < chapters.length; i++) {
+      await Promise.race([ready[i], abortPromise]);
+      if (downloadAllAbortFlag) return;
+
+      const r = results[i];
+      results[i] = null;   // release buffers as soon as they're packed
+
+      if (r && r.status === 'done' && r.files.length) {
+        const folder = zip.folder(r.folderName);
+        for (const f of r.files) folder.file(f.name, f.buffer);
+        zipPartChapters++;
+        zipPartBytes += r.bytes;
+        if (i < chapters.length - 1 && (zipPartChapters >= maxChapters || zipPartBytes >= maxBytes)) {
+          const ok = await saveCurrentZipPart(false);
+          if (!ok) { packFailed = true; _signalDownloadAllAbort(); return; }
+        }
       }
 
-      notify({ phase: 'done', chapterIndex: i + 1, totalChapters: chapters.length,
-               chapterLabel, imagesDone: imgDone, imagesTotal: images.length });
-      cdlLog('ok', `${chapterLabel}: done (${imgDone} images)`);
-      zipPartChapters++;
-      if (rateMode === 'dynamic') rateDelay = Math.max(MIN_DELAY, rateDelay - 100); // succès → légèrement plus rapide
-
-    } catch (err) {
-      console.warn(`[ComixDL-All] Chapitre ${chapterLabel} échoué:`, err.message);
-      cdlLog('error', `${chapterLabel} failed: ${err.message}`);
-      if (rateMode === 'dynamic') rateDelay = Math.min(MAX_DELAY, Math.round(rateDelay * 1.5)); // échec → ralentir
-      notify({ phase: 'error', chapterIndex: i + 1, totalChapters: chapters.length,
-               chapterLabel, imagesDone: 0, imagesTotal: 0 });
+      // Free a window slot only after this chapter (incl. any part-save) is fully
+      // handled, so workers don't pile new downloads up during a ZIP save.
+      packedCount = i + 1;
+      wakeWindow();
     }
+  };
 
-    if (i < chapters.length - 1 &&
-        (zipPartChapters >= maxChapters || zipPartBytes >= maxBytes)) {
-      const saved = await saveCurrentZipPart(false);
-      if (!saved) return;
-    }
+  const workers = [];
+  for (let w = 0; w < concurrency; w++) workers.push(worker());
+  await Promise.all([packer(), ...workers]);
 
-    // Pause entre chapitres (rate limiting)
-    if (rateMode !== 'off' && i < chapters.length - 1 && !downloadAllAbortFlag) {
-      await new Promise(r => setTimeout(r, rateDelay));
-    }
-  }
-
+  if (packFailed) return;   // the ZIP error was already reported by _doZipAndSave
   if (downloadAllAbortFlag) { notifyDownloadAllCancelled(originTabId); return; }
 
-  // Génération du ZIP final
+  // Final ZIP part.
   const saved = await saveCurrentZipPart(true);
   if (!saved) return;
 

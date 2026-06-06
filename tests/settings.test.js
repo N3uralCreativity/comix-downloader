@@ -49,6 +49,9 @@ check('pagePollMs clamp high', S.validate({ 'perf.pagePollMs': 99999 })['perf.pa
 check('pagePollMs clamp low', S.validate({ 'perf.pagePollMs': 1 })['perf.pagePollMs'] === 50);
 check('pageSettleMs clamp low', S.validate({ 'perf.pageSettleMs': -10 })['perf.pageSettleMs'] === 0);
 check('scrollSettleMs default', S.validate({})['perf.scrollSettleMs'] === 800);
+check('concurrentChapters default 1', S.validate({})['download.concurrentChapters'] === 1);
+check('concurrentChapters clamp high', S.validate({ 'download.concurrentChapters': 99 })['download.concurrentChapters'] === 4);
+check('concurrentChapters clamp low', S.validate({ 'download.concurrentChapters': 0 })['download.concurrentChapters'] === 1);
 
 // 3. Enums / bools / colors
 check('enum bad -> default', S.validate({ 'perf.rateLimitMode': 'nope' })['perf.rateLimitMode'] === 'dynamic');

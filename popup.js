@@ -88,11 +88,16 @@ async function init() {
   const { cdlLogs = [] } = await chrome.storage.local.get('cdlLogs');
   renderLogs(cdlLogs);
 
-  // "New Additional Features page" indicator (cleared once the user views that tab).
+  // "Something new in Settings" indicator (cleared once the user views the
+  // relevant tab). Covers the Additional Features tab and the new "Chapters at
+  // once" Download option.
   try {
-    const { cdlFeaturesNotice } = await chrome.storage.local.get('cdlFeaturesNotice');
+    const { cdlFeaturesNotice, cdlConcurrencyNotice } =
+      await chrome.storage.local.get(['cdlFeaturesNotice', 'cdlConcurrencyNotice']);
     const pill = document.getElementById('settings-new');
-    if (pill && cdlFeaturesNotice && cdlFeaturesNotice.active) pill.hidden = false;
+    const anyActive = (cdlFeaturesNotice && cdlFeaturesNotice.active) ||
+                      (cdlConcurrencyNotice && cdlConcurrencyNotice.active);
+    if (pill && anyActive) pill.hidden = false;
   } catch (_) {}
 
   // Clear logs

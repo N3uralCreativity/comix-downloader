@@ -1224,8 +1224,22 @@ function updateDownloadAllPopup(msg) {
   const { phase, chapterIndex, totalChapters, chapterLabel, imagesDone, imagesTotal } = msg;
 
   const el = (id) => document.getElementById(id);
-  const pctDone    = totalChapters > 0 ? Math.round((chapterIndex - 1) / totalChapters * 100) : 0;
-  const pctCurrent = totalChapters > 0 ? Math.round(chapterIndex / totalChapters * 100) : 0;
+  // `completed` (chapters finished: done/skipped/error) drives a monotonic bar +
+  // counter, so it never jumps backwards when several chapters run at once. Older
+  // background builds didn't send it — fall back to the single-chapter formula.
+  const completed = (typeof msg.completed === 'number')
+    ? msg.completed
+    : Math.max(0, (chapterIndex || 0) - 1);
+  const concurrency = msg.concurrency || 1;
+  const pct = totalChapters > 0 ? Math.round(completed / totalChapters * 100) : 0;
+  const counterText = `${completed} / ${totalChapters || 0} chapters`;
+  // With >1 chapter in flight the per-chapter log rows carry the live detail, so
+  // the single headline/sub-line show a stable overall summary instead of flipping
+  // between the concurrent chapters.
+  const headline = concurrency > 1
+    ? `Downloading ${totalChapters} chapters (${concurrency} at a time)…`
+    : null;
+  const overall = `${completed} / ${totalChapters} chapters done`;
 
   if (phase === 'preparing') {
     el('cdl-ap-chapter-status').textContent = 'Preparing...';
@@ -1238,27 +1252,34 @@ function updateDownloadAllPopup(msg) {
     el('cdl-ap-img-status').textContent     = 'Stopping after the current step...';
 
   } else if (phase === 'extracting') {
-    el('cdl-ap-chapter-status').textContent = `Chapter ${chapterIndex} / ${totalChapters} — ${chapterLabel}`;
-    el('cdl-ap-img-status').textContent     = 'Opening chapter…';
-    el('cdl-ap-bar').style.width            = `${pctDone}%`;
-    el('cdl-ap-counter').textContent        = `${chapterIndex - 1} / ${totalChapters} chapters`;
+    el('cdl-ap-chapter-status').textContent = headline || `Chapter ${chapterIndex} / ${totalChapters} — ${chapterLabel}`;
+    el('cdl-ap-img-status').textContent     = headline ? overall : 'Opening chapter…';
+    el('cdl-ap-bar').style.width            = `${pct}%`;
+    el('cdl-ap-counter').textContent        = counterText;
     _dlAllAddLog(chapterLabel, 'active', `⟳ ${chapterLabel} — opening…`);
 
   } else if (phase === 'downloading') {
-    el('cdl-ap-chapter-status').textContent = `Chapter ${chapterIndex} / ${totalChapters} — ${chapterLabel}`;
-    el('cdl-ap-img-status').textContent     = `Images : ${imagesDone} / ${imagesTotal}`;
-    _dlAllUpdateLastLog(`⟳ ${chapterLabel} — ${imagesDone}/${imagesTotal} images`);
+    el('cdl-ap-chapter-status').textContent = headline || `Chapter ${chapterIndex} / ${totalChapters} — ${chapterLabel}`;
+    el('cdl-ap-img-status').textContent     = headline ? overall : `Images : ${imagesDone} / ${imagesTotal}`;
+    el('cdl-ap-bar').style.width            = `${pct}%`;
+    el('cdl-ap-counter').textContent        = counterText;
+    _dlAllAddLog(chapterLabel, 'active', `⟳ ${chapterLabel} — ${imagesDone}/${imagesTotal} images`);
 
   } else if (phase === 'done') {
-    el('cdl-ap-bar').style.width     = `${pctCurrent}%`;
-    el('cdl-ap-counter').textContent = `${chapterIndex} / ${totalChapters} chapters`;
-    _dlAllUpdateLastLog(`✓ ${chapterLabel} (${imagesDone} images)`, 'done');
+    el('cdl-ap-bar').style.width     = `${pct}%`;
+    el('cdl-ap-counter').textContent = counterText;
+    if (headline) el('cdl-ap-img-status').textContent = overall;
+    _dlAllAddLog(chapterLabel, 'done', `✓ ${chapterLabel} (${imagesDone} images)`);
 
   } else if (phase === 'error') {
-    _dlAllUpdateLastLog(`✗ ${chapterLabel} — failed`, 'error');
+    el('cdl-ap-bar').style.width     = `${pct}%`;
+    el('cdl-ap-counter').textContent = counterText;
+    _dlAllAddLog(chapterLabel, 'error', `✗ ${chapterLabel} — failed`);
 
   } else if (phase === 'skipped') {
-    _dlAllUpdateLastLog(`— ${chapterLabel} — skipped`, 'skipped');
+    el('cdl-ap-bar').style.width     = `${pct}%`;
+    el('cdl-ap-counter').textContent = counterText;
+    _dlAllAddLog(chapterLabel, 'skipped', `— ${chapterLabel} — skipped`);
 
   } else if (phase === 'zipping') {
     el('cdl-ap-chapter-status').textContent = 'Building ZIP file…';
@@ -1305,16 +1326,6 @@ function _dlAllAddLog(id, cls, text) {
   item.textContent   = text;
   log.appendChild(item);
   log.scrollTop = log.scrollHeight;
-}
-
-function _dlAllUpdateLastLog(text, newCls) {
-  const log = document.getElementById('cdl-ap-log');
-  if (!log) return;
-  const items = log.querySelectorAll('.cdl-ap-log-item');
-  const last  = items[items.length - 1];
-  if (!last) return;
-  last.textContent = text;
-  if (newCls) last.className = `cdl-ap-log-item ${newCls}`;
 }
 
 function updateDownloadAllPopupError(errMsg, options = {}) {

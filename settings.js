@@ -27,6 +27,7 @@
     'download.splitMode': 'multipart',     // 'multipart' | 'single'
     'download.chaptersPerPart': 5,         // ZIP_PART_MAX_CHAPTERS
     'download.mbPerPart': 300,             // ZIP_PART_MAX_BYTES / 1MB
+    'download.concurrentChapters': 1,      // how many chapters "Download All" fetches at once (1 = original behavior)
 
     // Performance & Network
     'perf.batchSize': 3,                   // BATCH_SIZE
@@ -92,6 +93,9 @@
     'download.mbPerPart': { type: 'int', min: 50, max: 2000, risk: 'glitchy',
       label: 'Max size per part (MB)', help: 'Start a new ZIP part after this size.',
       warn: 'Parts larger than ~800 MB may strain memory while the ZIP is being built.' },
+    'download.concurrentChapters': { type: 'int', min: 1, max: 4, risk: 'risky',
+      label: 'Chapters at once', help: 'How many chapters "Download All" fetches at the same time (it opens that many background tabs at once). 1 = one chapter at a time — the original, safest behavior. Higher = faster, but far more aggressive toward comix.to.',
+      warn: 'This multiplies how hard the extension hits comix.to (more open tabs AND more image requests at once). 1 is safe. 2 is already risky and can cause skipped or scrambled pages. 3–4 is almost certain to get your IP temporarily blocked by the site. Such blocks are usually short — typically a few minutes up to about an hour, occasionally up to ~24 hours if you keep pushing — but while blocked, pages (and whole chapters) can fail. If you raise this, keep "Parallel image downloads" low and leave rate limiting on.' },
 
     'perf.batchSize': { type: 'int', min: 1, max: 8, risk: 'glitchy',
       label: 'Parallel image downloads', help: 'How many images are fetched at once per chapter.',
@@ -192,7 +196,7 @@
   // ── Tab grouping for the options UI ──────────────────────────────────────────
   var TABS = [
     { id: 'download', label: 'Download & ZIP', icon: 'box',
-      keys: ['download.splitMode', 'download.chaptersPerPart', 'download.mbPerPart'] },
+      keys: ['download.concurrentChapters', 'download.splitMode', 'download.chaptersPerPart', 'download.mbPerPart'] },
     { id: 'perf', label: 'Performance', icon: 'gauge',
       keys: ['perf.batchSize', 'perf.rateLimitMode', 'perf.rateBaseMs', 'perf.rateMinMs', 'perf.rateMaxMs', 'perf.imageTimeoutMs', 'perf.tabLoadTimeoutMs', 'perf.pagePollMs', 'perf.pageSettleMs', 'perf.scrollSettleMs'] },
     { id: 'retry', label: 'Retries', icon: 'repeat',
