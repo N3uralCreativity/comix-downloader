@@ -28,6 +28,16 @@
     'download.chaptersPerPart': 5,         // ZIP_PART_MAX_CHAPTERS
     'download.mbPerPart': 300,             // ZIP_PART_MAX_BYTES / 1MB
     'download.concurrentChapters': 1,      // how many chapters "Download All" fetches at once (1 = original behavior)
+    'download.skipDownloaded': true,       // in Download All, default to only chapters not already grabbed
+
+    // Output format & library
+    'output.format': 'zip',                // 'zip' (folders of images) | 'cbz' (per-chapter comic file)
+    'output.includeComicInfo': true,       // write ComicInfo.xml per chapter
+    'output.includeSeriesMeta': false,     // save cover.jpg + series.json for the series
+    'output.folderLayout': 'default',      // 'default' (Ch0001) | 'kavita' (Series/Series - Chapter 0001)
+
+    // Reader
+    'reader.keyboardShortcuts': false,     // J/K or arrows = prev/next chapter, D = download current
 
     // Performance & Network
     'perf.batchSize': 3,                   // BATCH_SIZE
@@ -96,6 +106,22 @@
     'download.concurrentChapters': { type: 'int', min: 1, max: 4, risk: 'risky',
       label: 'Chapters at once', help: 'How many chapters "Download All" fetches at the same time (it opens that many background tabs at once). 1 = one chapter at a time — the original, safest behavior. Higher = faster, but far more aggressive toward comix.to.',
       warn: 'This multiplies how hard the extension hits comix.to (more open tabs AND more image requests at once). 1 is safe. 2 is already risky and can cause skipped or scrambled pages. 3–4 is almost certain to get your IP temporarily blocked by the site. Such blocks are usually short — typically a few minutes up to about an hour, occasionally up to ~24 hours if you keep pushing — but while blocked, pages (and whole chapters) can fail. If you raise this, keep "Parallel image downloads" low and leave rate limiting on.' },
+    'download.skipDownloaded': { type: 'bool', risk: 'none',
+      label: 'Skip already-downloaded', help: 'In "Download All", default to only the chapters you have not downloaded yet. You can still choose "All" in the panel to re-download everything.' },
+
+    'output.format': { type: 'enum', enum: ['zip', 'cbz'], risk: 'none',
+      label: 'Download format', help: 'ZIP keeps plain folders of images. CBZ makes one comic file per chapter that opens directly in Komga, Kavita, Mihon, YACReader, etc.',
+      options: { zip: 'ZIP (folders of images)', cbz: 'CBZ (per chapter, library-ready)' } },
+    'output.includeComicInfo': { type: 'bool', risk: 'none',
+      label: 'Include ComicInfo.xml', help: 'Add a ComicInfo.xml (series, number, count, summary, tags…) to each chapter so library servers index it correctly.' },
+    'output.includeSeriesMeta': { type: 'bool', risk: 'none',
+      label: 'Include series info', help: 'Also save the cover image and a series.json (author, status, description, tags) for the series.' },
+    'output.folderLayout': { type: 'enum', enum: ['default', 'kavita'], risk: 'none',
+      label: 'Folder layout', help: 'How chapters are named and arranged inside the download.',
+      options: { default: 'Default (Ch0001)', kavita: 'Kavita / Komga (Series / Series - Chapter 0001)' } },
+
+    'reader.keyboardShortcuts': { type: 'bool', risk: 'none',
+      label: 'Reader keyboard shortcuts', help: 'In the reader: J / K or ← / → jump to the previous / next chapter, and D downloads the current chapter. Ignored while typing in a text field.' },
 
     'perf.batchSize': { type: 'int', min: 1, max: 8, risk: 'glitchy',
       label: 'Parallel image downloads', help: 'How many images are fetched at once per chapter.',
@@ -197,6 +223,8 @@
   var TABS = [
     { id: 'download', label: 'Download & ZIP', icon: 'box',
       keys: ['download.concurrentChapters', 'download.splitMode', 'download.chaptersPerPart', 'download.mbPerPart'] },
+    { id: 'output', label: 'Output & Library', icon: 'box',
+      keys: ['output.format', 'output.includeComicInfo', 'output.includeSeriesMeta', 'output.folderLayout', 'download.skipDownloaded'] },
     { id: 'perf', label: 'Performance', icon: 'gauge',
       keys: ['perf.batchSize', 'perf.rateLimitMode', 'perf.rateBaseMs', 'perf.rateMinMs', 'perf.rateMaxMs', 'perf.imageTimeoutMs', 'perf.tabLoadTimeoutMs', 'perf.pagePollMs', 'perf.pageSettleMs', 'perf.scrollSettleMs'] },
     { id: 'retry', label: 'Retries', icon: 'repeat',
@@ -208,7 +236,7 @@
     { id: 'advanced', label: 'Advanced', icon: 'warn',
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
     { id: 'features', label: 'Additional Features', icon: 'sparkles',
-      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav'] },
+      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'reader.keyboardShortcuts'] },
     { id: 'about', label: 'About & Backup', icon: 'info',
       keys: ['logs.maxEntries'] }
   ];

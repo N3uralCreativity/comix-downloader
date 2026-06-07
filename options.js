@@ -64,6 +64,7 @@
   // Tabs that need extra (non-schema) content appended.
   var TAB_INTRO = {
     download: 'How "Download All" packages a full series into ZIP files.',
+    output: 'Output format and metadata — make downloads drop-in ready for Komga, Kavita, Mihon, YACReader. You can also pick these per-download from the on-page panel.',
     perf: 'Network pacing and timeouts. The defaults are tuned for comix.to — change them only if you have a reason to.',
     retry: 'What happens when an image or chapter fails to download.',
     naming: 'File and folder names inside the ZIPs.',

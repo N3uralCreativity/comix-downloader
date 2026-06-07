@@ -36,6 +36,7 @@ function Copy-ReleaseFiles([string]$Destination) {
     "background.js",
     "content_title.js",
     "cdl-features-core.js",
+    "cdl-comicinfo.js",
     "content_features.js",
     "manifest.json",
     "offscreen.html",
@@ -113,6 +114,8 @@ $firefoxManifest.background = [ordered]@{
   scripts = @(
     "lib/jszip.min.js",
     "settings.js",
+    "cdl-features-core.js",
+    "cdl-comicinfo.js",
     "background.js"
   )
 }

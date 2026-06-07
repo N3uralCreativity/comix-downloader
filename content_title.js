@@ -527,6 +527,7 @@ function startDownload(btn, chapterUrl, zipName) {
         chapterUrl,
         zipName,
         originTabId: null, // sera résolu par le background via sender.tab.id
+        options: buildSingleChapterOptions(chapterUrl),
       },
       (response) => {
         if (chrome.runtime.lastError) {
@@ -537,6 +538,21 @@ function startDownload(btn, chapterUrl, zipName) {
   } catch (e) {
     setButtonState(btn, 'error', 'Extension reloaded — refresh the page');
   }
+}
+
+// Output options for a single-chapter download — inherits the saved settings
+// defaults (format/ComicInfo). A single chapter is itself the .cbz, so series
+// cover/series.json aren't bundled, but ComicInfo still uses the scraped fields.
+function buildSingleChapterOptions(chapterUrl) {
+  return {
+    format: CFG['output.format'] || 'zip',
+    includeComicInfo: CFG['output.includeComicInfo'] !== false,
+    includeSeriesMeta: false,
+    folderLayout: 'default',
+    chapterLabel: extractChapterLabel(chapterUrl),
+    mangaName: getMangaName(),
+    seriesMeta: scrapeSeriesMeta(),
+  };
 }
 
 // ── Mise à jour visuelle du bouton ────────────────────────────────────────────
@@ -596,6 +612,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (btn) setButtonState(btn, 'error', message.error || 'Erreur inconnue');
 
   // ── Download All ──────────────────────────────────────────────────────────
+  } else if (message.action === 'startDownloadAll') {
+    // From the right-click "Download whole series" context menu — reuse the button flow.
+    const b = document.querySelector('.cdl-dl-all-btn');
+    if (b) b.click();
+
   } else if (message.action === 'downloadAllProgress') {
     updateDownloadAllPopup(message);
 
@@ -920,15 +941,130 @@ async function getAllChapters() {
 /** Lance (ou relance) la session Download All avec les params en cache. */
 function _launchDownloadAll() {
   if (!_lastDlAllParams) return;
-  const { chapters, mangaName, zipName } = _lastDlAllParams;
+  const { chapters, mangaName, zipName, options } = _lastDlAllParams;
   try {
     chrome.runtime.sendMessage(
-      { action: 'downloadAllChapters', chapters, mangaName, zipName },
+      { action: 'downloadAllChapters', chapters, mangaName, zipName, options },
       (res) => { if (chrome.runtime.lastError) updateDownloadAllPopupError('Connection to the extension failed'); }
     );
   } catch (_) {
     updateDownloadAllPopupError('Extension reloaded \u2014 refresh the page');
   }
+}
+
+// \u2500\u2500 Series metadata scrape + downloaded-manifest helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// Best-effort parse of __NEXT_DATA__ (Next.js page props) + DOM fallbacks for the
+// series cover/author/status/description/tags. Exact field names vary, so we walk
+// the JSON object generically and accept the first plausible value.
+function scrapeSeriesMeta() {
+  const meta = { title: getMangaName(), authors: [], status: '', description: '', genres: [], coverUrl: '', language: 'en' };
+  let data = null;
+  try {
+    const el = document.getElementById('__NEXT_DATA__');
+    if (el) data = JSON.parse(el.textContent || 'null');
+  } catch (_) {}
+
+  const slug = (location.pathname.match(/\/title\/([^/]+)/) || [])[1] || '';
+  const visit = (node, depth) => {
+    if (!node || depth > 8 || typeof node !== 'object') return;
+    for (const k in node) {
+      const v = node[k];
+      const key = k.toLowerCase();
+      if (typeof v === 'string') {
+        if (!meta.description && /(description|synopsis|summary)/.test(key) && v.length > 20) meta.description = v;
+        if (!meta.status && /\bstatus\b/.test(key) && v.length < 30) meta.status = v;
+        if (!meta.coverUrl && /(cover|thumbnail|image|poster|banner)/.test(key) && /^https?:\/\/\S+\.(jpe?g|png|webp|avif)/i.test(v)) meta.coverUrl = v;
+        if (!meta.language && /(lang|language)/.test(key) && /^[a-z]{2}(-[A-Za-z]{2})?$/.test(v)) meta.language = v;
+      } else if (Array.isArray(v)) {
+        if (/(genre|tag|categor)/.test(key)) {
+          v.forEach((g) => { const s = typeof g === 'string' ? g : (g && (g.name || g.title || g.label)); if (s && meta.genres.indexOf(s) === -1) meta.genres.push(String(s)); });
+        } else if (/(author|artist|writer|creator)/.test(key)) {
+          v.forEach((a) => { const s = typeof a === 'string' ? a : (a && (a.name || a.title)); if (s && meta.authors.indexOf(s) === -1) meta.authors.push(String(s)); });
+        } else { v.forEach((x) => visit(x, depth + 1)); }
+      } else if (v && typeof v === 'object') {
+        visit(v, depth + 1);
+      }
+    }
+  };
+  if (data) visit(data, 0);
+
+  // DOM fallbacks
+  if (!meta.coverUrl) {
+    const og = document.querySelector('meta[property="og:image"]');
+    if (og && og.content) meta.coverUrl = og.content;
+  }
+  if (!meta.description) {
+    const md = document.querySelector('meta[name="description"], meta[property="og:description"]');
+    if (md && md.content) meta.description = md.content;
+  }
+  meta.slug = slug;
+  meta.sourceUrl = location.href;
+  return meta;
+}
+
+// Stable per-chapter key (matches background's manifest key) via CDLFeaturesCore.
+function chapterKeyOf(label) {
+  if (typeof CDLFeaturesCore !== 'undefined') {
+    return CDLFeaturesCore.dedupeKey(CDLFeaturesCore.parseChapterNumber(label));
+  }
+  return String(label || '');
+}
+
+// Resolve the set of already-downloaded chapter keys for this series.
+function getDownloadedKeySet() {
+  return new Promise((resolve) => {
+    const slug = (location.pathname.match(/\/title\/([^/]+)/) || [])[1] || '';
+    if (!slug || !chrome?.storage?.local) { resolve(new Set()); return; }
+    try {
+      chrome.storage.local.get('cdlManifest', (res) => {
+        const entry = res && res.cdlManifest && res.cdlManifest[slug];
+        resolve(new Set(entry && entry.chapters ? Object.keys(entry.chapters) : []));
+      });
+    } catch (_) { resolve(new Set()); }
+  });
+}
+
+// Per-series saved output preferences (cdlSeriesPrefs[slug]); overlays settings defaults.
+function getSeriesPrefs() {
+  return new Promise((resolve) => {
+    const slug = (location.pathname.match(/\/title\/([^/]+)/) || [])[1] || '';
+    if (!slug || !chrome?.storage?.local) { resolve({}); return; }
+    try {
+      chrome.storage.local.get('cdlSeriesPrefs', (res) => {
+        resolve((res && res.cdlSeriesPrefs && res.cdlSeriesPrefs[slug]) || {});
+      });
+    } catch (_) { resolve({}); }
+  });
+}
+function saveSeriesPrefs(prefs) {
+  const slug = (location.pathname.match(/\/title\/([^/]+)/) || [])[1] || '';
+  if (!slug || !chrome?.storage?.local) return;
+  try {
+    chrome.storage.local.get('cdlSeriesPrefs', (res) => {
+      const all = (res && res.cdlSeriesPrefs) || {};
+      all[slug] = prefs;
+      chrome.storage.local.set({ cdlSeriesPrefs: all });
+    });
+  } catch (_) {}
+}
+
+// Mark per-chapter buttons whose chapter is already in the downloaded manifest
+// (subtle green dot + tooltip). Re-run on scan and whenever the manifest changes.
+function markDownloadedButtons() {
+  getDownloadedKeySet().then((set) => {
+    if (!document.getElementById('cdl-done-style')) {
+      const st = document.createElement('style');
+      st.id = 'cdl-done-style';
+      st.textContent = `.${DOWNLOAD_BTN_CLASS}.cdl-row-done::after{content:'';position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 1px rgba(0,0,0,0.25);}`;
+      document.head.appendChild(st);
+    }
+    document.querySelectorAll(`.${DOWNLOAD_BTN_CLASS}[data-chapter-url]`).forEach((b) => {
+      const label = extractChapterLabel(b.getAttribute('data-chapter-url') || '');
+      const done = set.has(chapterKeyOf(label));
+      b.classList.toggle('cdl-row-done', done);
+      if (done && !/already downloaded/i.test(b.title)) b.title = `${b.title} (already downloaded)`;
+    });
+  }).catch(() => {});
 }
 
 /**
@@ -1016,7 +1152,7 @@ function injectDownloadAllButton() {
     e.preventDefault();
     e.stopPropagation();
     if (!chrome?.runtime?.id) { alert('Extension reloaded — please refresh the page.'); return; }
-    if (document.getElementById('cdl-all-popup')) return; // déjà en cours
+    if (document.getElementById('cdl-all-popup') || document.getElementById('cdl-opts-panel')) return; // already running / panel open
 
     // Indicateur de chargement pendant la collecte des chapitres
     btn.disabled = true;
@@ -1034,11 +1170,8 @@ function injectDownloadAllButton() {
 
     if (chapters.length === 0) { alert('No chapters found on this page.'); return; }
 
-    const mangaName = getMangaName();
-    const zipName   = buildAllZipName(mangaName);
-    _lastDlAllParams = { chapters, mangaName, zipName };
-    showDownloadAllPopup(mangaName, chapters.length);
-    _launchDownloadAll();
+    // Open the options panel; it launches the download (or export) on Start.
+    showDownloadAllOptionsPanel(getMangaName(), chapters);
   });
 
   if (mode === 'floating') document.body.appendChild(btn);
@@ -1108,6 +1241,226 @@ function _cdlEnsureThemeWatcher() {
     const onChange = () => _cdlApplyPopupTheme();
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else if (mq.addListener) mq.addListener(onChange);
+  } catch (_) {}
+}
+
+// ── Download options panel (shown before Download All) ────────────────────────
+function injectOptsStyles() {
+  if (document.getElementById('cdl-opts-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'cdl-opts-styles';
+  style.textContent = `
+    #cdl-opts-backdrop { position:fixed; inset:0; z-index:2147483647; background:rgba(8,10,16,0.55);
+      display:flex; align-items:center; justify-content:center; padding:20px;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; animation:cdl-ap-in .18s ease both; }
+    #cdl-opts-panel {
+      --cdl-bg:#13151f; --cdl-header-bg:rgba(255,255,255,0.025); --cdl-text:#d6dae8; --cdl-text-strong:#eef1f8;
+      --cdl-muted:#8088a4; --cdl-faint:#5a6280; --cdl-border:rgba(255,255,255,0.10); --cdl-border-soft:rgba(255,255,255,0.06);
+      --cdl-hover:rgba(255,255,255,0.06); --cdl-accent:#60a5fa; --cdl-accent-bg:rgba(96,165,250,0.14);
+      --cdl-ok:#4ade80;
+      width:440px; max-width:100%; max-height:88vh; overflow-y:auto; background:var(--cdl-bg);
+      color:var(--cdl-text); border:1px solid var(--cdl-border); border-radius:14px;
+      box-shadow:0 18px 44px rgba(0,0,0,0.5); font-size:13px; }
+    #cdl-opts-panel[data-cdl-theme="light"] {
+      --cdl-bg:#fff; --cdl-header-bg:#f7f8fb; --cdl-text:#2b3146; --cdl-text-strong:#14171f; --cdl-muted:#6b7180;
+      --cdl-faint:#98a0b2; --cdl-border:rgba(17,20,32,0.12); --cdl-border-soft:rgba(17,20,32,0.08);
+      --cdl-hover:rgba(17,20,32,0.05); --cdl-accent-bg:rgba(37,99,235,0.10); }
+    .cdl-op-head { display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:13px 16px; background:var(--cdl-header-bg); border-bottom:1px solid var(--cdl-border-soft);
+      border-radius:14px 14px 0 0; }
+    .cdl-op-title { font-weight:600; font-size:14px; color:var(--cdl-text-strong); display:flex; align-items:center; gap:8px; }
+    .cdl-op-title svg { width:16px; height:16px; color:var(--cdl-accent); }
+    .cdl-op-close { background:none; border:none; color:var(--cdl-faint); font-size:20px; line-height:1; cursor:pointer; padding:2px 8px; border-radius:6px; }
+    .cdl-op-close:hover { color:var(--cdl-text-strong); background:var(--cdl-hover); }
+    .cdl-op-body { padding:14px 16px; display:flex; flex-direction:column; gap:14px; }
+    .cdl-op-sec-label { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--cdl-muted); margin-bottom:7px; }
+    .cdl-op-cards { display:flex; gap:9px; }
+    .cdl-op-card { flex:1; border:1.5px solid var(--cdl-border); border-radius:10px; padding:10px 11px; cursor:pointer; transition:border-color .12s, background .12s; }
+    .cdl-op-card:hover { background:var(--cdl-hover); }
+    .cdl-op-card.sel { border-color:var(--cdl-accent); background:var(--cdl-accent-bg); }
+    .cdl-op-card .t { font-weight:600; color:var(--cdl-text-strong); font-size:13px; }
+    .cdl-op-card .d { color:var(--cdl-muted); font-size:11px; margin-top:3px; line-height:1.35; }
+    .cdl-op-row { display:flex; align-items:center; gap:9px; }
+    .cdl-op-check { display:flex; align-items:flex-start; gap:9px; cursor:pointer; }
+    .cdl-op-check input { margin-top:2px; accent-color:var(--cdl-accent); width:15px; height:15px; flex-shrink:0; }
+    .cdl-op-check .t { color:var(--cdl-text); font-size:12.5px; }
+    .cdl-op-check .d { color:var(--cdl-faint); font-size:11px; }
+    .cdl-op-field { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .cdl-op-field label { color:var(--cdl-text); font-size:12.5px; }
+    #cdl-opts-panel select, #cdl-opts-panel input[type="number"] {
+      background:var(--cdl-header-bg); color:var(--cdl-text); border:1px solid var(--cdl-border);
+      border-radius:7px; padding:5px 8px; font-size:12.5px; }
+    .cdl-op-scope { display:flex; flex-direction:column; gap:7px; }
+    .cdl-op-scope label { display:flex; align-items:center; gap:8px; color:var(--cdl-text); font-size:12.5px; cursor:pointer; }
+    .cdl-op-scope input[type="radio"] { accent-color:var(--cdl-accent); }
+    .cdl-op-scope input[type="number"] { width:64px; }
+    .cdl-op-range { display:flex; align-items:center; gap:6px; color:var(--cdl-muted); }
+    .cdl-op-estimate { font-size:12px; color:var(--cdl-muted); background:var(--cdl-header-bg);
+      border:1px solid var(--cdl-border-soft); border-radius:8px; padding:8px 10px; }
+    .cdl-op-foot { display:flex; align-items:center; justify-content:space-between; gap:8px;
+      padding:12px 16px; border-top:1px solid var(--cdl-border-soft); }
+    .cdl-op-btn { border-radius:8px; padding:8px 16px; font-size:12.5px; font-weight:600; cursor:pointer; border:1px solid var(--cdl-border); background:transparent; color:var(--cdl-text); }
+    .cdl-op-btn:hover { background:var(--cdl-hover); }
+    .cdl-op-btn.primary { background:var(--cdl-accent); border-color:var(--cdl-accent); color:#07101f; }
+    .cdl-op-btn.primary:hover { filter:brightness(1.08); }
+    .cdl-op-btn:disabled { opacity:.45; cursor:default; }
+  `;
+  document.head.appendChild(style);
+}
+
+async function showDownloadAllOptionsPanel(mangaName, chapters) {
+  injectOptsStyles();
+  const meta = scrapeSeriesMeta();
+  const [prefs, downloaded] = await Promise.all([getSeriesPrefs(), getDownloadedKeySet()]);
+
+  // Defaults: settings, overlaid with this series' remembered choices.
+  const def = {
+    format: prefs.format || CFG['output.format'] || 'zip',
+    includeComicInfo: prefs.includeComicInfo != null ? prefs.includeComicInfo : (CFG['output.includeComicInfo'] !== false),
+    includeSeriesMeta: prefs.includeSeriesMeta != null ? prefs.includeSeriesMeta : !!CFG['output.includeSeriesMeta'],
+    folderLayout: prefs.folderLayout || CFG['output.folderLayout'] || 'default',
+  };
+  const newCount = chapters.filter((c) => !downloaded.has(chapterKeyOf(c.chapterLabel))).length;
+  const hasManifest = downloaded.size > 0;
+  const defaultScope = (CFG['download.skipDownloaded'] !== false && newCount > 0 && newCount < chapters.length) ? 'new' : 'all';
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'cdl-opts-backdrop';
+  const panel = document.createElement('div');
+  panel.id = 'cdl-opts-panel';
+  panel.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
+
+  _setHTML(panel, `
+    <div class="cdl-op-head">
+      <div class="cdl-op-title">${ICON_DOWNLOAD}&nbsp;Download options</div>
+      <button class="cdl-op-close" id="cdl-op-close" title="Cancel">×</button>
+    </div>
+    <div class="cdl-op-body">
+      <div class="cdl-ap-manga-name" style="color:var(--cdl-muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(mangaName)}</div>
+      <div>
+        <div class="cdl-op-sec-label">Format</div>
+        <div class="cdl-op-cards">
+          <div class="cdl-op-card" data-fmt="zip"><div class="t">ZIP</div><div class="d">Plain folders of images.</div></div>
+          <div class="cdl-op-card" data-fmt="cbz"><div class="t">CBZ</div><div class="d">One comic file per chapter — opens in Komga, Kavita, Mihon, YACReader…</div></div>
+        </div>
+      </div>
+      <label class="cdl-op-check"><input type="checkbox" id="cdl-op-comicinfo"><span><span class="t">Include ComicInfo.xml</span><br><span class="d">Series, number, tags — so library servers index each chapter.</span></span></label>
+      <label class="cdl-op-check"><input type="checkbox" id="cdl-op-meta"><span><span class="t">Include series info</span><br><span class="d">Save the cover image and series details (cover.jpg + series.json).</span></span></label>
+      <div class="cdl-op-field">
+        <label for="cdl-op-layout">Folder layout</label>
+        <select id="cdl-op-layout">
+          <option value="default">Default (Ch0001)</option>
+          <option value="kavita">Kavita / Komga (Series / Series - Chapter 0001)</option>
+        </select>
+      </div>
+      <div>
+        <div class="cdl-op-sec-label">Which chapters</div>
+        <div class="cdl-op-scope">
+          <label><input type="radio" name="cdl-op-scope" value="all"> All chapters (${chapters.length})</label>
+          <label><input type="radio" name="cdl-op-scope" value="new"${newCount === 0 ? ' disabled' : ''}> Only new — not yet downloaded (${newCount})</label>
+          <label><input type="radio" name="cdl-op-scope" value="range"> <span class="cdl-op-range">Range&nbsp;<input type="number" id="cdl-op-from" min="1" max="${chapters.length}" value="1">to<input type="number" id="cdl-op-to" min="1" max="${chapters.length}" value="${chapters.length}"></span></label>
+        </div>
+      </div>
+      <div class="cdl-op-estimate" id="cdl-op-estimate"></div>
+      <label class="cdl-op-check"><input type="checkbox" id="cdl-op-remember"><span class="t">Remember these choices for this series</span></label>
+    </div>
+    <div class="cdl-op-foot">
+      <button class="cdl-op-btn" id="cdl-op-export" title="Save the chapter list + series info as JSON, without downloading images">Export list</button>
+      <div style="display:flex;gap:8px;">
+        <button class="cdl-op-btn" id="cdl-op-cancel">Cancel</button>
+        <button class="cdl-op-btn primary" id="cdl-op-start">Start download</button>
+      </div>
+    </div>`);
+  backdrop.appendChild(panel);
+  document.body.appendChild(backdrop);
+
+  // ── State + wiring ──
+  let format = def.format;
+  const q = (id) => panel.querySelector(id);
+  const cards = [...panel.querySelectorAll('.cdl-op-card')];
+  const selectFormat = (f) => { format = f; cards.forEach((c) => c.classList.toggle('sel', c.dataset.fmt === f)); };
+  cards.forEach((c) => c.addEventListener('click', () => selectFormat(c.dataset.fmt)));
+  selectFormat(format);
+  q('#cdl-op-comicinfo').checked = def.includeComicInfo;
+  q('#cdl-op-meta').checked = def.includeSeriesMeta;
+  q('#cdl-op-layout').value = def.folderLayout;
+  const scopeRadio = (v) => panel.querySelector(`input[name="cdl-op-scope"][value="${v}"]`);
+  scopeRadio(defaultScope).checked = true;
+
+  const currentScope = () => (panel.querySelector('input[name="cdl-op-scope"]:checked') || {}).value || 'all';
+  const clampInt = (v, lo, hi, d) => { v = parseInt(v, 10); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+  const selectedChapters = () => {
+    const scope = currentScope();
+    if (scope === 'new') return chapters.filter((c) => !downloaded.has(chapterKeyOf(c.chapterLabel)));
+    if (scope === 'range') {
+      let a = clampInt(q('#cdl-op-from').value, 1, chapters.length, 1);
+      let b = clampInt(q('#cdl-op-to').value, 1, chapters.length, chapters.length);
+      if (a > b) { const t = a; a = b; b = t; }
+      return chapters.slice(a - 1, b);
+    }
+    return chapters.slice();
+  };
+  const updateEstimate = () => {
+    const n = selectedChapters().length;
+    const mb = Math.max(1, Math.round(n * 6)); // ~6 MB/chapter, very rough
+    q('#cdl-op-estimate').textContent = `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title)`;
+    q('#cdl-op-start').disabled = n === 0;
+  };
+  panel.querySelectorAll('input[name="cdl-op-scope"], #cdl-op-from, #cdl-op-to')
+    .forEach((el) => el.addEventListener('input', updateEstimate));
+  updateEstimate();
+
+  const close = () => backdrop.remove();
+  q('#cdl-op-close').addEventListener('click', close);
+  q('#cdl-op-cancel').addEventListener('click', close);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+
+  const buildOptions = () => ({
+    format,
+    includeComicInfo: q('#cdl-op-comicinfo').checked,
+    includeSeriesMeta: q('#cdl-op-meta').checked,
+    folderLayout: q('#cdl-op-layout').value,
+    slug: meta.slug || '',
+    seriesMeta: meta,
+    totalCount: chapters.length,
+  });
+
+  q('#cdl-op-start').addEventListener('click', () => {
+    const subset = selectedChapters();
+    if (!subset.length) return;
+    const options = buildOptions();
+    if (q('#cdl-op-remember').checked) {
+      saveSeriesPrefs({ format: options.format, includeComicInfo: options.includeComicInfo,
+        includeSeriesMeta: options.includeSeriesMeta, folderLayout: options.folderLayout });
+    }
+    const zipName = buildAllZipName(mangaName);
+    _lastDlAllParams = { chapters: subset, mangaName, zipName, options };
+    close();
+    showDownloadAllPopup(mangaName, subset.length);
+    _launchDownloadAll();
+  });
+
+  q('#cdl-op-export').addEventListener('click', () => {
+    exportChapterList(mangaName, selectedChapters(), meta);
+    close();
+  });
+}
+
+// Export-only: save the selected chapter list + scraped series metadata as JSON,
+// without downloading any images. Triggered from the options panel.
+function exportChapterList(mangaName, chapters, meta) {
+  try {
+    const payload = {
+      __comix: 'export', version: 1, exportedAt: new Date().toISOString(),
+      series: meta, chapters: chapters.map((c) => ({ label: c.chapterLabel, url: c.chapterUrl })),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${slugify(mangaName) || 'comix'}-chapters.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (_) {}
 }
 
@@ -1441,6 +1794,7 @@ function scanAndInject() {
   const bookmarkBtns = document.querySelectorAll('.mchap-bookmark, [class*="mchap-bookmark"]');
   bookmarkBtns.forEach(injectButtonForRow);
   injectDownloadAllButton();
+  markDownloadedButtons();
 }
 
 function observeDOM() {
@@ -1507,4 +1861,13 @@ function observeDOM() {
   scanAndInject();
   observeDOM();
   restoreDownloadAllPopupFromBackground();
+
+  // Refresh the "already-downloaded" dots when the manifest changes (e.g. after a run).
+  try {
+    if (chrome?.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes.cdlManifest) markDownloadedButtons();
+      });
+    }
+  } catch (_) {}
 })();

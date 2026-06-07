@@ -418,12 +418,111 @@
     readerState = null;
   }
 
+  // ════════════════════════ reader page: keyboard shortcuts ════════════════════════
+  // Opt-in. J / → = next chapter, K / ← = previous chapter, D = download current.
+  // Self-contained (works whether or not fixReaderNav is on); ignored while typing.
+  var kbState = null;
+
+  function getReaderMangaName() {
+    var h = document.querySelector('h1');
+    var t = (h && (h.textContent || '').trim()) || (document.title || '').replace(/\s*[-|].*$/, '').trim();
+    return t || currentSlug() || 'manga';
+  }
+  function readerChapterLabel() {
+    var p = Core.parseChapterNumber(location.href);
+    if (p && p.kind === 'num' && isFinite(p.value)) return 'Ch' + p.value;
+    var m = location.pathname.match(/\d+-chapter-([\w.-]+)/i);
+    return m ? 'Ch' + m[1] : 'chapter';
+  }
+  async function kbResolveEntries() {
+    var slug = currentSlug();
+    if (readerState && readerState.entries && readerState.entriesSlug === slug) return readerState.entries;
+    if (kbState && kbState.entries && kbState.slug === slug) return kbState.entries;
+    var entries = await fetchAllChapterEntries(slug);
+    if (kbState) { kbState.entries = entries; kbState.slug = slug; }
+    return entries;
+  }
+  async function kbNavigate(direction) {
+    try {
+      var entries = await kbResolveEntries();
+      var node = Core.computeAdjacentChapter(entries, location.href, direction);
+      var url = node ? Core.pickCandidateUrl(node, location.href) : null;
+      if (url) location.assign(url);
+    } catch (e) { /* no-op */ }
+  }
+  function kbDownloadCurrent() {
+    if (!(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id)) return;
+    var manga = getReaderMangaName();
+    var label = readerChapterLabel();
+    try {
+      chrome.runtime.sendMessage({
+        action: 'downloadChapter',
+        chapterUrl: location.href,
+        zipName: manga + '-' + label,
+        options: {
+          format: cfg['output.format'] || 'zip',
+          includeComicInfo: cfg['output.includeComicInfo'] !== false,
+          includeSeriesMeta: false,
+          folderLayout: 'default',
+          chapterLabel: label,
+          mangaName: manga,
+          seriesMeta: { title: manga, slug: currentSlug(), sourceUrl: location.href }
+        }
+      });
+      kbToast('Downloading ' + label + '…');
+    } catch (e) { /* no-op */ }
+  }
+  function kbIsTyping(el) {
+    if (!el) return false;
+    var tag = (el.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+  }
+  function onKbKeydown(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (kbIsTyping(e.target || document.activeElement)) return;
+    var k = e.key;
+    if (k === 'j' || k === 'J' || k === 'ArrowRight') { e.preventDefault(); kbNavigate(1); }
+    else if (k === 'k' || k === 'K' || k === 'ArrowLeft') { e.preventDefault(); kbNavigate(-1); }
+    else if (k === 'd' || k === 'D') { e.preventDefault(); kbDownloadCurrent(); }
+  }
+  var kbToastTimer = null;
+  function kbToast(msg) {
+    try {
+      var id = 'cdl-kb-toast';
+      var t = document.getElementById(id);
+      if (!t) {
+        t = document.createElement('div');
+        t.id = id;
+        t.style.cssText = 'position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:2147483647;' +
+          'background:rgba(19,21,31,0.96);color:#eef1f8;font:600 13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
+          'padding:9px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);box-shadow:0 6px 20px rgba(0,0,0,0.4);pointer-events:none;';
+        document.body.appendChild(t);
+      }
+      t.textContent = msg;
+      t.style.opacity = '1';
+      clearTimeout(kbToastTimer);
+      kbToastTimer = setTimeout(function () { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; }, 1800);
+    } catch (e) {}
+  }
+  function startReaderKb() {
+    if (kbState) return;
+    kbState = { entries: null, slug: null };
+    window.addEventListener('keydown', onKbKeydown, true);
+  }
+  function stopReaderKb() {
+    if (!kbState) return;
+    window.removeEventListener('keydown', onKbKeydown, true);
+    kbState = null;
+  }
+
   // ════════════════════════ wiring ════════════════════════
   function applyForPage() {
     try {
       if (isReader) {
         if (cfg['features.fixReaderNav']) startReaderNav();
         else stopReaderNav();
+        if (cfg['reader.keyboardShortcuts']) startReaderKb();
+        else stopReaderKb();
       } else {
         var anyList = cfg['features.dedupeChapters'] || cfg['features.enforceChapterOrder'];
         if (anyList) {

@@ -15,9 +15,19 @@ if (typeof importScripts === 'function' && typeof JSZip === 'undefined') {
 }
 
 // Shared settings module (CDLSettings). Chrome loads it here; Firefox loads it
-// via manifest.background.scripts (jszip, settings, background — in that order).
+// via manifest.background.scripts (jszip, settings, features-core, comicinfo,
+// background — in that order).
 if (typeof importScripts === 'function' && typeof CDLSettings === 'undefined') {
   importScripts('settings.js');
+}
+
+// Chapter-identity helpers (CDLFeaturesCore) for the downloaded-manifest, and the
+// ComicInfo.xml builder (CDLComicInfo) for CBZ output. Same dual-context pattern.
+if (typeof importScripts === 'function' && typeof CDLFeaturesCore === 'undefined') {
+  importScripts('cdl-features-core.js');
+}
+if (typeof importScripts === 'function' && typeof CDLComicInfo === 'undefined') {
+  importScripts('cdl-comicinfo.js');
 }
 
 'use strict';
@@ -107,6 +117,72 @@ function _setNewToolbarBadge() {
     }
   } catch (_) {}
 }
+
+// Live Download-All progress on the toolbar icon (overrides the NEW badge while
+// running). Restored to NEW / cleared when the run ends.
+function setProgressBadge(completed, total) {
+  try {
+    if (!(chrome.action && chrome.action.setBadgeText)) return;
+    let text = '';
+    if (total > 0) text = `${Math.min(99, Math.round((completed / total) * 100))}%`;
+    chrome.action.setBadgeText({ text });
+    if (text && chrome.action.setBadgeBackgroundColor) chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
+  } catch (_) {}
+}
+function restoreIdleBadge() {
+  try {
+    if (!(chrome.action && chrome.action.setBadgeText)) return;
+    chrome.storage.local.get(['cdlFeaturesNotice', 'cdlConcurrencyNotice']).then((res) => {
+      const active = (res.cdlFeaturesNotice && res.cdlFeaturesNotice.active) ||
+                     (res.cdlConcurrencyNotice && res.cdlConcurrencyNotice.active);
+      if (active) _setNewToolbarBadge();
+      else chrome.action.setBadgeText({ text: '' });
+    }).catch(() => { try { chrome.action.setBadgeText({ text: '' }); } catch (_) {} });
+  } catch (_) {}
+}
+
+// ── Right-click context menu ──────────────────────────────────────────────────
+function setupContextMenus() {
+  if (!chrome.contextMenus) return;
+  try {
+    chrome.contextMenus.removeAll(() => {
+      try {
+        chrome.contextMenus.create({
+          id: 'cdl-dl-chapter', title: 'Download this chapter',
+          contexts: ['link'], targetUrlPatterns: ['*://comix.to/title/*']
+        });
+        chrome.contextMenus.create({
+          id: 'cdl-dl-series', title: 'Download whole series (open options)',
+          contexts: ['page'], documentUrlPatterns: ['*://comix.to/title/*']
+        });
+      } catch (_) {}
+    });
+  } catch (_) {}
+}
+
+if (chrome.contextMenus && chrome.contextMenus.onClicked) {
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === 'cdl-dl-chapter') {
+      const url = info.linkUrl || '';
+      if (!/\/\d+-chapter-/i.test(url)) return;
+      // Best-effort name from the tab title + chapter number in the URL.
+      const manga = (tab && tab.title ? tab.title.replace(/\s*[-|].*$/, '').trim() : '') || 'comix';
+      let label = 'chapter';
+      if (typeof CDLFeaturesCore !== 'undefined') {
+        const p = CDLFeaturesCore.parseChapterNumber(url);
+        if (p && p.kind === 'num' && isFinite(p.value)) label = 'Ch' + p.value;
+      }
+      handleDownloadRequest(url, `${manga}-${label}`, tab ? tab.id : null, {
+        chapterLabel: label, mangaName: manga, seriesMeta: { title: manga, sourceUrl: url },
+      });
+    } else if (info.menuItemId === 'cdl-dl-series') {
+      if (tab && tab.id != null) chrome.tabs.sendMessage(tab.id, { action: 'startDownloadAll' }).catch(() => {});
+    }
+  });
+}
+
+chrome.runtime.onInstalled.addListener(setupContextMenus);
+if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(setupContextMenus);
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason !== 'install' && details.reason !== 'update') return;
@@ -300,6 +376,9 @@ function dismissDownloadAllSessionForTab(tabId) {
 
 function notifyDownloadAllProgress(originTabId, progress) {
   recordDownloadAllProgress(progress);
+  if (typeof progress.completed === 'number' && progress.totalChapters) {
+    setProgressBadge(progress.completed, progress.totalChapters);
+  }
   notifyTab(originTabId, { action: 'downloadAllProgress', ...progress });
 }
 
@@ -310,6 +389,7 @@ function notifyDownloadAllDone(originTabId, zipName) {
     doneZipName: zipName,
     lastDone: message,
   });
+  restoreIdleBadge();
   notifyTab(originTabId, message);
 }
 
@@ -321,6 +401,7 @@ function notifyDownloadAllError(originTabId, error, canRetryZip = false) {
     canRetryZip,
     lastError: message,
   });
+  restoreIdleBadge();
   notifyTab(originTabId, message);
 }
 
@@ -330,6 +411,7 @@ function notifyDownloadAllCancelled(originTabId) {
     originTabId,
     lastCancelled: message,
   });
+  restoreIdleBadge();
   notifyTab(originTabId, message);
 }
 
@@ -338,7 +420,7 @@ function notifyDownloadAllCancelled(originTabId) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'downloadChapter') {
     const originTabId = sender.tab?.id ?? null;
-    handleDownloadRequest(message.chapterUrl, message.zipName, originTabId);
+    handleDownloadRequest(message.chapterUrl, message.zipName, originTabId, message.options);
     sendResponse({ ok: true });
     return true;
   }
@@ -346,7 +428,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'downloadAllChapters') {
     const originTabId = sender.tab?.id ?? null;
     _resetDownloadAllAbort();
-    handleDownloadAllRequest(message.chapters, message.mangaName, message.zipName, originTabId);
+    handleDownloadAllRequest(message.chapters, message.mangaName, message.zipName, originTabId, message.options);
     sendResponse({ ok: true });
     return true;
   }
@@ -386,7 +468,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ── Logique principale ────────────────────────────────────────────────────────
 
-async function handleDownloadRequest(chapterUrl, zipName, originTabId) {
+async function handleDownloadRequest(chapterUrl, zipName, originTabId, options) {
   cdlLog('info', `Download started: ${zipName}`);
   const cfg = await loadCfg();
   try {
@@ -397,7 +479,7 @@ async function handleDownloadRequest(chapterUrl, zipName, originTabId) {
       pinned: false,
     });
 
-    pendingDownloads.set(tab.id, { chapterUrl, zipName, originTabId, cfg });
+    pendingDownloads.set(tab.id, { chapterUrl, zipName, originTabId, cfg, options });
   } catch (err) {
     console.error('[ComixDL] Impossible d\'ouvrir l\'onglet:', err);
     cdlLog('error', `Cannot open tab: ${err.message}`);
@@ -415,7 +497,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   if (!pendingDownloads.has(tabId)) return;
   if (changeInfo.status !== 'complete') return;
 
-  const { chapterUrl, zipName, originTabId, cfg } = pendingDownloads.get(tabId);
+  const { chapterUrl, zipName, originTabId, cfg, options } = pendingDownloads.get(tabId);
   pendingDownloads.delete(tabId);
 
   try {
@@ -441,7 +523,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
 
     cdlLog('info', `Extracted ${images.length} images for ${zipName}`);
     // Lancer le téléchargement + ZIP directement dans le service worker
-    scheduleDownload({ images, chapterUrl, zipName, originTabId, cfg });
+    scheduleDownload({ images, chapterUrl, zipName, originTabId, cfg, options });
   } catch (err) {
     chrome.tabs.remove(tabId).catch(() => {});
     console.error('[ComixDL] Extraction échouée:', err);
@@ -735,8 +817,9 @@ function processDownloadQueue() {
 
 // ── Téléchargement + création du ZIP ─────────────────────────────────────────
 
-async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, cfg }) {
+async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, cfg, options }) {
   cfg = cfg || {};
+  const opts = resolveOutputOptions(cfg, options);
   const batchSize = cfg['perf.batchSize'] || BATCH_SIZE;
   const padDigits = cfg['naming.imagePadDigits'] || 3;
   const imageRetries = cfg['retry.imageRetries'] || 0;
@@ -758,9 +841,20 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
     );
   }
 
+  // CBZ: a single chapter is itself the .cbz (flat images + optional ComicInfo.xml).
+  const isCbz = opts.format === 'cbz';
+  if (isCbz && opts.includeComicInfo) {
+    const chapterLabel = (options && options.chapterLabel) || '';
+    const mangaName = (options && options.mangaName) || (opts.seriesMeta && opts.seriesMeta.title) || '';
+    const xml = buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, total, mangaName);
+    if (xml) zip.file('ComicInfo.xml', xml);
+  }
+  const ext = isCbz ? 'cbz' : 'zip';
+  const outName = sanitizeFilename(zipName, ext);
+
   const { url, revoke, base64: urlBase64 } = await _zipToDownloadUrl(zip);
   try {
-    await chrome.downloads.download({ url, filename: sanitizeFilename(zipName), saveAs: false });
+    await chrome.downloads.download({ url, filename: outName, saveAs: false });
     setTimeout(revoke, 60_000);
   } catch (_dlErr) {
     revoke();
@@ -771,14 +865,14 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
       chrome.tabs.sendMessage(originTabId, {
         action: 'triggerDownload',
         base64: b64,
-        filename: sanitizeFilename(zipName),
+        filename: outName,
       }).catch(() => {});
     } else {
       throw _dlErr;
     }
   }
 
-  cdlLog('ok', `ZIP saved: ${sanitizeFilename(zipName)} (${images.length} images)`);
+  cdlLog('ok', `${ext.toUpperCase()} saved: ${outName} (${images.length} images)`);
   notifyTab(originTabId, { action: 'downloadDone', chapterUrl });
 }
 
@@ -1031,13 +1125,14 @@ async function _zipToDownloadUrl(zip) {
   return { url: `data:application/zip;base64,${base64}`, revoke: () => {}, base64 };
 }
 
-function sanitizeFilename(name) {
+function sanitizeFilename(name, ext) {
+  ext = (ext || 'zip').replace(/^\./, '');
   const base = name
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
-    .replace(/\.zip$/i, '')
+    .replace(/\.(zip|cbz)$/i, '')
     .replace(/\.+$/, '')
     .substring(0, 196);
-  return `${base || 'download'}.zip`;
+  return `${base || 'download'}.${ext}`;
 }
 
 function getZipPartName(zipName, partNumber) {
@@ -1061,6 +1156,140 @@ function buildChapterFolderName(folderFmt, chapterLabel, mangaName) {
   }
   // Legacy fallback if the settings module is somehow unavailable.
   return `Ch${m[1].padStart(4, '0')}${m[2]}`;
+}
+
+// ── Output options (CBZ / ComicInfo / metadata / folder layout) ───────────────
+// Merge the on-page panel's per-download choices over the saved settings defaults.
+function resolveOutputOptions(cfg, options) {
+  cfg = cfg || {};
+  options = options || {};
+  const pick = (o, c, d) => (o != null ? o : (c != null ? c : d));
+  return {
+    format: options.format || cfg['output.format'] || 'zip',
+    includeComicInfo: !!pick(options.includeComicInfo, cfg['output.includeComicInfo'], true),
+    includeSeriesMeta: !!pick(options.includeSeriesMeta, cfg['output.includeSeriesMeta'], false),
+    folderLayout: options.folderLayout || cfg['output.folderLayout'] || 'default',
+    folderFmt: cfg['naming.chapterFolderFmt'] || 'Ch{num4}{rest}',
+    seriesMeta: options.seriesMeta || null,   // scraped on the page: {title,authors,status,description,genres,coverUrl,language,...}
+    slug: options.slug || null,
+    totalCount: options.totalCount || null,   // total chapters in the series (ComicInfo <Count>)
+  };
+}
+
+// Top-level series folder name (Kavita/Komga layout groups everything under it).
+function seriesFolderName(mangaName) {
+  if (typeof CDLSettings !== 'undefined') return CDLSettings.sanitizeFilename(mangaName, 100) || 'Series';
+  return String(mangaName || 'Series').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').slice(0, 100) || 'Series';
+}
+
+// Inner entry base path for a chapter (NO extension), honoring the folder layout.
+//   default → "Ch0012"            (existing template)
+//   kavita  → "Series/Series - Chapter 0012"
+function buildChapterEntryName(opts, chapterLabel, mangaName) {
+  if (opts.folderLayout === 'kavita') {
+    const m = String(chapterLabel || '').match(/^Ch([\d.]+)(.*)/i);
+    const num = m ? m[1] : '';
+    const rest = m ? m[2] : '';
+    const folder = seriesFolderName(mangaName);
+    let base;
+    if (typeof CDLSettings !== 'undefined') {
+      base = CDLSettings.renderName('{manga} - Chapter {num4}{rest}',
+        { manga: mangaName, num: num, rest: rest, chapter: chapterLabel }, 120);
+    } else {
+      base = `${mangaName} - Chapter ${num}${rest}`;
+    }
+    return `${folder}/${base}`;
+  }
+  return buildChapterFolderName(opts.folderFmt, chapterLabel, mangaName);
+}
+
+// Build a ComicInfo.xml string for one chapter (best-effort fields from the scrape).
+function buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, pageCount, mangaName) {
+  if (typeof CDLComicInfo === 'undefined') return null;
+  const meta = (opts && opts.seriesMeta) || {};
+  let number = '';
+  if (typeof CDLFeaturesCore !== 'undefined') {
+    const p = CDLFeaturesCore.parseChapterNumber(chapterLabel || chapterUrl || '');
+    if (p && p.kind === 'num' && isFinite(p.value)) number = String(p.value);
+  }
+  if (!number) { const m = String(chapterLabel || '').match(/([\d.]+)/); number = m ? m[1] : ''; }
+  const writer = Array.isArray(meta.authors) ? meta.authors.join(', ') : (meta.author || meta.writer);
+  return CDLComicInfo.buildComicInfoXml({
+    series: meta.title || mangaName,
+    number: number || undefined,
+    count: opts.totalCount || undefined,
+    title: chapterLabel || undefined,
+    summary: meta.description || undefined,
+    writer: writer || undefined,
+    genres: meta.genres || meta.tags || undefined,
+    web: chapterUrl || undefined,
+    pageCount: pageCount || undefined,
+    language: meta.language || 'en',
+    manga: 'Yes',
+  });
+}
+
+// Add one finished chapter to the outer ZIP, honoring format/ComicInfo/layout.
+// Returns the byte size added (for multipart accounting).
+async function addChapterToOuter(zip, r, opts, mangaName) {
+  const entryBase = buildChapterEntryName(opts, r.chapterLabel, mangaName);
+  const comicInfo = opts.includeComicInfo
+    ? buildChapterComicInfoXml(opts, r.chapterLabel, r.chapterUrl, r.files.length, mangaName)
+    : null;
+
+  if (opts.format === 'cbz') {
+    const inner = new JSZip();
+    for (const f of r.files) inner.file(f.name, f.buffer);
+    if (comicInfo) inner.file('ComicInfo.xml', comicInfo);
+    const bytes = await inner.generateAsync({ type: 'uint8array', compression: 'STORE' });
+    zip.file(`${entryBase}.cbz`, bytes);
+    return bytes.byteLength || 0;
+  }
+  const folder = zip.folder(entryBase);
+  for (const f of r.files) folder.file(f.name, f.buffer);
+  if (comicInfo) folder.file('ComicInfo.xml', comicInfo);
+  return r.bytes || 0;
+}
+
+// Write the series cover + series.json into the outer ZIP (once, lands in part 1).
+async function addSeriesMetaToOuter(zip, opts, mangaName) {
+  if (!opts.includeSeriesMeta || !opts.seriesMeta) return;
+  const meta = opts.seriesMeta;
+  const prefix = opts.folderLayout === 'kavita' ? `${seriesFolderName(mangaName)}/` : '';
+  try { zip.file(`${prefix}series.json`, JSON.stringify(meta, null, 2)); } catch (_) {}
+  if (meta.coverUrl) {
+    try {
+      const resp = await fetch(meta.coverUrl, { headers: { Referer: 'https://comix.to/' } });
+      if (resp.ok) {
+        const ct = resp.headers.get('content-type') || '';
+        const ext = /png/i.test(ct) ? 'png' : /webp/i.test(ct) ? 'webp' : 'jpg';
+        zip.file(`${prefix}cover.${ext}`, await resp.arrayBuffer());
+      }
+    } catch (err) {
+      cdlLog('warn', `Cover image could not be fetched: ${err.message}`);
+    }
+  }
+}
+
+// Record a successfully-downloaded chapter into the per-series manifest. Writes are
+// serialized through a promise chain so concurrent workers can't clobber each other.
+let _manifestLock = Promise.resolve();
+function recordChapterDownloaded(slug, chapterLabel, mangaName) {
+  if (!slug) return;
+  _manifestLock = _manifestLock.then(async () => {
+    let key = chapterLabel;
+    if (typeof CDLFeaturesCore !== 'undefined') {
+      key = CDLFeaturesCore.dedupeKey(CDLFeaturesCore.parseChapterNumber(chapterLabel));
+    }
+    const { cdlManifest = {} } = await chrome.storage.local.get('cdlManifest');
+    const entry = cdlManifest[slug] || { mangaName: mangaName || '', chapters: {} };
+    if (mangaName) entry.mangaName = mangaName;
+    entry.chapters = entry.chapters || {};
+    entry.chapters[key] = { label: chapterLabel, ts: Date.now() };
+    cdlManifest[slug] = entry;
+    await chrome.storage.local.set({ cdlManifest });
+  }).catch(() => {});
+  return _manifestLock;
 }
 
 // ── Notification vers un onglet ───────────────────────────────────────────────
@@ -1150,8 +1379,10 @@ async function extractFromTab(url, cfg) {
 // on the ZIP object, while a window (= concurrency) bounds how many finished but
 // not-yet-packed chapters are held in memory. concurrency === 1 reproduces the
 // original strictly-sequential behavior.
-async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabId) {
+async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabId, options) {
   const cfg = await loadCfg();
+  const opts = resolveOutputOptions(cfg, options);
+  if (!opts.totalCount) opts.totalCount = chapters.length;
   const concurrency = Math.max(1, Math.min(4, parseInt(cfg['download.concurrentChapters'], 10) || 1));
   const batchSize = cfg['perf.batchSize'] || BATCH_SIZE;
   const padDigits = cfg['naming.imagePadDigits'] || 3;
@@ -1160,7 +1391,6 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   const splitMode = cfg['download.splitMode'] || 'multipart';
   const maxChapters = splitMode === 'single' ? Infinity : (cfg['download.chaptersPerPart'] || ZIP_PART_MAX_CHAPTERS);
   const maxBytes = splitMode === 'single' ? Infinity : (cfg['download.mbPerPart'] || 300) * 1024 * 1024;
-  const folderFmt = cfg['naming.chapterFolderFmt'] || 'Ch{num4}{rest}';
 
   startDownloadAllSession({ originTabId, mangaName, zipName, totalChapters: chapters.length });
   cdlLog('info', `Download All started: "${mangaName}" — ${chapters.length} chapters${concurrency > 1 ? ` (${concurrency} at a time)` : ''}`);
@@ -1214,8 +1444,6 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   // progress; returns a result the packer can add to the ZIP. Never throws.
   const downloadChapter = async (i) => {
     const { chapterUrl, chapterLabel } = chapters[i];
-    // Folder name (template) with padded number so chapters sort correctly.
-    const folderName = buildChapterFolderName(folderFmt, chapterLabel, mangaName);
 
     notify({ phase: 'extracting', chapterIndex: i + 1, totalChapters: chapters.length,
              chapterLabel, imagesDone: 0, imagesTotal: 0 });
@@ -1229,11 +1457,11 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     if (extractErr) {
       console.warn(`[ComixDL-All] Chapitre ${chapterLabel} échoué:`, extractErr.message);
       cdlLog('error', `${chapterLabel} failed: ${extractErr.message}`);
-      return { index: i, chapterLabel, folderName, files: [], bytes: 0, imagesTotal: 0, imgDone: 0, status: 'error' };
+      return { index: i, chapterUrl, chapterLabel, files: [], bytes: 0, imagesTotal: 0, imgDone: 0, status: 'error' };
     }
     if (!images || images.length === 0) {
       cdlLog('warn', `No images found, skipping ${chapterLabel}`);
-      return { index: i, chapterLabel, folderName, files: [], bytes: 0, imagesTotal: 0, imgDone: 0, status: 'skipped' };
+      return { index: i, chapterUrl, chapterLabel, files: [], bytes: 0, imagesTotal: 0, imgDone: 0, status: 'skipped' };
     }
     cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
 
@@ -1251,7 +1479,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
                  chapterLabel, imagesDone: imgDone, imagesTotal: images.length });
       }));
     }
-    return { index: i, chapterLabel, folderName, files, bytes, imagesTotal: images.length, imgDone, status: 'done' };
+    return { index: i, chapterUrl, chapterLabel, files, bytes, imagesTotal: images.length, imgDone, status: 'done' };
   };
 
   // ── Worker pool + in-order packer ───────────────────────────────────────────
@@ -1289,6 +1517,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
         notify({ phase: 'done', chapterIndex: i + 1, totalChapters: chapters.length,
                  chapterLabel: result.chapterLabel, imagesDone: result.imgDone, imagesTotal: result.imagesTotal });
         cdlLog('ok', `${result.chapterLabel}: done (${result.imgDone} images)`);
+        recordChapterDownloaded(opts.slug, result.chapterLabel, mangaName); // mark as grabbed
         if (rateMode === 'dynamic') rateDelay = Math.max(MIN_DELAY, rateDelay - 100); // success → slightly faster
       } else if (result.status === 'skipped') {
         notify({ phase: 'skipped', chapterIndex: i + 1, totalChapters: chapters.length,
@@ -1316,10 +1545,9 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       results[i] = null;   // release buffers as soon as they're packed
 
       if (r && r.status === 'done' && r.files.length) {
-        const folder = zip.folder(r.folderName);
-        for (const f of r.files) folder.file(f.name, f.buffer);
+        const added = await addChapterToOuter(zip, r, opts, mangaName);
         zipPartChapters++;
-        zipPartBytes += r.bytes;
+        zipPartBytes += added;
         if (i < chapters.length - 1 && (zipPartChapters >= maxChapters || zipPartBytes >= maxBytes)) {
           const ok = await saveCurrentZipPart(false);
           if (!ok) { packFailed = true; _signalDownloadAllAbort(); return; }
@@ -1332,6 +1560,9 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       wakeWindow();
     }
   };
+
+  // Series cover + series.json go in first (so they land in ZIP part 1).
+  await addSeriesMetaToOuter(zip, opts, mangaName);
 
   const workers = [];
   for (let w = 0; w < concurrency; w++) workers.push(worker());

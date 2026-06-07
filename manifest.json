@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Comix Downloader",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Adds a download button to every chapter on comix.to, with a full settings page.",
   "permissions": [
     "tabs",
     "downloads",
     "scripting",
-    "storage"
+    "storage",
+    "contextMenus"
   ],
   "host_permissions": [
     "*://comix.to/*",
