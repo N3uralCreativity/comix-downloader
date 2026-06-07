@@ -92,10 +92,11 @@ const ZIP_PART_MAX_BYTES = 300 * 1024 * 1024;
 const DOWNLOAD_ALL_LOG_LIMIT = 150;
 const DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS = 2 * 60 * 1000;
 
-// Keep the activity-log cap in sync with user settings (cheap, read often).
+// Keep the activity-log cap in sync with user settings (cheap, read often), and
+// keep the subscribe alarm aligned with subscribe.enabled / interval changes.
 if (typeof CDLSettings !== 'undefined') {
   CDLSettings.getSettings().then((cfg) => { MAX_LOG_ENTRIES = cfg['logs.maxEntries'] || 500; }).catch(() => {});
-  CDLSettings.onChange((cfg) => { MAX_LOG_ENTRIES = cfg['logs.maxEntries'] || 500; });
+  CDLSettings.onChange((cfg) => { MAX_LOG_ENTRIES = cfg['logs.maxEntries'] || 500; try { setupSubscribeAlarm(); } catch (_) {} });
 }
 
 let downloadAllSession = null;
@@ -461,6 +462,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const originTabId = sender.tab?.id ?? null;
     dismissDownloadAllSessionForTab(originTabId);
     sendResponse({ ok: true });
+    return true;
+  }
+
+  // ── Phase 2: subscriptions + library ──
+  if (message.action === 'subscribe') {
+    subscribeSeries(message.slug, message.mangaName).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (message.action === 'unsubscribe') {
+    unsubscribeSeries(message.slug).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (message.action === 'checkSubscriptionsNow') {
+    checkAllSubscriptions().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (message.action === 'libraryTest') {
+    testLibrary(message.config).then((r) => sendResponse(r)).catch((e) => sendResponse({ ok: false, error: e.message }));
     return true;
   }
 
@@ -1252,6 +1271,16 @@ async function addChapterToOuter(zip, r, opts, mangaName) {
     if (comicInfo) inner.file('ComicInfo.xml', comicInfo);
     const bytes = await inner.generateAsync({ type: 'uint8array', compression: 'STORE' });
     zip.file(`${entryBase}.cbz`, bytes);
+    // Optionally push this .cbz straight to the user's library server (Phase 2).
+    if (opts.pushLib) {
+      const fileBase = opts.folderLayout === 'kavita' ? entryBase.split('/').pop() : entryBase;
+      try {
+        const ok = await pushFileToLibrary(opts.pushLib, seriesFolderName(mangaName), `${fileBase}.cbz`, bytes);
+        cdlLog(ok ? 'ok' : 'error', `Library push ${ok ? 'ok' : 'failed'}: ${fileBase}.cbz`);
+      } catch (e) {
+        cdlLog('error', `Library push failed: ${fileBase}.cbz (${e.message})`);
+      }
+    }
     return bytes.byteLength || 0;
   }
   const folder = zip.folder(entryBase);
@@ -1392,6 +1421,11 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   const cfg = await loadCfg();
   const opts = resolveOutputOptions(cfg, options);
   if (!opts.totalCount) opts.totalCount = chapters.length;
+  // Push finished .cbz files to the library server, only when enabled + CBZ format.
+  if (opts.format === 'cbz') {
+    const libCfg = await getLibraryConfig();
+    if (libCfg && libCfg.enabled && /^https?:\/\//i.test(libCfg.endpoint || '')) opts.pushLib = libCfg;
+  }
   const concurrency = Math.max(1, Math.min(4, parseInt(cfg['download.concurrentChapters'], 10) || 1));
   const batchSize = cfg['perf.batchSize'] || BATCH_SIZE;
   const padDigits = cfg['naming.imagePadDigits'] || 3;
@@ -1621,5 +1655,227 @@ async function _doZipAndSave({ zip, zipName, originTabId, notifyDone = true }) {
     cdlLog('error', `Download All ZIP error: ${err.message}`);
     notifyDownloadAllError(originTabId, err.message, true);
     return null;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Phase 2 — Subscribe & watch + Push-to-library
+// ══════════════════════════════════════════════════════════════════════════════
+
+function chapterLabelFromUrl(url) {
+  const m = String(url || '').match(/\/(\d+)-chapter-([0-9a-z.-]+)(?:\/|$)/i);
+  if (m) return `Ch${m[2]}`;
+  const parts = String(url || '').split('/').filter(Boolean);
+  return parts[parts.length - 1] || 'chapter';
+}
+function chapterKeyFor(label) {
+  if (typeof CDLFeaturesCore !== 'undefined') return CDLFeaturesCore.dedupeKey(CDLFeaturesCore.parseChapterNumber(label));
+  return String(label || '');
+}
+
+async function getSeriesPrefsBg(slug) {
+  try { const { cdlSeriesPrefs } = await chrome.storage.local.get('cdlSeriesPrefs'); return (cdlSeriesPrefs && cdlSeriesPrefs[slug]) || {}; }
+  catch (_) { return {}; }
+}
+
+// Fetch the FULL current chapter list for a series, credentialed (so the user's
+// cf_clearance cookie is sent → usually clears Cloudflare). Returns sorted
+// [{chapterUrl, chapterLabel, key}] or null when blocked/empty (degrade silently).
+async function fetchSeriesChapters(slug) {
+  if (!slug) return null;
+  const extract = (text) => (typeof CDLFeaturesCore !== 'undefined')
+    ? CDLFeaturesCore.extractChapterPaths(text)
+    : (String(text).match(/\/title\/[a-z0-9-]+\/\d+-chapter-[\w.-]+/gi) || []);
+  const toUrl = (p) => { try { return new URL(p, 'https://comix.to').href; } catch (_) { return ''; } };
+
+  let html = '';
+  try {
+    const r = await fetch(`https://comix.to/title/${slug}`, { credentials: 'include', headers: { Accept: 'text/html' } });
+    if (!r.ok) return null;
+    html = await r.text();
+  } catch (_) { return null; }
+
+  const urlSet = new Set();
+  extract(html).forEach((p) => { const u = toUrl(p); if (u) urlSet.add(u); });
+  const bm = html.match(/"buildId"\s*:\s*"([^"]+)"/);
+  const buildId = bm ? bm[1] : null;
+
+  if (buildId) {
+    for (let page = 1; page <= 100; page++) {
+      let text = '';
+      try {
+        const rr = await fetch(`https://comix.to/_next/data/${buildId}/title/${slug}.json?page=${page}`,
+          { credentials: 'include', headers: { Accept: 'application/json' } });
+        if (!rr.ok) break;
+        text = await rr.text();
+      } catch (_) { break; }
+      let fresh = 0;
+      extract(text).forEach((p) => { const u = toUrl(p); if (u && !urlSet.has(u)) { urlSet.add(u); fresh++; } });
+      if (!fresh && page > 1) break;
+    }
+  }
+  if (!urlSet.size) return null;
+
+  const prefix = `/title/${slug}/`;
+  const byKey = new Map();
+  for (const url of urlSet) {
+    try { if (!new URL(url).pathname.startsWith(prefix)) continue; } catch (_) { continue; }
+    const label = chapterLabelFromUrl(url);
+    const key = chapterKeyFor(label);
+    if (!byKey.has(key)) byKey.set(key, { chapterUrl: url, chapterLabel: label, key });
+  }
+  return [...byKey.values()].sort((a, b) =>
+    parseFloat(a.chapterLabel.replace(/[^0-9.]/g, '')) - parseFloat(b.chapterLabel.replace(/[^0-9.]/g, '')));
+}
+
+// ── Subscriptions ─────────────────────────────────────────────────────────────
+const SUBSCRIBE_ALARM = 'cdlSubscribeCheck';
+
+async function setupSubscribeAlarm() {
+  if (!chrome.alarms) return;
+  let cfg = {};
+  try { cfg = await loadCfg(); } catch (_) {}
+  try { await chrome.alarms.clear(SUBSCRIBE_ALARM); } catch (_) {}
+  if (cfg['subscribe.enabled']) {
+    const mins = Math.max(30, Math.min(1440, cfg['subscribe.intervalMinutes'] || 360));
+    try { chrome.alarms.create(SUBSCRIBE_ALARM, { periodInMinutes: mins, delayInMinutes: 1 }); } catch (_) {}
+  }
+}
+
+async function subscribeSeries(slug, mangaName) {
+  if (!slug) return;
+  const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
+  if (!cdlSubscriptions[slug]) cdlSubscriptions[slug] = { mangaName: mangaName || slug, lastSeen: [], lastCheck: 0 };
+  else if (mangaName) cdlSubscriptions[slug].mangaName = mangaName;
+  await chrome.storage.local.set({ cdlSubscriptions });
+  // Subscribing implies wanting background checks — enable the master toggle once.
+  try {
+    const cfg = await loadCfg();
+    if (!cfg['subscribe.enabled'] && typeof CDLSettings !== 'undefined') await CDLSettings.patchSettings({ 'subscribe.enabled': true });
+  } catch (_) {}
+  setupSubscribeAlarm();
+}
+
+async function unsubscribeSeries(slug) {
+  const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
+  if (cdlSubscriptions[slug]) { delete cdlSubscriptions[slug]; await chrome.storage.local.set({ cdlSubscriptions }); }
+}
+
+async function checkAllSubscriptions() {
+  let cfg = {};
+  try { cfg = await loadCfg(); } catch (_) {}
+  if (!cfg['subscribe.enabled']) return;
+  const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
+  for (const slug of Object.keys(cdlSubscriptions)) {
+    try { await checkOneSubscription(slug, cdlSubscriptions[slug], cfg); } catch (_) {}
+  }
+}
+
+async function checkOneSubscription(slug, sub, cfg) {
+  const chapters = await fetchSeriesChapters(slug);
+  if (!chapters || !chapters.length) return; // blocked or nothing — try again next cycle
+  const hadBaseline = Array.isArray(sub.lastSeen) && sub.lastSeen.length > 0;
+  const seen = new Set(sub.lastSeen || []);
+  const newOnes = chapters.filter((c) => !seen.has(c.key));
+
+  // Persist the fresh baseline + timestamp.
+  const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
+  const entry = cdlSubscriptions[slug] || sub || {};
+  entry.mangaName = entry.mangaName || sub.mangaName || slug;
+  entry.lastSeen = chapters.map((c) => c.key);
+  entry.lastCheck = Date.now();
+  cdlSubscriptions[slug] = entry;
+  await chrome.storage.local.set({ cdlSubscriptions });
+
+  if (!hadBaseline || !newOnes.length) return; // first successful check just baselines
+  cdlLog('ok', `${entry.mangaName}: ${newOnes.length} new chapter(s) found`);
+  if (cfg['subscribe.notify']) notifyNewChapters(slug, entry.mangaName, newOnes);
+  if (cfg['subscribe.autoDownload']) autoDownloadNew(slug, entry.mangaName, newOnes, cfg);
+}
+
+function notifyNewChapters(slug, mangaName, newOnes) {
+  if (!chrome.notifications) return;
+  const labels = newOnes.slice(0, 4).map((c) => c.chapterLabel).join(', ') + (newOnes.length > 4 ? '…' : '');
+  try {
+    chrome.notifications.create(`cdlsub:${slug}`, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title: `New chapters — ${mangaName}`,
+      message: `${newOnes.length} new: ${labels}`,
+      priority: 1,
+    });
+  } catch (_) {}
+}
+
+if (chrome.notifications && chrome.notifications.onClicked) {
+  chrome.notifications.onClicked.addListener((id) => {
+    if (id && id.indexOf('cdlsub:') === 0) {
+      const slug = id.slice('cdlsub:'.length);
+      try { chrome.tabs.create({ url: `https://comix.to/title/${slug}` }); } catch (_) {}
+      try { chrome.notifications.clear(id); } catch (_) {}
+    }
+  });
+}
+
+async function autoDownloadNew(slug, mangaName, newOnes, cfg) {
+  if (downloadAllSession && downloadAllSession.active) return; // don't collide with a running session
+  _resetDownloadAllAbort();
+  const prefs = await getSeriesPrefsBg(slug);
+  const options = {
+    format: prefs.format || cfg['output.format'] || 'zip',
+    includeComicInfo: prefs.includeComicInfo != null ? prefs.includeComicInfo : (cfg['output.includeComicInfo'] !== false),
+    includeSeriesMeta: false,
+    folderLayout: prefs.folderLayout || cfg['output.folderLayout'] || 'default',
+    slug,
+    seriesMeta: { title: mangaName, slug },
+    totalCount: 0,
+  };
+  let zipName = `${mangaName}-new`;
+  try { if (typeof CDLSettings !== 'undefined') zipName = `${CDLSettings.renderName(cfg['naming.allZipTpl'] || '{manga}', { manga: mangaName }, 180)}-new`; } catch (_) {}
+  const chapters = newOnes.map((c) => ({ chapterUrl: c.chapterUrl, chapterLabel: c.chapterLabel }));
+  cdlLog('info', `Auto-downloading ${chapters.length} new chapter(s) of "${mangaName}"`);
+  handleDownloadAllRequest(chapters, mangaName, zipName, null, options);
+}
+
+if (chrome.alarms && chrome.alarms.onAlarm) {
+  chrome.alarms.onAlarm.addListener((a) => { if (a && a.name === SUBSCRIBE_ALARM) checkAllSubscriptions(); });
+}
+chrome.runtime.onInstalled.addListener(setupSubscribeAlarm);
+if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(setupSubscribeAlarm);
+
+// ── Push to library (WebDAV / HTTP PUT) ───────────────────────────────────────
+async function getLibraryConfig() {
+  try { const { cdlLibrary } = await chrome.storage.local.get('cdlLibrary'); return cdlLibrary || null; }
+  catch (_) { return null; }
+}
+function libAuthHeader(c) {
+  if (c && (c.username || c.password)) return 'Basic ' + btoa(`${c.username || ''}:${c.password || ''}`);
+  return null;
+}
+function joinLibraryUrl(base, ...parts) {
+  let u = String(base || '').replace(/\/+$/, '');
+  for (const p of parts) u += '/' + encodeURIComponent(p).replace(/%2F/gi, '/');
+  return u;
+}
+async function pushFileToLibrary(libCfg, seriesFolder, fileName, bytes) {
+  const method = libCfg.method === 'POST' ? 'POST' : 'PUT';
+  const auth = libAuthHeader(libCfg);
+  // Best-effort: create the series collection first (WebDAV). Ignored elsewhere.
+  if (method === 'PUT') {
+    try { await fetch(joinLibraryUrl(libCfg.endpoint, seriesFolder), { method: 'MKCOL', headers: auth ? { Authorization: auth } : {} }); } catch (_) {}
+  }
+  const headers = { 'Content-Type': 'application/vnd.comicbook+zip' };
+  if (auth) headers['Authorization'] = auth;
+  const resp = await fetch(joinLibraryUrl(libCfg.endpoint, seriesFolder, fileName), { method, headers, body: bytes });
+  return resp.ok;
+}
+async function testLibrary(cfg) {
+  if (!cfg || !/^https?:\/\//i.test(cfg.endpoint || '')) return { ok: false, error: 'Invalid URL' };
+  const auth = libAuthHeader(cfg);
+  try {
+    const resp = await fetch(cfg.endpoint, { method: 'OPTIONS', headers: auth ? { Authorization: auth } : {} });
+    return { ok: true, status: resp.status };
+  } catch (e) {
+    return { ok: false, error: e.message || 'network error' };
   }
 }

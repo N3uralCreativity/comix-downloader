@@ -199,6 +199,16 @@ input[type="color"] { width: 42px; height: 32px; padding: 2px; background: var(-
 .links a { color: var(--accent); text-decoration: none; font-size: 13px; display: inline-flex; align-items: center; gap: 7px; width: fit-content; }
 .links a svg { width: 16px; height: 16px; flex-shrink: 0; }
 .links a:hover { text-decoration: underline; }
+
+/* ── Sync & Library tab extras ───────────────────────────────────────── */
+.switch-row { display: flex; align-items: center; gap: 9px; margin: 10px 0; }
+.lib-grid { display: grid; grid-template-columns: 120px 1fr; gap: 10px 12px; align-items: center; margin: 12px 0; }
+.lib-grid > label { color: var(--muted); font-size: 13px; }
+.lib-grid input, .lib-grid select { width: 100%; }
+.sub-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.sub-row:last-child { border-bottom: none; }
+.sub-name { color: var(--fg); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-row .btn { padding: 4px 12px; font-size: 12px; }
 .about-meta { font-size: 12.5px; color: var(--muted); }
 .about-meta strong { color: var(--fg); }
 

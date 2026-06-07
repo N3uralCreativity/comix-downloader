@@ -1814,11 +1814,56 @@ function restoreDownloadAllPopupFromBackground() {
 
 // ── Scan initial et MutationObserver ─────────────────────────────────────────
 
+// ── Subscribe toggle (watch this series for new chapters) ─────────────────────
+function _cdlSlug() { return (location.pathname.match(/\/title\/([^/]+)/) || [])[1] || ''; }
+
+function injectSubscribeButton() {
+  if (document.querySelector('.cdl-sub-btn')) return;
+  const allBtn = document.querySelector('.cdl-dl-all-btn');
+  if (!allBtn) return; // appears next to Download All; the observer re-runs the scan
+  const slug = _cdlSlug();
+  if (!slug) return;
+
+  const btn = document.createElement('button');
+  btn.className = 'btn btn--soft mpage__follow-btn cdl-dl-all-btn cdl-sub-btn';
+  btn.type = 'button';
+  const render = (subscribed) => {
+    btn.dataset.sub = subscribed ? '1' : '0';
+    btn.textContent = subscribed ? '★ Subscribed' : '☆ Subscribe';
+    btn.title = subscribed
+      ? 'Watching this series for new chapters — click to stop'
+      : 'Watch this series for new chapters (background checks + notifications)';
+  };
+  render(false);
+  try {
+    chrome.storage.local.get('cdlSubscriptions', (res) => {
+      render(!!(res && res.cdlSubscriptions && res.cdlSubscriptions[slug]));
+    });
+  } catch (_) {}
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!chrome?.runtime?.id) return;
+    const subscribed = btn.dataset.sub === '1';
+    render(!subscribed); // optimistic
+    try {
+      chrome.runtime.sendMessage(
+        subscribed ? { action: 'unsubscribe', slug } : { action: 'subscribe', slug, mangaName: getMangaName() },
+        () => { if (chrome.runtime.lastError) render(subscribed); }
+      );
+    } catch (_) { render(subscribed); }
+  });
+
+  allBtn.insertAdjacentElement('afterend', btn);
+}
+
 function scanAndInject() {
   // Chercher tous les boutons bookmark existants
   const bookmarkBtns = document.querySelectorAll('.mchap-bookmark, [class*="mchap-bookmark"]');
   bookmarkBtns.forEach(injectButtonForRow);
   injectDownloadAllButton();
+  injectSubscribeButton();
   markDownloadedButtons();
 }
 

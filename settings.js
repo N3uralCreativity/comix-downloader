@@ -39,6 +39,12 @@
     // Reader
     'reader.keyboardShortcuts': false,     // J/K or arrows = prev/next chapter, D = download current
 
+    // Subscribe & watch (background new-chapter checks; all local)
+    'subscribe.enabled': false,            // master toggle for background checking
+    'subscribe.intervalMinutes': 360,      // how often to check (6h default)
+    'subscribe.notify': true,              // desktop notification on new chapters
+    'subscribe.autoDownload': false,       // auto-download new chapters when found
+
     // Performance & Network
     'perf.batchSize': 3,                   // BATCH_SIZE
     'perf.rateLimitMode': 'dynamic',       // 'dynamic' | 'fixed' | 'off'
@@ -122,6 +128,16 @@
 
     'reader.keyboardShortcuts': { type: 'bool', risk: 'none',
       label: 'Reader keyboard shortcuts', help: 'In the reader: J / K or ← / → jump to the previous / next chapter, and D downloads the current chapter. Ignored while typing in a text field.' },
+
+    'subscribe.enabled': { type: 'bool', risk: 'none',
+      label: 'Watch subscribed series', help: 'Periodically check the series you subscribed to (from their title page) for new chapters, in the background.' },
+    'subscribe.intervalMinutes': { type: 'int', min: 30, max: 1440, risk: 'none',
+      label: 'Check interval (minutes)', help: 'How often to check subscribed series. Longer is gentler on the site.' },
+    'subscribe.notify': { type: 'bool', risk: 'none',
+      label: 'Notify on new chapters', help: 'Show a desktop notification when a subscribed series gets new chapters.' },
+    'subscribe.autoDownload': { type: 'bool', risk: 'glitchy',
+      label: 'Auto-download new chapters', help: 'When new chapters are found, download just those automatically using your saved output settings.',
+      warn: 'Runs a download in the background without asking. On ongoing series this uses bandwidth and disk space, and counts against the site like any other download.' },
 
     'perf.batchSize': { type: 'int', min: 1, max: 8, risk: 'glitchy',
       label: 'Parallel image downloads', help: 'How many images are fetched at once per chapter.',
@@ -237,6 +253,8 @@
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
     { id: 'features', label: 'Additional Features', icon: 'sparkles',
       keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'reader.keyboardShortcuts'] },
+    { id: 'sync', label: 'Sync & Library', icon: 'repeat',
+      keys: ['subscribe.enabled', 'subscribe.intervalMinutes', 'subscribe.notify', 'subscribe.autoDownload'] },
     { id: 'about', label: 'About & Backup', icon: 'info',
       keys: ['logs.maxEntries'] }
   ];

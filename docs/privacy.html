@@ -81,7 +81,7 @@
     <a class="brand" href="index.html">
       <img src="assets/icon128.png" alt="">
       Comix Downloader
-      <span class="ver">v2.2.0</span>
+      <span class="ver">v2.3.0</span>
     </a>
     <button class="nav-burger" aria-label="Menu" aria-expanded="false" onclick="const n=this.nextElementSibling;const o=n.classList.toggle('open');this.setAttribute('aria-expanded',o)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -100,13 +100,13 @@
   <section class="legal-hero">
     <span class="eyebrow">Legal</span>
     <h1>Privacy Policy &amp; Legal Notice</h1>
-    <div class="updated">Last updated: 31 May 2026 · Effective: 31 May 2026</div>
+    <div class="updated">Last updated: 7 June 2026 · Effective: 7 June 2026</div>
     <p class="lede">This document explains how the Comix Downloader browser extension handles information, the browser permissions it uses, and the legal terms that apply to its use. Please read it carefully.</p>
 
     <div class="summary">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
       <div>
-        <p><strong>In short:</strong> Comix Downloader does not collect, transmit, sell, or share any personal information. It has no servers, no analytics, and no tracking. Everything it does happens locally inside your own browser, and the only data it stores (your settings and an activity log) stays on your device and never leaves it.</p>
+        <p><strong>In short:</strong> Comix Downloader does not collect, transmit, sell, or share any personal information. It has no servers of its own, no analytics, and no tracking. Almost everything it does happens locally inside your own browser, and the data it stores stays on your device. The <strong>one exception</strong> is the optional <strong>Push-to-library</strong> feature (off by default): if <em>you</em> turn it on and enter <em>your own</em> server's address, the extension uploads the comic files it builds to that server — at your request, to a destination you choose, never to the Developer.</p>
         <p><strong>Also important:</strong> The extension is a general-purpose tool. You are solely responsible for using it lawfully and in accordance with the terms of any website you access. See the Legal Disclaimer and Acceptable Use sections below.</p>
       </div>
     </div>
@@ -169,17 +169,28 @@
         <h3>a) Data stored locally on your device</h3>
         <p>Stored in your browser's private <code>storage.local</code> area. It is never sent anywhere and is readable only by the Extension on your machine:</p>
         <ul>
-          <li><strong>Your settings</strong> (<code>cdlSettings</code>) — your chosen preferences (download behavior, naming, appearance, etc.). These contain no personal data.</li>
+          <li><strong>Your settings</strong> (<code>cdlSettings</code>) — your chosen preferences (download behavior, output format, naming, appearance, etc.). These contain no personal data.</li>
           <li><strong>Activity log</strong> (<code>cdlLogs</code>) — a short, rolling, technical log of recent download events (e.g. “ZIP saved”, “chapter failed”) shown in the popup to help you and us diagnose issues. It contains no personal data and is capped to a small number of entries.</li>
+          <li><strong>Download history</strong> (<code>cdlManifest</code>) — which chapters of which series you have already downloaded, so the extension can offer to fetch only new ones. Stored as series/chapter identifiers; no personal data.</li>
+          <li><strong>Per-series preferences</strong> (<code>cdlSeriesPrefs</code>) — optional output choices you ask the extension to remember for a given series.</li>
+          <li><strong>Subscriptions</strong> (<code>cdlSubscriptions</code>) — the series you chose to watch for new chapters, and the last chapter list seen for each. No personal data.</li>
+          <li><strong>Library connection</strong> (<code>cdlLibrary</code>) — only if you set up Push-to-library: the server address, method, and any username/password or token <em>you</em> enter. These credentials are stored locally for the sole purpose of uploading to <em>your</em> server, are never sent to the Developer, and are deliberately excluded from the settings export file.</li>
         </ul>
 
         <h3>b) Data processed transiently (not stored)</h3>
         <p>While you actively trigger a download, the Extension reads the following in your browser's memory and then discards it once the download completes:</p>
         <ul>
-          <li>The web address (URL) and on-page data of the comix.to chapter you ask it to download, in order to locate the page images.</li>
-          <li>The image files themselves, which are fetched from comix.to's CDNs and assembled into a ZIP archive entirely within your browser.</li>
+          <li>The web address (URL) and on-page data of the comix.to chapter you ask it to download, in order to locate the page images, and (optionally) public series details shown on the title page (cover, author, description, genres) to write metadata into the saved files.</li>
+          <li>The image files themselves, which are fetched from comix.to's image hosts and assembled into a ZIP or CBZ archive entirely within your browser.</li>
         </ul>
         <p>This transient data is handed to your browser's own download manager to save the resulting file. The Developer never receives any of it.</p>
+
+        <h3>c) Optional features that send data off your device</h3>
+        <p>These are <strong>off by default</strong> and only act after you explicitly enable and configure them:</p>
+        <ul>
+          <li><strong>Watch for new chapters (Subscriptions).</strong> When enabled, the Extension periodically makes background requests <em>to comix.to itself</em> (the same site you download from) to check your subscribed series for new chapters, and may show you a desktop notification. These requests go only to comix.to; no data is sent to the Developer or any third party.</li>
+          <li><strong>Push-to-library.</strong> When enabled, after building a CBZ the Extension uploads that file to the server <em>you</em> specify (e.g. a WebDAV or HTTP folder watched by your own Komga/Kavita install), using the address and credentials you entered. The files and credentials go only to your chosen server. The Developer operates no server and receives nothing. This feature requires you to grant access to that specific server when you save its address.</li>
+        </ul>
       </section>
 
       <section id="permissions">
@@ -190,9 +201,13 @@
           <div><dt><code>downloads</code></dt><dd>To save the ZIP archive it builds to your computer using the browser's normal download mechanism.</dd></div>
           <div><dt><code>scripting</code></dt><dd>To read the list of page images from a chapter page so the correct files can be downloaded.</dd></div>
           <div><dt><code>tabs</code></dt><dd>To briefly open background tabs that load each chapter (so their images can be extracted) and to send progress updates to the page you started from. These tabs are closed automatically.</dd></div>
-          <div><dt>Host access<br><span style="font-weight:400;color:var(--muted)">comix.to &amp; its image CDNs</span></dt><dd>To fetch chapter pages and image files. The Extension runs only on comix.to title pages and only contacts comix.to and the image hosts it uses.</dd></div>
+          <div><dt><code>contextMenus</code></dt><dd>To add “Download this chapter / whole series” entries to the right-click menu on comix.to pages.</dd></div>
+          <div><dt><code>alarms</code></dt><dd>Only used by the optional “Watch for new chapters” feature, to schedule the periodic background check at the interval you choose.</dd></div>
+          <div><dt><code>notifications</code></dt><dd>Only used by the optional “Watch for new chapters” feature, to show a desktop notification when a subscribed series has new chapters.</dd></div>
+          <div><dt>Host access<br><span style="font-weight:400;color:var(--muted)">comix.to &amp; its image hosts</span></dt><dd>To fetch chapter pages, page images, and series covers (e.g. from <code>static.comix.to</code>). The Extension runs only on comix.to title pages and only contacts comix.to and the image hosts it uses.</dd></div>
+          <div><dt>Optional host access<br><span style="font-weight:400;color:var(--muted)">your library server only</span></dt><dd>Requested on demand <em>only</em> if you enable Push-to-library, and granted only for the exact server address you enter — so the Extension can upload CBZ files there. It is never requested otherwise.</dd></div>
         </dl>
-        <p>The Extension does not request access to your browsing history, bookmarks, cookies, microphone, camera, location, or any site other than comix.to and its image hosts.</p>
+        <p>The Extension does not request access to your browsing history, bookmarks, microphone, camera, or location. Apart from comix.to and its image hosts, it contacts no other site unless you explicitly configure Push-to-library to your own server.</p>
       </section>
 
       <section id="not-collected">
@@ -257,9 +272,9 @@
       <section id="stores">
         <h2><span class="num">13</span> Browser-store disclosures</h2>
         <h3>Google Chrome Web Store — Limited Use</h3>
-        <p>The Extension's use of information obtained through it complies with the Chrome Web Store User Data Policy, including the Limited Use requirements. The Extension does not collect or transmit user data; it does not use or transfer data for advertising, creditworthiness, or any purpose unrelated to its single function of letting you download comic chapters.</p>
+        <p>The Extension's use of information obtained through it complies with the Chrome Web Store User Data Policy, including the Limited Use requirements. The Extension does not collect or transmit user data to the Developer or to any third party, and does not use or transfer data for advertising, creditworthiness, or any purpose unrelated to its function of letting you download comic chapters. The optional Push-to-library feature uploads the files you download only to a server <em>you</em> configure, never to the Developer.</p>
         <h3>Mozilla Add-ons (AMO)</h3>
-        <p>Consistent with the data-collection declaration in the Extension's Firefox package, the Extension collects <strong>no</strong> user data. All settings and logs remain in local browser storage on your device.</p>
+        <p>Consistent with the data-collection declaration in the Extension's Firefox package, the Extension collects <strong>no</strong> user data for the Developer. All settings, logs, history and credentials remain in local browser storage on your device; the optional Push-to-library feature sends downloaded files only to your own configured server.</p>
       </section>
 
       <section id="cookies">

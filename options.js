@@ -71,6 +71,7 @@
     appearance: 'Customize the on-page download buttons and the progress panel.',
     advanced: 'Powerful options that can break downloads or hurt quality. Read each warning.',
     features: 'Extra tweaks that make comix.to nicer to use — not about downloading. All off by default, so turn on what you like.',
+    sync: 'Watch subscribed series for new chapters, and optionally push finished CBZ files to your own media server (Komga / Kavita via a watched folder).',
     about: 'Back up your configuration, and information about the extension.'
   };
 
@@ -82,7 +83,10 @@
     'perf.rateMinMs':           function () { return draft['perf.rateLimitMode'] === 'dynamic'; },
     'perf.rateMaxMs':           function () { return draft['perf.rateLimitMode'] === 'dynamic'; },
     'appearance.accentColor':   function () { return draft['appearance.accentMode'] === 'custom'; },
-    'advanced.jpgQuality':      function () { return draft['advanced.imageFormat'] === 'jpg'; }
+    'advanced.jpgQuality':      function () { return draft['advanced.imageFormat'] === 'jpg'; },
+    'subscribe.intervalMinutes': function () { return !!draft['subscribe.enabled']; },
+    'subscribe.notify':          function () { return !!draft['subscribe.enabled']; },
+    'subscribe.autoDownload':    function () { return !!draft['subscribe.enabled']; }
   };
 
   // Sample context for live template previews.
@@ -241,6 +245,123 @@
     return el('a', { href: href, target: '_blank', rel: 'noopener', html: icon('info') + escapeHtml(text) });
   }
 
+  // ── Sync tab extras: Push-to-library config + Subscriptions list ───────────
+  var LIBRARY_KEY = 'cdlLibrary';
+  function originPattern(url) {
+    try { return new URL(url).origin + '/*'; } catch (e) { return null; }
+  }
+  function buildSyncExtras(panel) {
+    // Push-to-library
+    var enable = el('input', { type: 'checkbox', id: 'lib-enabled' });
+    var endpoint = el('input', { type: 'text', id: 'lib-endpoint', placeholder: 'https://server.example/webdav/comics' });
+    var method = el('select', { id: 'lib-method' }, [
+      el('option', { value: 'PUT', text: 'PUT (WebDAV / most servers)' }),
+      el('option', { value: 'POST', text: 'POST' })
+    ]);
+    var user = el('input', { type: 'text', id: 'lib-user', placeholder: 'username (optional)' });
+    var pass = el('input', { type: 'password', id: 'lib-pass', placeholder: 'password / token (optional)' });
+    var status = el('p', { class: 'row-help', id: 'lib-status', text: '' });
+
+    var lib = el('div', { class: 'section' }, [
+      el('h3', { text: 'Push to library (CBZ → Komga / Kavita)' }),
+      el('p', { text: 'After each chapter is built as CBZ, upload it to your own server (a WebDAV or HTTP folder your library watches). Files go to <base>/<Series>/<file>.cbz. This is the only feature that sends data off your machine — see the privacy page.' }),
+      el('label', { class: 'switch-row', html: '' }, [enable, el('span', { class: 'switch-label', text: 'Enable push after download' })]),
+      el('div', { class: 'lib-grid' }, [
+        el('label', { text: 'Endpoint URL' }), endpoint,
+        el('label', { text: 'Method' }), method,
+        el('label', { text: 'Username' }), user,
+        el('label', { text: 'Password' }), pass
+      ]),
+      el('div', { class: 'btn-group' }, [
+        el('button', { class: 'btn primary', id: 'lib-save', type: 'button', html: icon('box') + 'Save & grant access' }),
+        el('button', { class: 'btn', id: 'lib-test', type: 'button', html: icon('repeat') + 'Test connection' })
+      ]),
+      status
+    ]);
+    panel.appendChild(lib);
+
+    // Subscriptions
+    var subWrap = el('div', { class: 'section' }, [
+      el('h3', { text: 'Subscriptions' }),
+      el('p', { text: 'Series you subscribed to from their title page. Background checks look for new chapters (see settings above).' }),
+      el('div', { id: 'sub-list' }, [el('p', { class: 'row-help', text: 'Loading…' })]),
+      el('div', { class: 'btn-group' }, [
+        el('button', { class: 'btn', id: 'sub-check', type: 'button', html: icon('repeat') + 'Check now' })
+      ])
+    ]);
+    panel.appendChild(subWrap);
+
+    // Load saved library config
+    try {
+      chrome.storage.local.get(LIBRARY_KEY, function (res) {
+        var c = (res && res[LIBRARY_KEY]) || {};
+        enable.checked = !!c.enabled;
+        endpoint.value = c.endpoint || '';
+        method.value = c.method === 'POST' ? 'POST' : 'PUT';
+        user.value = c.username || '';
+        pass.value = c.password || '';
+      });
+    } catch (e) {}
+
+    lib.querySelector('#lib-save').addEventListener('click', function () {
+      var cfg = { enabled: enable.checked, endpoint: endpoint.value.trim(), method: method.value,
+        username: user.value, password: pass.value };
+      if (cfg.enabled && !/^https?:\/\//i.test(cfg.endpoint)) { status.textContent = 'Enter a valid http(s) endpoint URL first.'; return; }
+      var save = function () {
+        var payload = {}; payload[LIBRARY_KEY] = cfg;
+        chrome.storage.local.set(payload, function () { status.textContent = 'Saved.'; });
+      };
+      if (cfg.enabled) {
+        var pat = originPattern(cfg.endpoint);
+        if (!pat) { status.textContent = 'Invalid URL.'; return; }
+        try {
+          chrome.permissions.request({ origins: [pat] }, function (granted) {
+            if (!granted) { status.textContent = 'Permission to reach that server was declined — push will not work.'; return; }
+            save();
+          });
+        } catch (e) { save(); }
+      } else { save(); }
+    });
+
+    lib.querySelector('#lib-test').addEventListener('click', function () {
+      status.textContent = 'Testing…';
+      try {
+        chrome.runtime.sendMessage({ action: 'libraryTest', config: {
+          endpoint: endpoint.value.trim(), method: method.value, username: user.value, password: pass.value
+        } }, function (res) {
+          if (chrome.runtime.lastError || !res) { status.textContent = 'Test failed: no response.'; return; }
+          status.textContent = res.ok ? ('Reachable (HTTP ' + res.status + ').') : ('Could not reach it: ' + (res.error || ('HTTP ' + res.status)));
+        });
+      } catch (e) { status.textContent = 'Test failed.'; }
+    });
+
+    var refreshSubs = function () {
+      chrome.storage.local.get('cdlSubscriptions', function (res) {
+        var subs = (res && res.cdlSubscriptions) || {};
+        var listEl = document.getElementById('sub-list');
+        listEl.innerHTML = '';
+        var slugs = Object.keys(subs);
+        if (!slugs.length) { listEl.appendChild(el('p', { class: 'row-help', text: 'No subscriptions yet.' })); return; }
+        slugs.forEach(function (slug) {
+          var s = subs[slug] || {};
+          var row = el('div', { class: 'sub-row' }, [
+            el('span', { class: 'sub-name', text: s.mangaName || slug }),
+            el('button', { class: 'btn danger', type: 'button', text: 'Unsubscribe', onclick: function () {
+              chrome.runtime.sendMessage({ action: 'unsubscribe', slug: slug }, refreshSubs);
+            } })
+          ]);
+          listEl.appendChild(row);
+        });
+      });
+    };
+    subWrap.querySelector('#sub-check').addEventListener('click', function () {
+      var b = document.getElementById('sub-check');
+      b.disabled = true;
+      chrome.runtime.sendMessage({ action: 'checkSubscriptionsNow' }, function () { b.disabled = false; refreshSubs(); });
+    });
+    refreshSubs();
+  }
+
   // ── Build the whole page ──────────────────────────────────────────────────
   function buildUI() {
     var sidebar = document.getElementById('sidebar');
@@ -262,6 +383,7 @@
       ]);
       tab.keys.forEach(function (key) { if (S.SCHEMA[key]) panel.appendChild(buildRow(key)); });
       if (tab.id === 'about') buildAboutExtras(panel);
+      if (tab.id === 'sync') buildSyncExtras(panel);
       content.appendChild(panel);
     });
   }

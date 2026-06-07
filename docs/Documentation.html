@@ -160,7 +160,7 @@
     <a class="brand" href="index.html">
       <img src="assets/icon128.png" alt="">
       Comix Downloader
-      <span class="ver">v2.2.0</span>
+      <span class="ver">v2.3.0</span>
     </a>
     <button class="nav-burger" aria-label="Menu" aria-expanded="false" onclick="const n=this.nextElementSibling;const o=n.classList.toggle('open');this.setAttribute('aria-expanded',o)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -187,6 +187,7 @@
       <a href="#android" class="sub">— Android</a>
       <a href="#usage">How to use</a>
       <a href="#settings">Settings</a>
+      <a href="#library">Output, library &amp; sync</a>
       <a href="#warning">The background-tab warning</a>
       <a href="#faq">Troubleshooting &amp; FAQ</a>
     </nav>
@@ -281,7 +282,8 @@
       <h3>Download an entire series</h3>
       <ul class="plain">
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Click <strong>Download All</strong> in the sidebar of the title page.</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Every chapter is fetched, foldered, named and padded, then bundled into one ZIP.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> An options panel opens — pick ZIP or CBZ, metadata, and which chapters (or just hit <strong>Start</strong>). See <a href="#library">Output, library &amp; sync</a>.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Every chapter is fetched, named and padded, then bundled into one ZIP (with a <code>.cbz</code> per chapter in CBZ mode).</li>
         <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Open the extension popup to watch live progress and the activity log.</li>
       </ul>
 
@@ -315,12 +317,14 @@
       <h3>How it's organized</h3>
       <p>Settings are grouped into clearly labelled tabs:</p>
       <ul class="tab-list">
-        <li><strong>Download &amp; ZIP</strong> — how a full-series download is packaged: multiple ZIP parts (default) or one single ZIP, and the chapter/size limit per part.</li>
+        <li><strong>Download &amp; ZIP</strong> — how a full-series download is packaged: multiple ZIP parts (default) or one single ZIP, the chapter/size limit per part, and how many chapters to fetch at once.</li>
+        <li><strong>Output &amp; Library</strong> — ZIP vs CBZ, ComicInfo.xml, series info, folder layout, and skipping already-downloaded chapters.</li>
         <li><strong>Performance</strong> — how many images download in parallel, the pacing between chapters, and network timeouts.</li>
         <li><strong>Retries</strong> — automatically re-attempt images or chapters that fail.</li>
         <li><strong>Naming</strong> — image-number padding plus templates for chapter folders and ZIP file names, with a live preview.</li>
         <li><strong>Appearance</strong> — the on-page buttons and the progress panel (see below).</li>
         <li><strong>Advanced</strong> — powerful, riskier options such as image re-encoding and scramble handling.</li>
+        <li><strong>Sync &amp; Library</strong> — watch subscribed series for new chapters, and optionally push finished CBZ files to your own server.</li>
         <li><strong>About &amp; Backup</strong> — export or import your settings as a file, and reset everything to defaults.</li>
       </ul>
 
@@ -352,6 +356,34 @@
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings — Advanced</span></div>
         <img src="assets/settings-advanced.png" alt="Settings page, Advanced tab with risk warnings">
       </div>
+    </section>
+
+    <!-- output, library & sync -->
+    <section class="doc-sec" id="library">
+      <h2>Output, library &amp; sync</h2>
+      <p><strong>New in v2.3.</strong> When you click <strong>Download All</strong>, a small options panel now opens first — with smart defaults, so you can just hit <strong>Start</strong>. Everything here is also available in <em>Settings → Output &amp; Library</em>, and remembered per-series if you tick “Remember for this series”.</p>
+
+      <h3>ZIP or CBZ</h3>
+      <p>Choose <strong>ZIP</strong> (plain folders of images) or <strong>CBZ</strong> — one comic file per chapter that opens directly in Komga, Kavita, Mihon (local source), YACReader and similar. With CBZ, “Download All” still gives you one ZIP, containing a tidy <code>.cbz</code> per chapter.</p>
+
+      <h3>Metadata for your library</h3>
+      <ul class="plain">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>ComicInfo.xml</strong> in each chapter (series, number, count, authors, artists, genres, summary, page count) so servers index it correctly.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Series info</strong> — saves <code>cover.jpg</code> + <code>series.json</code> (cover, author, status, description, tags) for the title.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Folder layout</strong> — Default (<code>Ch0001</code>) or Kavita/Komga (<code>Series / Series - Chapter 0001</code>).</li>
+      </ul>
+
+      <h3>Only download what's new</h3>
+      <p>The extension remembers which chapters you've already grabbed (a small green dot marks them in the list). The panel defaults to <strong>Only new</strong>, and you can still pick <strong>All</strong> (re-download everything) or a <strong>Range</strong>. There's also an <strong>Export list</strong> button that saves the chapter list + series info as JSON without downloading images.</p>
+
+      <h3>Reader shortcuts &amp; right-click</h3>
+      <p>Turn on <em>Reader keyboard shortcuts</em> (Additional Features) to use <kbd>J</kbd>/<kbd>K</kbd> or <kbd>←</kbd>/<kbd>→</kbd> to jump to the previous/next chapter and <kbd>D</kbd> to download the current one. A right-click menu on comix.to also offers “Download this chapter / whole series”.</p>
+
+      <h3>Watch for new chapters</h3>
+      <p>On a title page, click <strong>☆ Subscribe</strong> to watch a series. In <em>Settings → Sync &amp; Library</em> you can set how often it checks in the background and whether to show a desktop notification or even auto-download new chapters. Background checks talk only to comix.to and are best-effort (they depend on the site's protection); browsing the site keeps them reliable.</p>
+
+      <h3>Push to your library (advanced)</h3>
+      <p>Optionally upload each finished CBZ straight to your own media server. In <em>Settings → Sync &amp; Library</em>, enter a WebDAV / HTTP endpoint (a folder your Komga/Kavita watches) and optional credentials, then <strong>Save &amp; grant access</strong>. Files are sent to <code>&lt;endpoint&gt;/&lt;Series&gt;/&lt;chapter&gt;.cbz</code>. This is the only feature that sends data off your device, always to a server <em>you</em> choose — see the <a href="privacy.html">Privacy page</a>.</p>
     </section>
 
     <!-- warning -->
