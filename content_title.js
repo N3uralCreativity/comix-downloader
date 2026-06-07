@@ -953,51 +953,76 @@ function _launchDownloadAll() {
 }
 
 // \u2500\u2500 Series metadata scrape + downloaded-manifest helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-// Best-effort parse of __NEXT_DATA__ (Next.js page props) + DOM fallbacks for the
-// series cover/author/status/description/tags. Exact field names vary, so we walk
-// the JSON object generically and accept the first plausible value.
+// comix.to keeps series data in specific DOM nodes (mpage__*), so we read those
+// directly and fall back to __NEXT_DATA__ / <meta> for the full description.
+function pickLargestImage(img) {
+  // Prefer the largest srcset candidate; else strip a "@NNN" size suffix from src
+  // (e.g. ...69767eed05c41@280.jpg \u2192 ...69767eed05c41.jpg = full resolution).
+  try {
+    const ss = img.getAttribute('srcset') || '';
+    if (ss) {
+      let best = '', bestW = -1;
+      ss.split(',').forEach((part) => {
+        const m = part.trim().match(/(\S+)\s+(\d+)w/);
+        if (m && parseInt(m[2], 10) > bestW) { bestW = parseInt(m[2], 10); best = m[1]; }
+      });
+      if (best) return best;
+    }
+  } catch (_) {}
+  const src = img.getAttribute('src') || img.src || '';
+  return src.replace(/@\d+(?=\.\w+(?:$|\?))/, '');
+}
+
 function scrapeSeriesMeta() {
-  const meta = { title: getMangaName(), authors: [], status: '', description: '', genres: [], coverUrl: '', language: 'en' };
-  let data = null;
+  const meta = {
+    title: getMangaName(), authors: [], artists: [], status: '', description: '',
+    genres: [], demographics: [], coverUrl: '', language: 'en',
+  };
+
+  // Cover \u2014 .mpage__poster img (full-res)
+  const poster = document.querySelector('.mpage__poster img, [class*="mpage__poster"] img, img[class*="mpage__poster"]');
+  if (poster) meta.coverUrl = pickLargestImage(poster);
+
+  // Status badge \u2014 e.g. "RELEASING"
+  const statusEl = document.querySelector('.mpage__badge--status, [class*="badge--status"]');
+  if (statusEl) meta.status = (statusEl.textContent || '').trim();
+
+  // Detail blocks: Authors / Artists / Genres / Demographics (skip tracker chips)
+  document.querySelectorAll('.mpage__detail').forEach((block) => {
+    const label = (block.querySelector('.mpage__detail-label')?.textContent || '').trim().toLowerCase();
+    const chips = [...block.querySelectorAll('.mpage__chip')]
+      .filter((a) => !a.classList.contains('mpage__chip--tracker'))
+      .map((a) => (a.textContent || '').trim())
+      .filter(Boolean);
+    if (!chips.length) return;
+    if (label === 'authors') meta.authors = chips;
+    else if (label === 'artists') meta.artists = chips;
+    else if (label === 'genres') meta.genres = chips;
+    else if (label === 'demographics') meta.demographics = chips;
+  });
+
+  // Description \u2014 visible block first (may be truncated), then the full one from
+  // __NEXT_DATA__ (the longest description/synopsis/summary string), then <meta>.
+  const descEl = document.querySelector('.mpage__description, [class*="mpage__description"], [class*="mpage__summary"]');
+  if (descEl) { const t = (descEl.textContent || '').trim(); if (t.length > meta.description.length) meta.description = t; }
   try {
     const el = document.getElementById('__NEXT_DATA__');
-    if (el) data = JSON.parse(el.textContent || 'null');
+    const raw = el ? (el.textContent || '') : '';
+    if (raw) {
+      let best = meta.description || '';
+      for (const m of raw.matchAll(/"(?:description|synopsis|summary)"\s*:\s*"((?:[^"\\]|\\.){20,}?)"/gi)) {
+        try { const s = JSON.parse('"' + m[1] + '"'); if (s.length > best.length) best = s; } catch (_) {}
+      }
+      meta.description = best;
+      if (!meta.language) { const lm = raw.match(/"lang(?:uage)?"\s*:\s*"([a-z]{2}(?:-[A-Za-z]{2})?)"/i); if (lm) meta.language = lm[1]; }
+    }
   } catch (_) {}
 
-  const slug = (location.pathname.match(/\/title\/([^/]+)/) || [])[1] || '';
-  const visit = (node, depth) => {
-    if (!node || depth > 8 || typeof node !== 'object') return;
-    for (const k in node) {
-      const v = node[k];
-      const key = k.toLowerCase();
-      if (typeof v === 'string') {
-        if (!meta.description && /(description|synopsis|summary)/.test(key) && v.length > 20) meta.description = v;
-        if (!meta.status && /\bstatus\b/.test(key) && v.length < 30) meta.status = v;
-        if (!meta.coverUrl && /(cover|thumbnail|image|poster|banner)/.test(key) && /^https?:\/\/\S+\.(jpe?g|png|webp|avif)/i.test(v)) meta.coverUrl = v;
-        if (!meta.language && /(lang|language)/.test(key) && /^[a-z]{2}(-[A-Za-z]{2})?$/.test(v)) meta.language = v;
-      } else if (Array.isArray(v)) {
-        if (/(genre|tag|categor)/.test(key)) {
-          v.forEach((g) => { const s = typeof g === 'string' ? g : (g && (g.name || g.title || g.label)); if (s && meta.genres.indexOf(s) === -1) meta.genres.push(String(s)); });
-        } else if (/(author|artist|writer|creator)/.test(key)) {
-          v.forEach((a) => { const s = typeof a === 'string' ? a : (a && (a.name || a.title)); if (s && meta.authors.indexOf(s) === -1) meta.authors.push(String(s)); });
-        } else { v.forEach((x) => visit(x, depth + 1)); }
-      } else if (v && typeof v === 'object') {
-        visit(v, depth + 1);
-      }
-    }
-  };
-  if (data) visit(data, 0);
+  // <meta> fallbacks
+  if (!meta.coverUrl) { const og = document.querySelector('meta[property="og:image"]'); if (og && og.content) meta.coverUrl = og.content; }
+  if (!meta.description) { const md = document.querySelector('meta[name="description"], meta[property="og:description"]'); if (md && md.content) meta.description = md.content; }
 
-  // DOM fallbacks
-  if (!meta.coverUrl) {
-    const og = document.querySelector('meta[property="og:image"]');
-    if (og && og.content) meta.coverUrl = og.content;
-  }
-  if (!meta.description) {
-    const md = document.querySelector('meta[name="description"], meta[property="og:description"]');
-    if (md && md.content) meta.description = md.content;
-  }
-  meta.slug = slug;
+  meta.slug = (location.pathname.match(/\/title\/([^/]+)/) || [])[1] || '';
   meta.sourceUrl = location.href;
   return meta;
 }

@@ -12,6 +12,7 @@
   ],
   "host_permissions": [
     "*://comix.to/*",
+    "*://*.comix.to/*",
     "*://*.wowpic1.store/*",
     "*://*.wowpic2.store/*",
     "*://*.wowpic3.store/*",

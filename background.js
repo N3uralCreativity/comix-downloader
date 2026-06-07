@@ -824,29 +824,36 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   const padDigits = cfg['naming.imagePadDigits'] || 3;
   const imageRetries = cfg['retry.imageRetries'] || 0;
   const zip = new JSZip();
-  const total = images.length;
+  // Re-sequence to clean 1..N page numbers (sorted by the extractor's index) so
+  // names are unique + ordered; collect then add sorted so archive entry order
+  // matches reading order regardless of fetch completion order.
+  const ordered = images.slice().sort((a, b) => (a.index || 0) - (b.index || 0));
+  const total = ordered.length;
   let done = 0;
+  const files = [];
 
-  for (let i = 0; i < images.length; i += batchSize) {
-    const batch = images.slice(i, i + batchSize);
+  for (let i = 0; i < ordered.length; i += batchSize) {
+    const batch = ordered.slice(i, i + batchSize);
     await Promise.allSettled(
-      batch.map(async ({ src, index }) => {
-        const paddedIndex = String(index).padStart(padDigits, '0');
-        // Image introuvable (ex. numéro de page hors limites) → on l'ignore,
-        // pas de fichier vide dans le ZIP.
-        await fetchImageIntoZip(zip, paddedIndex, src, cfg, imageRetries);
+      batch.map(async (img, k) => {
+        const page = i + k + 1;
+        const paddedIndex = String(page).padStart(padDigits, '0');
+        const file = await fetchImageToFile(paddedIndex, img.src, cfg, imageRetries);
+        if (file) { file.page = page; files.push(file); }
         done++;
         notifyTab(originTabId, { action: 'downloadProgress', chapterUrl, current: done, total });
       })
     );
   }
+  files.sort((a, b) => a.page - b.page);
+  for (const f of files) zip.file(f.name, f.buffer);
 
   // CBZ: a single chapter is itself the .cbz (flat images + optional ComicInfo.xml).
   const isCbz = opts.format === 'cbz';
   if (isCbz && opts.includeComicInfo) {
     const chapterLabel = (options && options.chapterLabel) || '';
     const mangaName = (options && options.mangaName) || (opts.seriesMeta && opts.seriesMeta.title) || '';
-    const xml = buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, total, mangaName);
+    const xml = buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, files.length, mangaName);
     if (xml) zip.file('ComicInfo.xml', xml);
   }
   const ext = isCbz ? 'cbz' : 'zip';
@@ -1213,15 +1220,17 @@ function buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, pageCount, man
     if (p && p.kind === 'num' && isFinite(p.value)) number = String(p.value);
   }
   if (!number) { const m = String(chapterLabel || '').match(/([\d.]+)/); number = m ? m[1] : ''; }
-  const writer = Array.isArray(meta.authors) ? meta.authors.join(', ') : (meta.author || meta.writer);
+  const join = (v) => (Array.isArray(v) ? v.join(', ') : v) || undefined;
   return CDLComicInfo.buildComicInfoXml({
     series: meta.title || mangaName,
     number: number || undefined,
     count: opts.totalCount || undefined,
     title: chapterLabel || undefined,
     summary: meta.description || undefined,
-    writer: writer || undefined,
-    genres: meta.genres || meta.tags || undefined,
+    writer: join(meta.authors) || meta.author || meta.writer || undefined,
+    penciller: join(meta.artists) || undefined,
+    genres: (meta.genres && meta.genres.length ? meta.genres : meta.tags) || undefined,
+    tags: join(meta.demographics) || undefined,
     web: chapterUrl || undefined,
     pageCount: pageCount || undefined,
     language: meta.language || 'en',
@@ -1465,21 +1474,28 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     }
     cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
 
+    // Re-sequence to clean 1..N page numbers (sorted by the extractor's index) so
+    // filenames are unique + correctly ordered even if the source indices are
+    // sparse or duplicated. Then sort the fetched files by page (they complete out
+    // of order under concurrency) so the archive's entry order matches reading order.
+    const ordered = images.slice().sort((a, b) => (a.index || 0) - (b.index || 0));
     const files = [];
     let bytes = 0, imgDone = 0;
-    for (let j = 0; j < images.length; j += batchSize) {
+    for (let j = 0; j < ordered.length; j += batchSize) {
       if (downloadAllAbortFlag) break;
-      const batch = images.slice(j, j + batchSize);
-      await Promise.allSettled(batch.map(async ({ src, index }) => {
-        const paddedIndex = String(index).padStart(padDigits, '0');
-        const file = await fetchImageToFile(paddedIndex, src, cfg, imageRetries);
-        if (file) { files.push(file); bytes += file.bytes; }
+      const batch = ordered.slice(j, j + batchSize);
+      await Promise.allSettled(batch.map(async (img, k) => {
+        const page = j + k + 1;
+        const paddedIndex = String(page).padStart(padDigits, '0');
+        const file = await fetchImageToFile(paddedIndex, img.src, cfg, imageRetries);
+        if (file) { file.page = page; files.push(file); bytes += file.bytes; }
         imgDone++;
         notify({ phase: 'downloading', chapterIndex: i + 1, totalChapters: chapters.length,
-                 chapterLabel, imagesDone: imgDone, imagesTotal: images.length });
+                 chapterLabel, imagesDone: imgDone, imagesTotal: ordered.length });
       }));
     }
-    return { index: i, chapterUrl, chapterLabel, files, bytes, imagesTotal: images.length, imgDone, status: 'done' };
+    files.sort((a, b) => a.page - b.page);
+    return { index: i, chapterUrl, chapterLabel, files, bytes, imagesTotal: ordered.length, imgDone, status: 'done' };
   };
 
   // ── Worker pool + in-order packer ───────────────────────────────────────────
