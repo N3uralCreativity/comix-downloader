@@ -16,10 +16,10 @@
 **[Checkout the Site for a more User-Friendly interface](https://n3uralcreativity.github.io/comix-downloader/index.html)**
 
 
-**Warning : at times comix can be slow / busy times, this might slow down the download process and even fail eventually ( or require your intervention to pass through cloudflare ) even more recently, you might want to turn on retries after fail in the extension settings ( eventually will turn this into a enabled by default setting soon either way )**
+**Warning: at times, Comix can be slow during busy periods / just bugging cuz why not. This might slow down the download process or even cause it to fail eventually (or require your intervention to get through Cloudflare). This has been happening more often recently, so you may want to enable "Retries After Failure" in the extension settings. I'll probably make this enabled by default in a future update anyway.**
 
+Secondly, if the download buttons aren't showing up, just refresh the page. Your browser tends to load pages from cache sometimes, which can prevent the extension from being triggered properly. Not really much I can do about that unfortunately.
 
-secondly if the download buttons aren't displaying just refresh the page ( your browser tend to load pages from cache which sometimes the extension don't get properly triggered for.. so can't rlly help it )
 
 
 </div>
