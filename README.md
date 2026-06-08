@@ -9,6 +9,7 @@
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+**Warning : at times comix can be slow / busy times, this might slow down the download process and even fail eventually ( or require your intervention to pass through cloudflare ) even more recently, you might want to turn on retries after fail in the extension settings ( eventually will turn this into a enabled by default setting soon either way )**
 
 
 **by [N3uralCreativity](https://github.com/N3uralCreativity)**
