@@ -17,6 +17,7 @@
 
 
 **Warning : at times comix can be slow / busy times, this might slow down the download process and even fail eventually ( or require your intervention to pass through cloudflare ) even more recently, you might want to turn on retries after fail in the extension settings ( eventually will turn this into a enabled by default setting soon either way )**
+secondly if the download buttons aren't displaying just refresh the page ( your browser tend to load pages from cache which sometimes extensions don't properly gets triggered.. so can't help it )
 
 
 </div>
