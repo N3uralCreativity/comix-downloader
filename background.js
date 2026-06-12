@@ -475,7 +475,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message.action === 'checkSubscriptionsNow') {
-    checkAllSubscriptions().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+    // Manual trigger: always check (force), even when the master toggle is off,
+    // and report a summary so the options page can show what happened.
+    checkAllSubscriptions(true).then((summary) => sendResponse({ ok: true, summary })).catch(() => sendResponse({ ok: false }));
     return true;
   }
   if (message.action === 'libraryTest') {
@@ -900,6 +902,23 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
 
   cdlLog('ok', `${ext.toUpperCase()} saved: ${outName} (${images.length} images)`);
   notifyTab(originTabId, { action: 'downloadDone', chapterUrl });
+
+  // Same bookkeeping as Download All gives each chapter: mark it downloaded in
+  // the manifest (green dot + "Only new" scope) and push the .cbz to the library.
+  if (files.length) {
+    const slug = opts.slug || (opts.seriesMeta && opts.seriesMeta.slug) ||
+      (String(chapterUrl).match(/\/title\/([^/]+)\//) || [])[1] || '';
+    const chapterLabel = (options && options.chapterLabel) || chapterLabelFromUrl(chapterUrl);
+    const mangaName = (options && options.mangaName) || (opts.seriesMeta && opts.seriesMeta.title) || '';
+    recordChapterDownloaded(slug, chapterLabel, mangaName);
+    if (isCbz) {
+      const libCfg = await getLibraryConfig();
+      if (libCfg && libCfg.enabled && /^https?:\/\//i.test(libCfg.endpoint || '')) {
+        const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'STORE' });
+        queueLibraryPush(libCfg, seriesFolderName(mangaName || 'Series'), outName, bytes);
+      }
+    }
+  }
 }
 
 // Fetch one image (with optional retries) and add it to the given JSZip
@@ -1244,7 +1263,8 @@ function buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, pageCount, man
     series: meta.title || mangaName,
     number: number || undefined,
     count: opts.totalCount || undefined,
-    title: chapterLabel || undefined,
+    // Library servers display this as-is — "Chapter 92" reads better than "Ch92".
+    title: number ? `Chapter ${number}` : (chapterLabel || undefined),
     summary: meta.description || undefined,
     writer: join(meta.authors) || meta.author || meta.writer || undefined,
     penciller: join(meta.artists) || undefined,
@@ -1272,14 +1292,11 @@ async function addChapterToOuter(zip, r, opts, mangaName) {
     const bytes = await inner.generateAsync({ type: 'uint8array', compression: 'STORE' });
     zip.file(`${entryBase}.cbz`, bytes);
     // Optionally push this .cbz straight to the user's library server (Phase 2).
+    // Queued, not awaited — a slow server must never stall the packer (it gates
+    // the whole worker pool through the backpressure window).
     if (opts.pushLib) {
       const fileBase = opts.folderLayout === 'kavita' ? entryBase.split('/').pop() : entryBase;
-      try {
-        const ok = await pushFileToLibrary(opts.pushLib, seriesFolderName(mangaName), `${fileBase}.cbz`, bytes);
-        cdlLog(ok ? 'ok' : 'error', `Library push ${ok ? 'ok' : 'failed'}: ${fileBase}.cbz`);
-      } catch (e) {
-        cdlLog('error', `Library push failed: ${fileBase}.cbz (${e.message})`);
-      }
+      queueLibraryPush(opts.pushLib, seriesFolderName(mangaName), `${fileBase}.cbz`, bytes);
     }
     return bytes.byteLength || 0;
   }
@@ -1625,6 +1642,10 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   const saved = await saveCurrentZipPart(true);
   if (!saved) return;
 
+  // Let queued library pushes drain before reporting done (also keeps the MV3
+  // service worker alive until the last upload finishes).
+  if (opts.pushLib) { try { await _libPushChain; } catch (_) {} }
+
   const doneName = savedZipNames.length === 1 ? savedZipNames[0] : `${savedZipNames.length} ZIP parts`;
   cdlLog('ok', `Download All complete: ${doneName}`);
   notifyDownloadAllDone(originTabId, doneName);
@@ -1735,25 +1756,43 @@ async function setupSubscribeAlarm() {
   if (!chrome.alarms) return;
   let cfg = {};
   try { cfg = await loadCfg(); } catch (_) {}
-  try { await chrome.alarms.clear(SUBSCRIBE_ALARM); } catch (_) {}
-  if (cfg['subscribe.enabled']) {
-    const mins = Math.max(30, Math.min(1440, cfg['subscribe.intervalMinutes'] || 360));
-    try { chrome.alarms.create(SUBSCRIBE_ALARM, { periodInMinutes: mins, delayInMinutes: 1 }); } catch (_) {}
+  // Settings saves call this on every change — keep the running alarm when the
+  // schedule didn't actually change, otherwise the countdown restarts each save
+  // and a frequently-tweaked browser never reaches the next check.
+  const existing = await new Promise((res) => {
+    try { chrome.alarms.get(SUBSCRIBE_ALARM, (a) => res(a || null)); } catch (_) { res(null); }
+  });
+  if (!cfg['subscribe.enabled']) {
+    if (existing) { try { await chrome.alarms.clear(SUBSCRIBE_ALARM); } catch (_) {} }
+    return;
   }
+  const mins = Math.max(30, Math.min(1440, cfg['subscribe.intervalMinutes'] || 360));
+  if (existing && existing.periodInMinutes === mins) return;
+  try { await chrome.alarms.clear(SUBSCRIBE_ALARM); } catch (_) {}
+  try { chrome.alarms.create(SUBSCRIBE_ALARM, { periodInMinutes: mins, delayInMinutes: 1 }); } catch (_) {}
 }
 
 async function subscribeSeries(slug, mangaName) {
   if (!slug) return;
   const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
-  if (!cdlSubscriptions[slug]) cdlSubscriptions[slug] = { mangaName: mangaName || slug, lastSeen: [], lastCheck: 0 };
+  const isNew = !cdlSubscriptions[slug];
+  if (isNew) cdlSubscriptions[slug] = { mangaName: mangaName || slug, lastSeen: [], lastCheck: 0 };
   else if (mangaName) cdlSubscriptions[slug].mangaName = mangaName;
   await chrome.storage.local.set({ cdlSubscriptions });
   // Subscribing implies wanting background checks — enable the master toggle once.
+  let cfg = {};
   try {
-    const cfg = await loadCfg();
-    if (!cfg['subscribe.enabled'] && typeof CDLSettings !== 'undefined') await CDLSettings.patchSettings({ 'subscribe.enabled': true });
+    cfg = await loadCfg();
+    if (!cfg['subscribe.enabled'] && typeof CDLSettings !== 'undefined') {
+      await CDLSettings.patchSettings({ 'subscribe.enabled': true });
+      cfg['subscribe.enabled'] = true;
+    }
   } catch (_) {}
   setupSubscribeAlarm();
+  // Baseline right away (fire-and-forget so the button stays snappy): without it
+  // the first periodic check only records the current list, so nothing could be
+  // detected before the SECOND check — hours later, which feels broken.
+  if (isNew) checkOneSubscription(slug, cdlSubscriptions[slug], cfg).catch(() => {});
 }
 
 async function unsubscribeSeries(slug) {
@@ -1761,19 +1800,39 @@ async function unsubscribeSeries(slug) {
   if (cdlSubscriptions[slug]) { delete cdlSubscriptions[slug]; await chrome.storage.local.set({ cdlSubscriptions }); }
 }
 
-async function checkAllSubscriptions() {
+// Returns a summary so the manual "Check now" can show real feedback.
+async function checkAllSubscriptions(force) {
   let cfg = {};
   try { cfg = await loadCfg(); } catch (_) {}
-  if (!cfg['subscribe.enabled']) return;
+  const summary = { checked: 0, newChapters: 0, blocked: 0, skipped: false };
+  if (!cfg['subscribe.enabled'] && !force) { summary.skipped = true; return summary; }
   const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
   for (const slug of Object.keys(cdlSubscriptions)) {
-    try { await checkOneSubscription(slug, cdlSubscriptions[slug], cfg); } catch (_) {}
+    try {
+      const r = await checkOneSubscription(slug, cdlSubscriptions[slug], cfg);
+      summary.checked++;
+      if (r && r.blocked) summary.blocked++;
+      if (r && r.newCount) summary.newChapters += r.newCount;
+    } catch (_) {}
   }
+  return summary;
 }
 
 async function checkOneSubscription(slug, sub, cfg) {
   const chapters = await fetchSeriesChapters(slug);
-  if (!chapters || !chapters.length) return; // blocked or nothing — try again next cycle
+  if (!chapters || !chapters.length) {
+    // Blocked (Cloudflare) or empty — record the failed attempt so the options
+    // page can tell the user instead of silently looking idle.
+    try {
+      const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
+      if (cdlSubscriptions[slug]) {
+        cdlSubscriptions[slug].lastCheck = Date.now();
+        cdlSubscriptions[slug].lastStatus = 'blocked';
+        await chrome.storage.local.set({ cdlSubscriptions });
+      }
+    } catch (_) {}
+    return { blocked: true, newCount: 0 };
+  }
   const hadBaseline = Array.isArray(sub.lastSeen) && sub.lastSeen.length > 0;
   const seen = new Set(sub.lastSeen || []);
   const newOnes = chapters.filter((c) => !seen.has(c.key));
@@ -1784,13 +1843,15 @@ async function checkOneSubscription(slug, sub, cfg) {
   entry.mangaName = entry.mangaName || sub.mangaName || slug;
   entry.lastSeen = chapters.map((c) => c.key);
   entry.lastCheck = Date.now();
+  entry.lastStatus = 'ok';
   cdlSubscriptions[slug] = entry;
   await chrome.storage.local.set({ cdlSubscriptions });
 
-  if (!hadBaseline || !newOnes.length) return; // first successful check just baselines
+  if (!hadBaseline || !newOnes.length) return { blocked: false, newCount: 0 }; // first successful check just baselines
   cdlLog('ok', `${entry.mangaName}: ${newOnes.length} new chapter(s) found`);
   if (cfg['subscribe.notify']) notifyNewChapters(slug, entry.mangaName, newOnes);
-  if (cfg['subscribe.autoDownload']) autoDownloadNew(slug, entry.mangaName, newOnes, cfg);
+  if (cfg['subscribe.autoDownload']) queueAutoDownload(slug, entry.mangaName, newOnes, cfg, chapters.length);
+  return { blocked: false, newCount: newOnes.length };
 }
 
 function notifyNewChapters(slug, mangaName, newOnes) {
@@ -1817,8 +1878,33 @@ if (chrome.notifications && chrome.notifications.onClicked) {
   });
 }
 
-async function autoDownloadNew(slug, mangaName, newOnes, cfg) {
-  if (downloadAllSession && downloadAllSession.active) return; // don't collide with a running session
+// Auto-downloads run through a serial queue: when two subscriptions both find
+// new chapters in the same check cycle, the second run waits instead of being
+// dropped (handleDownloadAllRequest refuses to run two sessions at once).
+let _autoDlChain = Promise.resolve();
+function queueAutoDownload(slug, mangaName, newOnes, cfg, seriesTotal) {
+  _autoDlChain = _autoDlChain
+    .then(() => autoDownloadNew(slug, mangaName, newOnes, cfg, seriesTotal))
+    .catch((e) => { cdlLog('error', `Auto-download failed (${mangaName}): ${e && e.message}`); });
+  return _autoDlChain;
+}
+
+async function autoDownloadNew(slug, mangaName, newOnes, cfg, seriesTotal) {
+  if (downloadAllSession && downloadAllSession.active) {
+    // A user-initiated run is in progress — postpone. Drop these keys from the
+    // baseline so the next periodic check re-detects them and retries.
+    cdlLog('warn', `Auto-download postponed (another download is running): ${mangaName}`);
+    try {
+      const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
+      const entry = cdlSubscriptions[slug];
+      if (entry && Array.isArray(entry.lastSeen)) {
+        const drop = new Set(newOnes.map((c) => c.key));
+        entry.lastSeen = entry.lastSeen.filter((k) => !drop.has(k));
+        await chrome.storage.local.set({ cdlSubscriptions });
+      }
+    } catch (_) {}
+    return;
+  }
   _resetDownloadAllAbort();
   const prefs = await getSeriesPrefsBg(slug);
   const options = {
@@ -1828,13 +1914,26 @@ async function autoDownloadNew(slug, mangaName, newOnes, cfg) {
     folderLayout: prefs.folderLayout || cfg['output.folderLayout'] || 'default',
     slug,
     seriesMeta: { title: mangaName, slug },
-    totalCount: 0,
+    // Real series total (for ComicInfo <Count>) — NOT the count of new chapters.
+    totalCount: seriesTotal || 0,
   };
   let zipName = `${mangaName}-new`;
   try { if (typeof CDLSettings !== 'undefined') zipName = `${CDLSettings.renderName(cfg['naming.allZipTpl'] || '{manga}', { manga: mangaName }, 180)}-new`; } catch (_) {}
   const chapters = newOnes.map((c) => ({ chapterUrl: c.chapterUrl, chapterLabel: c.chapterLabel }));
   cdlLog('info', `Auto-downloading ${chapters.length} new chapter(s) of "${mangaName}"`);
-  handleDownloadAllRequest(chapters, mangaName, zipName, null, options);
+  await handleDownloadAllRequest(chapters, mangaName, zipName, null, options);
+  // Replaces the "new chapters" notification for this series with the outcome.
+  if (cfg['subscribe.notify'] && chrome.notifications) {
+    try {
+      chrome.notifications.create(`cdlsub:${slug}`, {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+        title: `Auto-download finished — ${mangaName}`,
+        message: `${chapters.length} new chapter(s) saved to your downloads folder.`,
+        priority: 0,
+      });
+    } catch (_) {}
+  }
 }
 
 if (chrome.alarms && chrome.alarms.onAlarm) {
@@ -1857,12 +1956,29 @@ function joinLibraryUrl(base, ...parts) {
   for (const p of parts) u += '/' + encodeURIComponent(p).replace(/%2F/gi, '/');
   return u;
 }
+// Pushes go through a serial queue so a slow library server never stalls the
+// download pipeline: the packer queues the bytes and moves on immediately.
+let _libPushChain = Promise.resolve();
+const _libMkcolDone = new Set();
+function queueLibraryPush(libCfg, seriesFolder, fileName, bytes) {
+  _libPushChain = _libPushChain.then(async () => {
+    try {
+      const ok = await pushFileToLibrary(libCfg, seriesFolder, fileName, bytes);
+      cdlLog(ok ? 'ok' : 'error', `Library push ${ok ? 'ok' : 'failed'}: ${fileName}`);
+    } catch (e) {
+      cdlLog('error', `Library push failed: ${fileName} (${e.message})`);
+    }
+  });
+  return _libPushChain;
+}
 async function pushFileToLibrary(libCfg, seriesFolder, fileName, bytes) {
   const method = libCfg.method === 'POST' ? 'POST' : 'PUT';
   const auth = libAuthHeader(libCfg);
-  // Best-effort: create the series collection first (WebDAV). Ignored elsewhere.
-  if (method === 'PUT') {
-    try { await fetch(joinLibraryUrl(libCfg.endpoint, seriesFolder), { method: 'MKCOL', headers: auth ? { Authorization: auth } : {} }); } catch (_) {}
+  // Best-effort: create the series collection first (WebDAV), once per folder.
+  const folderUrl = joinLibraryUrl(libCfg.endpoint, seriesFolder);
+  if (method === 'PUT' && !_libMkcolDone.has(folderUrl)) {
+    _libMkcolDone.add(folderUrl);
+    try { await fetch(folderUrl, { method: 'MKCOL', headers: auth ? { Authorization: auth } : {} }); } catch (_) {}
   }
   const headers = { 'Content-Type': 'application/vnd.comicbook+zip' };
   if (auth) headers['Authorization'] = auth;
@@ -1871,9 +1987,26 @@ async function pushFileToLibrary(libCfg, seriesFolder, fileName, bytes) {
 }
 async function testLibrary(cfg) {
   if (!cfg || !/^https?:\/\//i.test(cfg.endpoint || '')) return { ok: false, error: 'Invalid URL' };
-  const auth = libAuthHeader(cfg);
+  // Without the optional host permission every fetch fails with a vague network
+  // error — check it first so the message tells the user exactly what to do.
   try {
-    const resp = await fetch(cfg.endpoint, { method: 'OPTIONS', headers: auth ? { Authorization: auth } : {} });
+    const pat = new URL(cfg.endpoint).origin + '/*';
+    const has = await new Promise((res) => {
+      try { chrome.permissions.contains({ origins: [pat] }, (r) => res(!!r)); } catch (_) { res(true); }
+    });
+    if (!has) return { ok: false, error: 'No access to that server yet — click "Save & grant access" first' };
+  } catch (_) {}
+  const auth = libAuthHeader(cfg);
+  const headers = auth ? { Authorization: auth } : {};
+  try {
+    let resp = await fetch(cfg.endpoint, { method: 'OPTIONS', headers });
+    // Some servers reject OPTIONS outright — retry with a plain GET before judging.
+    if (resp.status === 404 || resp.status === 405 || resp.status === 501) {
+      try { resp = await fetch(cfg.endpoint, { method: 'GET', headers }); } catch (_) {}
+    }
+    if (resp.status === 401 || resp.status === 407) return { ok: false, status: resp.status, error: 'Authentication refused — check username/password' };
+    if (resp.status === 403) return { ok: false, status: resp.status, error: 'Access forbidden (HTTP 403) — check the endpoint path and server permissions' };
+    if (resp.status === 404) return { ok: false, status: resp.status, error: 'Not found (HTTP 404) — check the endpoint URL' };
     return { ok: true, status: resp.status };
   } catch (e) {
     return { ok: false, error: e.message || 'network error' };

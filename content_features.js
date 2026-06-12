@@ -466,6 +466,7 @@
           folderLayout: 'default',
           chapterLabel: label,
           mangaName: manga,
+          slug: currentSlug(),   // so the background records it in the per-series manifest
           seriesMeta: { title: manga, slug: currentSlug(), sourceUrl: location.href }
         }
       });

@@ -121,7 +121,7 @@ function applyDynamicStyles() {
 // Re-apply everything that depends on settings (called on storage change).
 function onSettingsChanged() {
   applyDynamicStyles();
-  const all = document.querySelector('.cdl-dl-all-btn');
+  const all = document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)');
   if (all && !all.disabled) _setHTML(all, `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`);
   document.querySelectorAll(`.${DOWNLOAD_BTN_CLASS}`).forEach((b) => {
     const st = b.getAttribute('data-state');
@@ -551,6 +551,7 @@ function buildSingleChapterOptions(chapterUrl) {
     folderLayout: 'default',
     chapterLabel: extractChapterLabel(chapterUrl),
     mangaName: getMangaName(),
+    slug: _cdlSlug(),   // so the background records it in the per-series manifest
     seriesMeta: scrapeSeriesMeta(),
   };
 }
@@ -614,7 +615,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // ── Download All ──────────────────────────────────────────────────────────
   } else if (message.action === 'startDownloadAll') {
     // From the right-click "Download whole series" context menu — reuse the button flow.
-    const b = document.querySelector('.cdl-dl-all-btn');
+    const b = document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)');
     if (b) b.click();
 
   } else if (message.action === 'downloadAllProgress') {
@@ -1142,16 +1143,16 @@ function findDownloadAllAnchor() {
 
 /** Injecte le bouton "Download All" sous le bouton Follow/Start-reading. */
 function injectDownloadAllButton() {
-  if (document.querySelector('.cdl-dl-all-btn')) return;
+  if (document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)')) return;
   const found = findDownloadAllAnchor();
   if (!found) {
     // Follow button not yet in DOM (React renders it late on mobile) — retry
     if (!_dlAllInjRetryTimer) {
       let attempts = 0;
       const retry = () => {
-        if (document.querySelector('.cdl-dl-all-btn')) { _dlAllInjRetryTimer = null; return; }
+        if (document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)')) { _dlAllInjRetryTimer = null; return; }
         injectDownloadAllButton();
-        if (!document.querySelector('.cdl-dl-all-btn') && attempts++ < 20) {
+        if (!document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)') && attempts++ < 20) {
           _dlAllInjRetryTimer = setTimeout(retry, 500);
         } else {
           _dlAllInjRetryTimer = null;
@@ -1404,7 +1405,7 @@ async function showDownloadAllOptionsPanel(mangaName, chapters) {
   const q = (id) => panel.querySelector(id);
   const cards = [...panel.querySelectorAll('.cdl-op-card')];
   const selectFormat = (f) => { format = f; cards.forEach((c) => c.classList.toggle('sel', c.dataset.fmt === f)); };
-  cards.forEach((c) => c.addEventListener('click', () => selectFormat(c.dataset.fmt)));
+  cards.forEach((c) => c.addEventListener('click', () => { selectFormat(c.dataset.fmt); updateEstimate(); }));
   selectFormat(format);
   q('#cdl-op-comicinfo').checked = def.includeComicInfo;
   q('#cdl-op-meta').checked = def.includeSeriesMeta;
@@ -1425,10 +1426,20 @@ async function showDownloadAllOptionsPanel(mangaName, chapters) {
     }
     return chapters.slice();
   };
+  // Tell the user up front when finished CBZ files will also go to their server.
+  let libPushEnabled = false;
+  try {
+    chrome.storage.local.get('cdlLibrary', (res) => {
+      const c = res && res.cdlLibrary;
+      libPushEnabled = !!(c && c.enabled && /^https?:\/\//i.test(c.endpoint || ''));
+      if (libPushEnabled) updateEstimate();
+    });
+  } catch (_) {}
   const updateEstimate = () => {
     const n = selectedChapters().length;
     const mb = Math.max(1, Math.round(n * 6)); // ~6 MB/chapter, very rough
-    q('#cdl-op-estimate').textContent = `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title)`;
+    const lib = (format === 'cbz' && libPushEnabled) ? ' · each CBZ will also be pushed to your library server' : '';
+    q('#cdl-op-estimate').textContent = `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title)${lib}`;
     q('#cdl-op-start').disabled = n === 0;
   };
   panel.querySelectorAll('input[name="cdl-op-scope"], #cdl-op-from, #cdl-op-to')
@@ -1817,10 +1828,33 @@ function restoreDownloadAllPopupFromBackground() {
 // ── Subscribe toggle (watch this series for new chapters) ─────────────────────
 function _cdlSlug() { return (location.pathname.match(/\/title\/([^/]+)/) || [])[1] || ''; }
 
+// Small transient toast at the bottom of the page (subscribe feedback, etc.).
+let _cdlToastTimer = null;
+function cdlToast(msg) {
+  let t = document.getElementById('cdl-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'cdl-toast';
+    t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:2147483647;'
+      + 'background:rgba(17,19,28,.95);color:#e6e9f2;padding:9px 16px;border-radius:10px;'
+      + 'font:600 13px system-ui,-apple-system,sans-serif;border:1px solid rgba(255,255,255,.14);'
+      + 'box-shadow:0 8px 28px rgba(0,0,0,.45);pointer-events:none;opacity:0;transition:opacity .2s;'
+      + 'max-width:88vw;text-align:center;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  requestAnimationFrame(() => { t.style.opacity = '1'; });
+  clearTimeout(_cdlToastTimer);
+  _cdlToastTimer = setTimeout(() => { t.style.opacity = '0'; }, 2600);
+}
+
 function injectSubscribeButton() {
   if (document.querySelector('.cdl-sub-btn')) return;
-  const allBtn = document.querySelector('.cdl-dl-all-btn');
+  const allBtn = document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)');
   if (!allBtn) return; // appears next to Download All; the observer re-runs the scan
+  // The floating FAB (mobile fallback) sits alone at body level — a second
+  // unpositioned button there would render broken. Skip it in that mode.
+  if (allBtn.classList.contains('cdl-floating')) return;
   const slug = _cdlSlug();
   if (!slug) return;
 
@@ -1850,7 +1884,13 @@ function injectSubscribeButton() {
     try {
       chrome.runtime.sendMessage(
         subscribed ? { action: 'unsubscribe', slug } : { action: 'subscribe', slug, mangaName: getMangaName() },
-        () => { if (chrome.runtime.lastError) render(subscribed); }
+        () => {
+          if (chrome.runtime.lastError) { render(subscribed); cdlToast('Could not update the subscription — try again'); return; }
+          if (subscribed) { cdlToast('Unsubscribed — no more checks for this series'); return; }
+          const mins = parseInt(CFG['subscribe.intervalMinutes'], 10) || 360;
+          const every = mins >= 60 ? `${Math.round((mins / 60) * 10) / 10}h` : `${mins}min`;
+          cdlToast(`Subscribed — checking every ${every} for new chapters`);
+        }
       );
     } catch (_) { render(subscribed); }
   });

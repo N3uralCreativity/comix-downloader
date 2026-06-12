@@ -207,8 +207,12 @@ input[type="color"] { width: 42px; height: 32px; padding: 2px; background: var(-
 .lib-grid input, .lib-grid select { width: 100%; }
 .sub-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .sub-row:last-child { border-bottom: none; }
+.sub-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sub-name { color: var(--fg); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sub-row .btn { padding: 4px 12px; font-size: 12px; }
+a.sub-name { text-decoration: none; }
+a.sub-name:hover { text-decoration: underline; }
+.sub-meta { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-row .btn { padding: 4px 12px; font-size: 12px; flex-shrink: 0; }
 .about-meta { font-size: 12.5px; color: var(--muted); }
 .about-meta strong { color: var(--fg); }
 

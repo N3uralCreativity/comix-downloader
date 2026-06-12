@@ -281,13 +281,15 @@
     panel.appendChild(lib);
 
     // Subscriptions
+    var subStatus = el('p', { class: 'row-help', id: 'sub-status', text: '' });
     var subWrap = el('div', { class: 'section' }, [
       el('h3', { text: 'Subscriptions' }),
       el('p', { text: 'Series you subscribed to from their title page. Background checks look for new chapters (see settings above).' }),
       el('div', { id: 'sub-list' }, [el('p', { class: 'row-help', text: 'Loading…' })]),
       el('div', { class: 'btn-group' }, [
         el('button', { class: 'btn', id: 'sub-check', type: 'button', html: icon('repeat') + 'Check now' })
-      ])
+      ]),
+      subStatus
     ]);
     panel.appendChild(subWrap);
 
@@ -330,22 +332,44 @@
           endpoint: endpoint.value.trim(), method: method.value, username: user.value, password: pass.value
         } }, function (res) {
           if (chrome.runtime.lastError || !res) { status.textContent = 'Test failed: no response.'; return; }
-          status.textContent = res.ok ? ('Reachable (HTTP ' + res.status + ').') : ('Could not reach it: ' + (res.error || ('HTTP ' + res.status)));
+          status.textContent = res.ok ? ('✓ Server reachable (HTTP ' + res.status + ').') : ('✗ ' + (res.error || ('HTTP ' + res.status)));
         });
       } catch (e) { status.textContent = 'Test failed.'; }
     });
 
+    var timeAgo = function (ts) {
+      if (!ts) return 'waiting for first check';
+      var mins = Math.round((Date.now() - ts) / 60000);
+      if (mins < 1) return 'checked just now';
+      if (mins < 60) return 'checked ' + mins + ' min ago';
+      var h = Math.round(mins / 60);
+      if (h < 48) return 'checked ' + h + ' h ago';
+      return 'checked ' + Math.round(h / 24) + ' d ago';
+    };
     var refreshSubs = function () {
       chrome.storage.local.get('cdlSubscriptions', function (res) {
         var subs = (res && res.cdlSubscriptions) || {};
         var listEl = document.getElementById('sub-list');
+        if (!listEl) return;
         listEl.innerHTML = '';
-        var slugs = Object.keys(subs);
-        if (!slugs.length) { listEl.appendChild(el('p', { class: 'row-help', text: 'No subscriptions yet.' })); return; }
+        var slugs = Object.keys(subs).sort(function (a, b) {
+          return String((subs[a] || {}).mangaName || a).localeCompare(String((subs[b] || {}).mangaName || b));
+        });
+        if (!slugs.length) {
+          listEl.appendChild(el('p', { class: 'row-help', text: 'No subscriptions yet. Open a series on comix.to and click "☆ Subscribe" next to the Download All button.' }));
+          return;
+        }
         slugs.forEach(function (slug) {
           var s = subs[slug] || {};
+          var bits = [];
+          bits.push(s.lastSeen && s.lastSeen.length ? s.lastSeen.length + ' chapters tracked' : 'no chapters tracked yet');
+          bits.push(timeAgo(s.lastCheck));
+          if (s.lastStatus === 'blocked') bits.push('⚠ last check was blocked — open comix.to once, then retry');
           var row = el('div', { class: 'sub-row' }, [
-            el('span', { class: 'sub-name', text: s.mangaName || slug }),
+            el('div', { class: 'sub-info' }, [
+              el('a', { class: 'sub-name', href: 'https://comix.to/title/' + encodeURIComponent(slug), target: '_blank', rel: 'noopener', text: s.mangaName || slug }),
+              el('span', { class: 'sub-meta', text: bits.join(' · ') })
+            ]),
             el('button', { class: 'btn danger', type: 'button', text: 'Unsubscribe', onclick: function () {
               chrome.runtime.sendMessage({ action: 'unsubscribe', slug: slug }, refreshSubs);
             } })
@@ -357,9 +381,25 @@
     subWrap.querySelector('#sub-check').addEventListener('click', function () {
       var b = document.getElementById('sub-check');
       b.disabled = true;
-      chrome.runtime.sendMessage({ action: 'checkSubscriptionsNow' }, function () { b.disabled = false; refreshSubs(); });
+      subStatus.textContent = 'Checking…';
+      chrome.runtime.sendMessage({ action: 'checkSubscriptionsNow' }, function (res) {
+        b.disabled = false;
+        refreshSubs();
+        if (chrome.runtime.lastError || !res || !res.ok) { subStatus.textContent = 'Check failed — try again.'; return; }
+        var s = res.summary || {};
+        var parts = ['Checked ' + (s.checked || 0) + ' series'];
+        parts.push((s.newChapters || 0) + ' new chapter' + (s.newChapters === 1 ? '' : 's'));
+        if (s.blocked) parts.push(s.blocked + ' blocked by the site (open comix.to once, then retry)');
+        subStatus.textContent = parts.join(' · ') + '.';
+      });
     });
     refreshSubs();
+    // Keep the list live: background checks update cdlSubscriptions while this page is open.
+    try {
+      chrome.storage.onChanged.addListener(function (changes, area) {
+        if (area === 'local' && changes.cdlSubscriptions) refreshSubs();
+      });
+    } catch (e) {}
   }
 
   // ── Build the whole page ──────────────────────────────────────────────────
