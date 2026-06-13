@@ -77,5 +77,36 @@ check('manifest version is 2.x', /^2\./.test(mf.version));
 check('content_scripts load in dependency order', JSON.stringify(mf.content_scripts[0].js) === JSON.stringify(['settings.js', 'cdl-features-core.js', 'content_title.js', 'content_features.js']));
 check('options_ui opens in a tab', mf.options_ui && mf.options_ui.page === 'options.html' && mf.options_ui.open_in_tab === true);
 
+// 6. analyzeImageSequence (background.js) — gate of the CDN page-count probe.
+// It must recognize ONLY the enumerator's signature (same base/ext, exactly
+// 1..N): a false positive would let the probe rewrite a list of real DOM srcs.
+const bgSrc = read('background.js');
+const aisStart = bgSrc.indexOf('function analyzeImageSequence');
+const aisEnd = bgSrc.indexOf('\n}', aisStart);
+check('analyzeImageSequence present in background.js', aisStart !== -1 && aisEnd !== -1);
+const analyzeImageSequence = eval('(' + bgSrc.slice(aisStart, aisEnd + 2) + ')');
+
+const mkSeq = (n, base = 'https://cdn.example/abc/', digits = 2, ext = '.webp') =>
+  Array.from({ length: n }, (_, i) => ({ src: `${base}${String(i + 1).padStart(digits, '0')}${ext}`, index: i + 1 }));
+
+const seq125 = analyzeImageSequence(mkSeq(125));
+check('detects an enumerated 1..N sequence',
+  !!seq125 && seq125.count === 125 && seq125.base === 'https://cdn.example/abc/' && seq125.ext === '.webp' && seq125.digits === 2);
+check('detects unpadded sequences too', (() => {
+  const s = analyzeImageSequence(mkSeq(12, 'https://c/x/', 1, '.jpg'));
+  return !!s && s.count === 12 && s.digits === 1 && s.ext === '.jpg';
+})());
+check('rejects mixed bases',
+  analyzeImageSequence([{ src: 'https://a/h1/1.webp' }, { src: 'https://a/h2/2.webp' }]) === null);
+check('rejects gapped sequences (real DOM srcs)',
+  analyzeImageSequence([{ src: 'https://a/x/01.webp' }, { src: 'https://a/x/03.webp' }]) === null);
+check('rejects sequences not starting at 1',
+  analyzeImageSequence([{ src: 'https://a/x/02.webp' }, { src: 'https://a/x/03.webp' }]) === null);
+check('rejects a single image', analyzeImageSequence(mkSeq(1)) === null);
+check('rejects non-numeric filenames',
+  analyzeImageSequence([{ src: 'https://a/x/cover.webp' }, { src: 'https://a/x/01.webp' }]) === null);
+check('rejects empty/invalid input',
+  analyzeImageSequence(null) === null && analyzeImageSequence([]) === null);
+
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

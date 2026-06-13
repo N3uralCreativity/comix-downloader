@@ -537,10 +537,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     // Fermer l'onglet dès que possible
     chrome.tabs.remove(tabId).catch(() => {});
 
-    const images = results?.[0]?.result;
+    let images = results?.[0]?.result;
     if (!Array.isArray(images) || images.length === 0) {
       throw new Error('Aucune image trouvée dans ce chapitre');
     }
+    images = await verifyEnumeratedImages(images, zipName);
 
     cdlLog('info', `Extracted ${images.length} images for ${zipName}`);
     // Lancer le téléchargement + ZIP directement dans le service worker
@@ -809,6 +810,100 @@ async function extractChapterImagesFromPage(opts) {
     src:   `${baseUrl}${String(i + 1).padStart(numDigits, '0')}${ext}`,
     index: i + 1,
   }));
+}
+
+// ── Vérification du total de pages contre le CDN ─────────────────────────────
+// L'extracteur devine le total de pages depuis des fragments "N / M" du texte de
+// la page puis énumère des URLs séquentielles (01.webp, 02.webp, …). Un nombre
+// parasite peut empoisonner ce total (ex. 825 au lieu de 125) : la barre de
+// progression affiche un faux total et des centaines d'URLs fantômes sont
+// fetchées (et re-tentées) pour rien. Avant de télécharger, on sonde le CDN avec
+// des requêtes Range d'1 octet + recherche dichotomique pour trouver la vraie
+// dernière page, puis on tronque — ou étend — la liste. En cas de doute
+// (CDN injoignable, erreur réseau) on rend la liste inchangée (fail-open).
+
+// Reconnaît la signature de l'énumérateur : toutes les URLs partagent la même
+// base + extension et les index forment exactement la séquence 1..N.
+function analyzeImageSequence(images) {
+  if (!Array.isArray(images) || images.length < 2) return null;
+  let base = null, ext = null, digits = 0;
+  const nums = [];
+  for (const img of images) {
+    const m = String((img && img.src) || '').match(/^(https?:\/\/.+\/)(\d+)(\.\w+)$/i);
+    if (!m) return null;
+    if (base === null) { base = m[1]; ext = m[3]; digits = m[2].length; }
+    else if (m[1] !== base || m[3].toLowerCase() !== ext.toLowerCase()) return null;
+    nums.push(parseInt(m[2], 10));
+  }
+  for (let i = 0; i < nums.length; i++) if (nums[i] !== i + 1) return null;
+  return { base, ext, digits, count: nums.length };
+}
+
+// true = la page existe, false = absente (HTTP non-2xx ou contenu non-image),
+// null = indéterminé (erreur réseau / timeout) → l'appelant doit abandonner.
+async function probeImageUrl(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Range: 'bytes=0-0',
+        Accept: 'image/webp,image/avif,image/*,*/*;q=0.8',
+        Referer: 'https://comix.to/',
+      },
+    });
+    try { if (res.body) await res.body.cancel(); } catch (_) {}
+    if (!res.ok) return false;
+    // Un soft-404 (page HTML d'erreur en 200) ne doit pas compter comme une page.
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    return !ct || ct.includes('image') || ct.includes('octet-stream');
+  } catch (_) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const PROBE_PAGE_CAP = 2000; // garde-fou absolu sur le nombre de pages d'un chapitre
+
+async function verifyEnumeratedImages(images, label) {
+  const seq = analyzeImageSequence(images);
+  if (!seq) return images;
+  const urlAt = (n) => `${seq.base}${String(n).padStart(seq.digits, '0')}${seq.ext}`;
+
+  // Bornes de la dichotomie : lo = dernière page confirmée, hi = première absente.
+  let lo, hi;
+  const lastOk = await probeImageUrl(urlAt(seq.count));
+  if (lastOk === null) return images;
+  if (lastOk) {
+    // La dernière page énumérée existe — vérifier s'il y en a d'autres au-delà
+    // (total sous-estimé, ex. __NEXT_DATA__ partiel) par croissance exponentielle.
+    lo = seq.count; hi = 0;
+    for (let step = 1; !hi; step *= 2) {
+      const n = lo + step;
+      if (n > PROBE_PAGE_CAP) { hi = PROBE_PAGE_CAP + 1; break; }
+      const ok = await probeImageUrl(urlAt(n));
+      if (ok === null) return images;
+      if (ok) lo = n; else hi = n;
+    }
+  } else {
+    // Total surestimé — la page 1 doit exister (le pattern vient d'une vraie image).
+    const firstOk = await probeImageUrl(urlAt(1));
+    if (!firstOk) return images; // sonde non fiable sur ce CDN → on n'y touche pas
+    lo = 1; hi = seq.count;
+  }
+
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    const ok = await probeImageUrl(urlAt(mid));
+    if (ok === null) return images;
+    if (ok) lo = mid; else hi = mid;
+  }
+
+  if (lo === seq.count) return images;
+  cdlLog('info', `${label}: page count corrected ${seq.count} → ${lo} (CDN probe)`);
+  return Array.from({ length: lo }, (_, i) => ({ src: urlAt(i + 1), index: i + 1 }));
 }
 
 
@@ -1523,6 +1618,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       cdlLog('warn', `No images found, skipping ${chapterLabel}`);
       return { index: i, chapterUrl, chapterLabel, files: [], bytes: 0, imagesTotal: 0, imgDone: 0, status: 'skipped' };
     }
+    images = await verifyEnumeratedImages(images, chapterLabel);
     cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
 
     // Re-sequence to clean 1..N page numbers (sorted by the extractor's index) so
@@ -1699,15 +1795,43 @@ async function getSeriesPrefsBg(slug) {
   catch (_) { return {}; }
 }
 
-// Fetch the FULL current chapter list for a series, credentialed (so the user's
-// cf_clearance cookie is sent → usually clears Cloudflare). Returns sorted
-// [{chapterUrl, chapterLabel, key}] or null when blocked/empty (degrade silently).
+// Fetch the FULL current chapter list for a series. Two stages:
+//   1. Direct credentialed fetch from the service worker (fast, no tab) — but
+//      Cloudflare often serves its "Just a moment…" challenge to SW fetches
+//      even when the user browses the site fine.
+//   2. Fallback: a real background tab on the series page — the managed
+//      challenge solves itself there (same mechanics as downloads) AND
+//      refreshes cf_clearance, which usually re-unblocks the direct path for
+//      the remaining series of the same run.
+// Returns sorted [{chapterUrl, chapterLabel, key}] or null when blocked/empty.
 async function fetchSeriesChapters(slug) {
   if (!slug) return null;
+  const toUrl = (p) => { try { return new URL(p, 'https://comix.to').href; } catch (_) { return ''; } };
+
+  let paths = await fetchSeriesChapterPathsDirect(slug);
+  if (!paths || !paths.length) paths = await fetchSeriesChapterPathsViaTab(slug);
+  if (!paths || !paths.length) return null;
+
+  const urlSet = new Set();
+  paths.forEach((p) => { const u = toUrl(p); if (u) urlSet.add(u); });
+
+  const prefix = `/title/${slug}/`;
+  const byKey = new Map();
+  for (const url of urlSet) {
+    try { if (!new URL(url).pathname.startsWith(prefix)) continue; } catch (_) { continue; }
+    const label = chapterLabelFromUrl(url);
+    const key = chapterKeyFor(label);
+    if (!byKey.has(key)) byKey.set(key, { chapterUrl: url, chapterLabel: label, key });
+  }
+  return [...byKey.values()].sort((a, b) =>
+    parseFloat(a.chapterLabel.replace(/[^0-9.]/g, '')) - parseFloat(b.chapterLabel.replace(/[^0-9.]/g, '')));
+}
+
+// Stage 1 — plain SW fetch (+ buildId pagination). Returns chapter paths or null.
+async function fetchSeriesChapterPathsDirect(slug) {
   const extract = (text) => (typeof CDLFeaturesCore !== 'undefined')
     ? CDLFeaturesCore.extractChapterPaths(text)
     : (String(text).match(/\/title\/[a-z0-9-]+\/\d+-chapter-[\w.-]+/gi) || []);
-  const toUrl = (p) => { try { return new URL(p, 'https://comix.to').href; } catch (_) { return ''; } };
 
   let html = '';
   try {
@@ -1716,8 +1840,7 @@ async function fetchSeriesChapters(slug) {
     html = await r.text();
   } catch (_) { return null; }
 
-  const urlSet = new Set();
-  extract(html).forEach((p) => { const u = toUrl(p); if (u) urlSet.add(u); });
+  const paths = new Set(extract(html));
   const bm = html.match(/"buildId"\s*:\s*"([^"]+)"/);
   const buildId = bm ? bm[1] : null;
 
@@ -1731,22 +1854,81 @@ async function fetchSeriesChapters(slug) {
         text = await rr.text();
       } catch (_) { break; }
       let fresh = 0;
-      extract(text).forEach((p) => { const u = toUrl(p); if (u && !urlSet.has(u)) { urlSet.add(u); fresh++; } });
+      extract(text).forEach((p) => { if (!paths.has(p)) { paths.add(p); fresh++; } });
       if (!fresh && page > 1) break;
     }
   }
-  if (!urlSet.size) return null;
+  return paths.size ? [...paths] : null;
+}
 
-  const prefix = `/title/${slug}/`;
-  const byKey = new Map();
-  for (const url of urlSet) {
-    try { if (!new URL(url).pathname.startsWith(prefix)) continue; } catch (_) { continue; }
-    const label = chapterLabelFromUrl(url);
-    const key = chapterKeyFor(label);
-    if (!byKey.has(key)) byKey.set(key, { chapterUrl: url, chapterLabel: label, key });
+// Stage 2 — background tab on the series page. The Cloudflare managed challenge
+// runs and solves itself in a real tab; we poll the page until the chapter list
+// is readable (or give up after the deadline and report "blocked" as before).
+async function fetchSeriesChapterPathsViaTab(slug) {
+  if (!chrome.scripting || !chrome.tabs) return null;
+  let tab = null;
+  try { tab = await chrome.tabs.create({ url: `https://comix.to/title/${slug}`, active: false }); }
+  catch (_) { return null; }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  try {
+    const deadline = Date.now() + 45_000;
+    await sleep(2500); // let navigation (and a possible challenge) start
+    while (Date.now() < deadline) {
+      let out = null;
+      try {
+        const res = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: grabSeriesChapterPathsFromPage,
+          args: [slug],
+        });
+        out = res && res[0] && res[0].result;
+      } catch (_) {
+        // injection fails while the page navigates (challenge → real page); but
+        // if the tab itself is gone (closed by the user), stop waiting.
+        try { await chrome.tabs.get(tab.id); } catch (_) { return null; }
+      }
+      if (out && !out.challenge && out.paths && out.paths.length) {
+        cdlLog('info', `${slug}: chapter list read via background tab (Cloudflare cleared)`);
+        return out.paths;
+      }
+      await sleep(1500);
+    }
+    return null;
+  } finally {
+    if (tab) { try { chrome.tabs.remove(tab.id).catch(() => {}); } catch (_) {} }
   }
-  return [...byKey.values()].sort((a, b) =>
-    parseFloat(a.chapterLabel.replace(/[^0-9.]/g, '')) - parseFloat(b.chapterLabel.replace(/[^0-9.]/g, '')));
+}
+
+// Injected into the series page tab. Self-contained (no outer closures).
+async function grabSeriesChapterPathsFromPage(slug) {
+  const RE = /\/title\/[a-z0-9-]+\/\d+-chapter-[\w.-]+/gi;
+  const html = document.documentElement ? document.documentElement.outerHTML : '';
+  const set = new Set(html.match(RE) || []);
+  document.querySelectorAll('a[href*="-chapter-"]').forEach((a) => {
+    const m = (a.getAttribute('href') || '').match(RE);
+    if (m) m.forEach((p) => set.add(p));
+  });
+  // No chapter data AND no Next.js payload → most likely the Cloudflare
+  // interstitial (or a page still rendering): ask the caller to retry.
+  if (!set.size && !document.getElementById('__NEXT_DATA__')) {
+    return { challenge: true, paths: [] };
+  }
+  // Pagination from page context: same-origin fetch with the browser's own
+  // headers/cookies — Cloudflare never challenges these.
+  const bm = html.match(/"buildId"\s*:\s*"([^"]+)"/);
+  if (bm) {
+    for (let page = 1; page <= 100; page++) {
+      let fresh = 0;
+      try {
+        const r = await fetch(`/_next/data/${bm[1]}/title/${slug}.json?page=${page}`, { headers: { Accept: 'application/json' } });
+        if (!r.ok) break;
+        const t = await r.text();
+        (t.match(RE) || []).forEach((p) => { if (!set.has(p)) { set.add(p); fresh++; } });
+      } catch (_) { break; }
+      if (!fresh && page > 1) break;
+    }
+  }
+  return { challenge: false, paths: [...set] };
 }
 
 // ── Subscriptions ─────────────────────────────────────────────────────────────
@@ -1990,7 +2172,10 @@ async function testLibrary(cfg) {
   // Without the optional host permission every fetch fails with a vague network
   // error — check it first so the message tells the user exactly what to do.
   try {
-    const pat = new URL(cfg.endpoint).origin + '/*';
+    // Same portless pattern as the options page grant: patterns with an
+    // explicit port are invalid on Firefox; portless matches every port.
+    const u = new URL(cfg.endpoint);
+    const pat = `${u.protocol}//${u.hostname}/*`;
     const has = await new Promise((res) => {
       try { chrome.permissions.contains({ origins: [pat] }, (r) => res(!!r)); } catch (_) { res(true); }
     });

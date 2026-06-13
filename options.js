@@ -248,7 +248,9 @@
   // ── Sync tab extras: Push-to-library config + Subscriptions list ───────────
   var LIBRARY_KEY = 'cdlLibrary';
   function originPattern(url) {
-    try { return new URL(url).origin + '/*'; } catch (e) { return null; }
+    // No port in the pattern: match patterns with an explicit port are invalid
+    // on Firefox, and a portless pattern matches every port on both browsers.
+    try { var u = new URL(url); return u.protocol + '//' + u.hostname + '/*'; } catch (e) { return null; }
   }
   function buildSyncExtras(panel) {
     // Push-to-library
@@ -309,17 +311,19 @@
       var cfg = { enabled: enable.checked, endpoint: endpoint.value.trim(), method: method.value,
         username: user.value, password: pass.value };
       if (cfg.enabled && !/^https?:\/\//i.test(cfg.endpoint)) { status.textContent = 'Enter a valid http(s) endpoint URL first.'; return; }
-      var save = function () {
+      var save = function (note) {
         var payload = {}; payload[LIBRARY_KEY] = cfg;
-        chrome.storage.local.set(payload, function () { status.textContent = 'Saved.'; });
+        chrome.storage.local.set(payload, function () { status.textContent = note || 'Saved.'; });
       };
-      if (cfg.enabled) {
-        var pat = originPattern(cfg.endpoint);
-        if (!pat) { status.textContent = 'Invalid URL.'; return; }
+      // The button promises "grant access": request the host permission whenever
+      // a valid endpoint is set, even if the push toggle is still off — so a
+      // user can grant + Test first and only then enable.
+      var pat = /^https?:\/\//i.test(cfg.endpoint) ? originPattern(cfg.endpoint) : null;
+      if (pat) {
         try {
           chrome.permissions.request({ origins: [pat] }, function (granted) {
             if (!granted) { status.textContent = 'Permission to reach that server was declined — push will not work.'; return; }
-            save();
+            save(cfg.enabled ? 'Saved — access granted.' : 'Saved — access granted. Tick "Enable push after download" to activate it.');
           });
         } catch (e) { save(); }
       } else { save(); }
