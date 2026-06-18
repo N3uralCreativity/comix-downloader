@@ -565,11 +565,20 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 // ── Fonction d'extraction injectée dans la page chapitre ──────────────────────
-// IMPORTANT : entièrement auto-contenue (pas de closures externes)
-// Stratégie : on ne s'appuie PAS sur le lazy-loading pour avoir tous les src.
-// On récupère l'URL de la 1ère image chargée, on en déduit le pattern (base + numérotation),
-// et on reconstruit séquentiellement toutes les URLs.
-
+// IMPORTANT : entièrement auto-contenue (pas de closures externes — elle est
+// sérialisée puis ré-exécutée dans la page par chrome.scripting.executeScript).
+//
+// The 2026 comix.to reader renders pages as <img class="rpage-page__img"
+// alt="Page N" src="<opaque url>"> in a *virtualized* list; the URLs are opaque
+// and extension-less, so the old "derive 01.webp..NN.webp and enumerate" trick no
+// longer works. Strategies, newest first:
+//   A. Re-fetch the raw server HTML (same-origin, cookies, past Cloudflare) and
+//      parse every rpage-page__img out of it — the raw markup predates client-side
+//      virtualization, so it carries the full page set without scrolling.
+//   B. Fallback: drive the live (virtualized) reader, harvesting page images as
+//      they mount while step-scrolling top→bottom.
+//   C. Last resort: the legacy __NEXT_DATA__ + sequential-URL enumeration, kept for
+//      any title still served on the old numbered-CDN scheme (no-op on new reader).
 async function extractChapterImagesFromPage(opts) {
   opts = opts || {};
   const aggressive = !!opts.aggressive;
@@ -582,6 +591,118 @@ async function extractChapterImagesFromPage(opts) {
     ? Math.round((opts.settleMs != null ? opts.settleMs : 300) / 2)
     : (opts.settleMs != null ? opts.settleMs : 300);
   const scrollSettleMs = opts.scrollSettleMs != null ? opts.scrollSettleMs : 800;
+
+  // ── STRATEGIES A & B (new reader) ───────────────────────────────────────────
+  // Wrapped in a block so locals (total, retries, …) don't clash with the legacy
+  // strategy 1/2 declarations below. Early `return` still exits the function.
+  {
+    // Inline copy of CDLFeaturesCore.parseReaderImages — KEEP IN SYNC.
+    const decodeEntities = (s) => String(s == null ? '' : s)
+      .replace(/&#39;/g, "'").replace(/&#x27;/gi, "'").replace(/&quot;/g, '"')
+      .replace(/&#x2F;/gi, '/').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    const parseReaderImages = (html, baseUrl) => {
+      if (!html) return [];
+      const byIndex = new Map();
+      const tags = String(html).match(/<img\b[^>]*>/gi) || [];
+      for (const tag of tags) {
+        if (!/\brpage-page__img\b/.test(tag)) continue;
+        const srcM = tag.match(/\bsrc\s*=\s*"([^"]+)"/i) || tag.match(/\bsrc\s*=\s*'([^']+)'/i);
+        if (!srcM) continue;
+        let src = decodeEntities(srcM[1]).trim();
+        if (!src || /^data:/i.test(src)) continue;
+        try { src = new URL(src, baseUrl || location.href).href; } catch (_) {}
+        const altM = tag.match(/\balt\s*=\s*"[^"]*?(\d+)[^"]*"/i) || tag.match(/\balt\s*=\s*'[^']*?(\d+)[^']*'/i);
+        const index = altM ? parseInt(altM[1], 10) : (byIndex.size + 1);
+        if (!byIndex.has(index)) byIndex.set(index, { src, index });
+      }
+      return [...byIndex.values()].sort((a, b) => a.index - b.index);
+    };
+
+    // Best-effort total from the reader's "N / M" text + the highest data-page in
+    // the DOM. Used to know when we've collected every page.
+    const detectTotal = () => {
+      const text = document.body ? (document.body.textContent || '') : '';
+      const freq = {};
+      for (const m of text.matchAll(/\b\d+\s*\/\s*(\d+)\b/g)) {
+        const d = parseInt(m[1], 10);
+        if (d > 1 && d < 2000) freq[d] = (freq[d] || 0) + 1;
+      }
+      let best = 0, bestCnt = 0;
+      for (const k in freq) { if (freq[k] > bestCnt) { bestCnt = freq[k]; best = parseInt(k, 10); } }
+      let maxDataPage = 0;
+      document.querySelectorAll('[data-page]').forEach((el) => {
+        const n = parseInt(el.getAttribute('data-page'), 10);
+        if (isFinite(n) && n > maxDataPage) maxDataPage = n;
+      });
+      return Math.max(best, maxDataPage);
+    };
+
+    // ── STRATEGY A: raw server HTML (carries all pages, pre-virtualization) ──────
+    let ssr = null;
+    try {
+      const resp = await fetch(location.href, { headers: { Accept: 'text/html' }, credentials: 'include' });
+      if (resp.ok) {
+        const imgs = parseReaderImages(await resp.text(), location.href);
+        if (imgs.length) {
+          const total = detectTotal();
+          if (total <= 0 || imgs.length >= total) return imgs;
+          ssr = imgs; // partial SSR — let strategy B try to complete it
+        }
+      }
+    } catch (_) {}
+
+    // ── STRATEGY B: harvest the live virtualized reader while scrolling ──────────
+    const isReaderPage = () => !!document.querySelector('img.rpage-page__img, img[alt^="Page"], [data-page]');
+    let waitB = aggressive ? 8 : 25;
+    while (waitB-- > 0) {
+      if (document.querySelector('img.rpage-page__img, img[alt^="Page"]')) break;
+      await sleep(pollMs);
+    }
+    // Only commit to strategy B if this actually looks like the new reader; otherwise
+    // fall through to the legacy strategies below.
+    if (ssr || isReaderPage()) {
+      await sleep(settleMs);
+      const collected = new Map();
+      if (ssr) for (const it of ssr) collected.set(it.index, it);
+      const harvest = () => {
+        document.querySelectorAll('img.rpage-page__img, img[alt^="Page"]').forEach((img) => {
+          const url = img.currentSrc || img.src || '';
+          if (!/^https?:/i.test(url) || /^data:/i.test(url)) return;
+          let index = parseInt((img.getAttribute('alt') || '').replace(/\D+/g, ''), 10);
+          if (!isFinite(index) || index <= 0) {
+            const wrap = img.closest && img.closest('[data-page]');
+            index = wrap ? parseInt(wrap.getAttribute('data-page'), 10) : NaN;
+          }
+          if (isFinite(index) && index > 0 && !collected.has(index)) collected.set(index, { src: url, index });
+        });
+      };
+
+      const total = detectTotal();
+      const docEl = document.scrollingElement || document.documentElement;
+      const maxScroll = () => Math.max(docEl ? docEl.scrollHeight : 0, document.body ? document.body.scrollHeight : 0);
+      const step = Math.max(400, Math.round((window.innerHeight || 800) * 0.8));
+      const scrollWait = aggressive ? Math.round(scrollSettleMs / 2) : scrollSettleMs;
+
+      harvest();
+      let lastCount = -1, stagnant = 0;
+      for (let pass = 0; pass < 4 && (total <= 0 || collected.size < total); pass++) {
+        for (let y = 0; y <= maxScroll(); y += step) {
+          window.scrollTo(0, y);
+          await sleep(scrollWait);
+          harvest();
+          if (total > 0 && collected.size >= total) break;
+        }
+        window.scrollTo(0, 0);
+        await sleep(settleMs);
+        harvest();
+        if (collected.size === lastCount) { if (++stagnant >= 1) break; } else { stagnant = 0; }
+        lastCount = collected.size;
+      }
+
+      const domImgs = [...collected.values()].sort((a, b) => a.index - b.index);
+      if (domImgs.length) return domImgs;
+    }
+  }
 
   // ── STRATÉGIE 1 : __NEXT_DATA__ de Next.js ──────────────────────────────────
   // comix.to est un site Next.js : les props de page (incl. URLs des images)
@@ -847,6 +968,7 @@ async function probeImageUrl(url) {
   try {
     const res = await fetch(url, {
       signal: controller.signal,
+      credentials: 'include',
       headers: {
         Range: 'bytes=0-0',
         Accept: 'image/webp,image/avif,image/*,*/*;q=0.8',
@@ -1068,6 +1190,7 @@ async function fetchImageForZip(src, cfg) {
   try {
     const response = await fetch(src, {
       signal: controller.signal,
+      credentials: 'include',   // new reader serves images from *.comix.to — may be cookie-gated
       headers: {
         Accept: 'image/webp,image/avif,image/*,*/*;q=0.8',
         Referer: 'https://comix.to/',
@@ -1409,7 +1532,7 @@ async function addSeriesMetaToOuter(zip, opts, mangaName) {
   try { zip.file(`${prefix}series.json`, JSON.stringify(meta, null, 2)); } catch (_) {}
   if (meta.coverUrl) {
     try {
-      const resp = await fetch(meta.coverUrl, { headers: { Referer: 'https://comix.to/' } });
+      const resp = await fetch(meta.coverUrl, { credentials: 'include', headers: { Referer: 'https://comix.to/' } });
       if (resp.ok) {
         const ct = resp.headers.get('content-type') || '';
         const ext = /png/i.test(ct) ? 'png' : /webp/i.test(ct) ? 'webp' : 'jpg';

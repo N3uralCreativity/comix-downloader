@@ -216,6 +216,48 @@
     return Array.from(new Set(matches));
   }
 
+  // Minimal HTML-attribute entity decode (enough for URLs in src=""): keep &amp;
+  // last so we never turn "&amp;lt;" into "<".
+  function decodeHtmlEntities(s) {
+    return String(s == null ? '' : s)
+      .replace(/&#39;/g, "'")
+      .replace(/&#x27;/gi, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&#x2F;/gi, '/')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+  }
+
+  // Reader page-image extraction for the 2026 comix.to reader redesign. Each page
+  // renders as <img class="rpage-page__img" alt="Page N" src="<opaque url>"> inside
+  // a virtualized list; the URLs are opaque + extension-less, so they can NOT be
+  // enumerated the way the old "01.webp..NN.webp" scheme allowed — we must read the
+  // actual src of every page image. This parses them out of an HTML string (pass the
+  // raw, pre-virtualization server HTML to get the full set) into [{src,index}],
+  // deduped by page number and sorted ascending. `baseUrl` resolves relative srcs.
+  //
+  // NOTE: an inline copy of this lives in background.js (extractChapterImagesFromPage,
+  // injected into the page where it can't import this module) — keep the two in sync.
+  function parseReaderImages(html, baseUrl) {
+    if (!html) return [];
+    var byIndex = new Map();
+    var tags = String(html).match(/<img\b[^>]*>/gi) || [];
+    for (var i = 0; i < tags.length; i++) {
+      var tag = tags[i];
+      if (!/\brpage-page__img\b/.test(tag)) continue;
+      var srcM = tag.match(/\bsrc\s*=\s*"([^"]+)"/i) || tag.match(/\bsrc\s*=\s*'([^']+)'/i);
+      if (!srcM) continue;
+      var src = decodeHtmlEntities(srcM[1]).trim();
+      if (!src || /^data:/i.test(src)) continue;
+      if (baseUrl) { try { src = new URL(src, baseUrl).href; } catch (_) {} }
+      var altM = tag.match(/\balt\s*=\s*"[^"]*?(\d+)[^"]*"/i) || tag.match(/\balt\s*=\s*'[^']*?(\d+)[^']*'/i);
+      var index = altM ? parseInt(altM[1], 10) : (byIndex.size + 1);
+      if (!byIndex.has(index)) byIndex.set(index, { src: src, index: index });
+    }
+    return Array.from(byIndex.values()).sort(function (a, b) { return a.index - b.index; });
+  }
+
   var CDLFeaturesCore = {
     SPECIAL_WORDS: SPECIAL_WORDS,
     CHAPTER_PATH_RE: CHAPTER_PATH_RE,
@@ -228,7 +270,8 @@
     chapterIdOf: chapterIdOf,
     computeAdjacentChapter: computeAdjacentChapter,
     pickCandidateUrl: pickCandidateUrl,
-    extractChapterPaths: extractChapterPaths
+    extractChapterPaths: extractChapterPaths,
+    parseReaderImages: parseReaderImages
   };
 
   global.CDLFeaturesCore = CDLFeaturesCore;

@@ -5,6 +5,8 @@
  */
 
 const C = require('../cdl-features-core.js');
+const fs = require('fs');
+const path = require('path');
 
 let pass = 0, fail = 0;
 function check(name, cond) {
@@ -133,6 +135,60 @@ check('extracts paths from text',
 check('dedupes repeated paths',
   C.extractChapterPaths('/title/foo/12-chapter-3 /title/foo/12-chapter-3').length === 1);
 check('empty text -> []', C.extractChapterPaths('').length === 0);
+
+// ── parseReaderImages (2026 reader: opaque, non-enumerable page URLs) ─────────
+const PRI = (html, base) => C.parseReaderImages(html, base);
+
+// Extracts rpage-page__img, indexes by alt "Page N", sorts ascending, ignores the
+// rest (wrong class, data: placeholders). Attribute order must not matter.
+(() => {
+  const html = [
+    '<img class="rpage-page__img" alt="Page 1" src="https://static.comix.to/x/aaa">',
+    '<div class="rpage-page" data-page="2"><img alt="Page 2" class="rpage-page__img" decoding="async" src="https://static.comix.to/x/bbb"></div>',
+    '<img src="https://static.comix.to/x/ccc" class="foo rpage-page__img bar" alt="Page 3">',
+    '<img class="avatar" alt="Page 99" src="https://static.comix.to/x/nope">',      // wrong class -> ignored
+    '<img class="rpage-page__img" alt="Page 4" src="data:image/gif;base64,AAAA">',  // placeholder -> ignored
+  ].join('');
+  const out = PRI(html, 'https://comix.to/title/x/1-chapter-1');
+  check('parseReaderImages: ignores non-reader + data: imgs', out.length === 3);
+  check('parseReaderImages: ascending indices', JSON.stringify(out.map((o) => o.index)) === JSON.stringify([1, 2, 3]));
+  check('parseReaderImages: src for page 1', out[0].src === 'https://static.comix.to/x/aaa');
+  check('parseReaderImages: src parsed when it precedes class', out[2].src === 'https://static.comix.to/x/ccc');
+})();
+
+// Gapped (virtualized) page numbers preserved; relative src resolved; dupe index keeps first.
+(() => {
+  const html = [
+    '<img class="rpage-page__img" alt="Page 1" src="/i/p1">',
+    '<img class="rpage-page__img" alt="Page 5" src="/i/p5">',
+    '<img class="rpage-page__img" alt="Page 1" src="/i/p1-dupe">',
+  ].join('');
+  const out = PRI(html, 'https://comix.to/c');
+  check('parseReaderImages: gaps preserved', JSON.stringify(out.map((o) => o.index)) === JSON.stringify([1, 5]));
+  check('parseReaderImages: relative src resolved against base', out[0].src === 'https://comix.to/i/p1');
+  check('parseReaderImages: duplicate index keeps first', out[0].src === 'https://comix.to/i/p1');
+})();
+
+check('parseReaderImages: decodes &amp; in src',
+  PRI('<img class="rpage-page__img" alt="Page 1" src="https://static.comix.to/i?a=1&amp;b=2">', 'https://comix.to/c')[0].src
+  === 'https://static.comix.to/i?a=1&b=2');
+check('parseReaderImages: empty html -> []', PRI('', 'https://comix.to/c').length === 0);
+check('parseReaderImages: no reader imgs -> []', PRI('<img class="x" alt="Page 1" src="/a">', 'https://comix.to/c').length === 0);
+
+// Real saved reader page (the redesign that broke extraction). Skips cleanly when
+// the asset isn't shipped, so CI without it stays green.
+(() => {
+  const fixture = path.join(__dirname, '..', 'assets', 'ReaderPage', "The Academy's Sashimi Sword Master · Ch.82.html");
+  let html = null;
+  try { html = fs.readFileSync(fixture, 'utf8'); } catch (_) {}
+  if (html == null) { console.log('  (skipped real-fixture test - asset not present)'); return; }
+  const out = C.parseReaderImages(html, 'https://comix.to/title/gd8x-the-academys-sashimi-sword-master/10088065-chapter-82');
+  const imgTags = (html.match(/<img\b[^>]*\brpage-page__img\b[^>]*>/gi) || []).length;
+  check('fixture: parses every rpage-page__img tag', out.length === imgTags && out.length > 50);
+  check('fixture: indices strictly ascending', out.every((o, i) => i === 0 || o.index > out[i - 1].index));
+  check('fixture: page 1 maps to the AiVMha... asset', out[0].index === 1 && /AiVMhaGDNl_Pk4wkijRuo$/.test(out[0].src));
+  check('fixture: last page is 125', out[out.length - 1].index === 125);
+})();
 
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
