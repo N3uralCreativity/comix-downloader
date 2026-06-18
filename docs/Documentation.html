@@ -425,13 +425,20 @@
       </details>
 
       <details>
-        <summary>A chapter still comes out scrambled or broken</summary>
+        <summary>A chapter still comes out scrambled or broken <span class="badge glitchy" style="margin-left:8px;">Deprecated</span></summary>
         <div class="ans">
-          <p>For the rare reader-page scramble bug, use the manual fallback helper from <code>scripts/manual-fallback.js</code>. It runs directly in the active comix.to reader tab so the page can render correctly before saving.</p>
-          <p>Open the affected chapter in the reader, press <strong>F12</strong>, switch to the <strong>Console</strong> tab, then paste and run:</p>
-          <pre><code>fetch('https://raw.githubusercontent.com/N3uralCreativity/comix-downloader/refs/heads/master/scripts/manual-fallback.js').then(r => r.text()).then(eval);</code></pre>
-          <p>Keep that reader tab in the foreground while it works. A green progress box appears in the top-right, and once it says <strong>✓ Saved</strong>, the ZIP will be in your usual downloads folder.</p>
-          <p>You can also open the raw script directly here first if you want to review it: <a href="https://raw.githubusercontent.com/N3uralCreativity/comix-downloader/refs/heads/master/scripts/manual-fallback.js" target="_blank" rel="noopener">manual-fallback.js</a>.</p>
+          <div style="margin:2px 0 14px;padding:12px 14px;border-radius:10px;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.34);font-size:13.5px;">
+            <strong style="color:#9a6207;">Temporarily deprecated — update on the way.</strong>
+            comix.to recently rebuilt its chapter reader, so the manual fallback helper below no longer runs against the new pages. We're updating it. In the meantime the normal <strong>download buttons</strong> already support the new reader, so simply re-downloading the chapter usually fixes a scrambled or broken result. The steps below are kept for reference only and will be restored once updated.
+          </div>
+          <div style="opacity:0.5;">
+            <p><em>Previous workaround (currently inactive):</em></p>
+            <p>For the rare reader-page scramble bug, use the manual fallback helper from <code>scripts/manual-fallback.js</code>. It runs directly in the active comix.to reader tab so the page can render correctly before saving.</p>
+            <p>Open the affected chapter in the reader, press <strong>F12</strong>, switch to the <strong>Console</strong> tab, then paste and run:</p>
+            <pre><code>fetch('https://raw.githubusercontent.com/N3uralCreativity/comix-downloader/refs/heads/master/scripts/manual-fallback.js').then(r => r.text()).then(eval);</code></pre>
+            <p>Keep that reader tab in the foreground while it works. A green progress box appears in the top-right, and once it says <strong>✓ Saved</strong>, the ZIP will be in your usual downloads folder.</p>
+            <p>You can also open the raw script directly here first if you want to review it: <a href="https://raw.githubusercontent.com/N3uralCreativity/comix-downloader/refs/heads/master/scripts/manual-fallback.js" target="_blank" rel="noopener">manual-fallback.js</a>.</p>
+          </div>
         </div>
       </details>
 
