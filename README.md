@@ -26,6 +26,11 @@ Secondly, if the download buttons aren't showing up, just refresh the page. Your
 
 ---
 
+# CURRENT "SKIPPING" ISSUE STATUS  : 
+**Yes i am aware the extension currently always skips instead of downloading this issue is caused by comix protecting the images they stole as if it was theirs, either way fear not a fi xstill is underway either later today / tmrw.**
+
+---
+
 ## What it does
 
 Adds download buttons directly to every comix.to title page — grab a single chapter or the entire series, all neatly zipped and organized.
