@@ -525,6 +525,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     // Injecter le script d'extraction dans l'onglet chapitre
     const results = await chrome.scripting.executeScript({
       target: { tabId },
+      world: 'MAIN',   // share the page's Resource Timing buffer (canvas-page URLs)
       func: extractChapterImagesFromPage,
       args: [{
         aggressive: !!(cfg && cfg['advanced.aggressiveRetrieval']),
@@ -583,6 +584,10 @@ async function extractChapterImagesFromPage(opts) {
   opts = opts || {};
   const aggressive = !!opts.aggressive;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Scrambled pages render to <canvas> with no DOM src; their image URL is only
+  // visible as a network fetch, recovered below from the Resource Timing buffer —
+  // so make sure a long chapter's entries are not evicted (default cap is ~250).
+  try { performance.setResourceTimingBufferSize(5000); } catch (_) {}
 
   // User-tunable render/scroll waits (defaults == previous hardcoded literals).
   // Aggressive mode halves the poll/settle waits, exactly as before.
@@ -651,53 +656,105 @@ async function extractChapterImagesFromPage(opts) {
       }
     } catch (_) {}
 
-    // ── STRATEGY B: harvest the live virtualized reader while scrolling ──────────
-    const isReaderPage = () => !!document.querySelector('img.rpage-page__img, img[alt^="Page"], [data-page]');
+    // ── STRATEGY B: drive the virtualized long-strip reader ─────────────────────
+    // Some pages render as <img src> (URL in the DOM); the SCRAMBLED ones render as
+    // <canvas> with NO src — their image URL only ever appears as a network fetch.
+    // So we (a) harvest <img> src by page number, and (b) read the page-image loads
+    // from the Resource Timing API. The CDN fetches pages in strict page order
+    // (verified: 0 inversions), so we pair the leftover (canvas) URLs to the missing
+    // page numbers by fetch time. The service worker un-scrambles them on download
+    // via the X-Scramble-* response headers. Runs in the MAIN world (world:'MAIN' at
+    // the injection sites) so it shares the page's Resource Timing buffer.
+    const isReaderPage = () => !!document.querySelector('.rpage-page__img, img[alt^="Page"], [data-page]');
     let waitB = aggressive ? 8 : 25;
     while (waitB-- > 0) {
-      if (document.querySelector('img.rpage-page__img, img[alt^="Page"]')) break;
+      if (document.querySelector('.rpage-page__img, img[alt^="Page"]')) break;
       await sleep(pollMs);
     }
-    // Only commit to strategy B if this actually looks like the new reader; otherwise
-    // fall through to the legacy strategies below.
     if (ssr || isReaderPage()) {
       await sleep(settleMs);
-      const collected = new Map();
-      if (ssr) for (const it of ssr) collected.set(it.index, it);
-      const harvest = () => {
+
+      const imgMap = new Map(); // page index -> url (from <img src>); authoritative
+      const harvestImgs = () => {
         document.querySelectorAll('img.rpage-page__img, img[alt^="Page"]').forEach((img) => {
           const url = img.currentSrc || img.src || '';
           if (!/^https?:/i.test(url) || /^data:/i.test(url)) return;
-          let index = parseInt((img.getAttribute('alt') || '').replace(/\D+/g, ''), 10);
-          if (!isFinite(index) || index <= 0) {
-            const wrap = img.closest && img.closest('[data-page]');
-            index = wrap ? parseInt(wrap.getAttribute('data-page'), 10) : NaN;
-          }
-          if (isFinite(index) && index > 0 && !collected.has(index)) collected.set(index, { src: url, index });
+          let idx = parseInt((img.getAttribute('alt') || '').replace(/\D+/g, ''), 10);
+          if (!isFinite(idx) || idx <= 0) { const w = img.closest && img.closest('[data-page]'); idx = w ? parseInt(w.getAttribute('data-page'), 10) : NaN; }
+          if (isFinite(idx) && idx > 0 && !imgMap.has(idx)) imgMap.set(idx, url);
         });
       };
-
-      const total = detectTotal();
-      const docEl = document.scrollingElement || document.documentElement;
-      const maxScroll = () => Math.max(docEl ? docEl.scrollHeight : 0, document.body ? document.body.scrollHeight : 0);
-      const step = Math.max(400, Math.round((window.innerHeight || 800) * 0.8));
-      const scrollWait = aggressive ? Math.round(scrollSettleMs / 2) : scrollSettleMs;
-
-      harvest();
-      let lastCount = -1, stagnant = 0;
-      for (let pass = 0; pass < 4 && (total <= 0 || collected.size < total); pass++) {
-        for (let y = 0; y <= maxScroll(); y += step) {
-          window.scrollTo(0, y);
-          await sleep(scrollWait);
-          harvest();
-          if (total > 0 && collected.size >= total) break;
+      // Page-image URL prefixes (origin + first path segment) learned from the <img>
+      // pages, so canvas-page loads can be picked out of the resource list without
+      // hard-coding a CDN host.
+      const prefixesOf = () => { const p = new Set(); for (const u of imgMap.values()) { const m = String(u).match(/^(https?:\/\/[^/]+\/[^/]+\/)/i); if (m) p.add(m[1]); } return p; };
+      const pageImgSeq = () => {
+        const pre = prefixesOf(); if (!pre.size) return [];
+        const seen = new Set(); const out = [];
+        for (const e of performance.getEntriesByType('resource')) {
+          const u = e.name; if (seen.has(u)) continue;
+          for (const p of pre) { if (u.indexOf(p) === 0) { seen.add(u); out.push({ url: u, t: e.startTime }); break; } }
         }
-        window.scrollTo(0, 0);
-        await sleep(settleMs);
-        harvest();
-        if (collected.size === lastCount) { if (++stagnant >= 1) break; } else { stagnant = 0; }
-        lastCount = collected.size;
+        out.sort((a, b) => a.t - b.t);
+        return out;
+      };
+
+      // Total pages: counter text + the [data-page] wrappers (all present up front).
+      const dpMax = Math.max(0, ...[...document.querySelectorAll('[data-page]')].map((e) => parseInt(e.getAttribute('data-page'), 10) || 0));
+      let pageCount = Math.max(detectTotal(), dpMax);
+
+      // Find the real scroll container (first scrollable ancestor of a page cell).
+      let sc = document.querySelector('.rpage-page__img, img[alt^="Page"], [data-page]');
+      sc = sc && sc.parentElement;
+      while (sc && sc !== document.documentElement) {
+        const cs = getComputedStyle(sc);
+        if (/(auto|scroll)/.test(cs.overflowY) && sc.scrollHeight > sc.clientHeight + 40) break;
+        sc = sc.parentElement;
       }
+      sc = sc || document.scrollingElement || document.documentElement;
+
+      // Scroll top→bottom so every page mounts and fetches; stop once all pages have
+      // been requested (or after a few passes). Harvest <img> srcs as we pass.
+      // The reader uses CSS scroll-behavior:smooth, which makes absolute scrollTop
+      // jumps lag and never reach the bottom; force instant scrolling.
+      try { sc.style.scrollBehavior = 'auto'; } catch (_) {}
+      const step = Math.max(300, Math.round((sc.clientHeight || window.innerHeight || 800) * 0.6));
+      const scrollWait = aggressive ? 60 : 100;
+      const maxSteps = 4000;
+      // One progressive pass: scroll the virtual list down in RELATIVE steps (so a
+      // clamping/virtualized scroller mounts content as we go), stopping once every
+      // page has been requested. Retry briefly when a step doesn't advance (content
+      // still mounting); give up once the position truly stops moving.
+      const scrollPass = async () => {
+        let stuck = 0;
+        for (let i = 0; i < maxSteps; i++) {
+          const before = sc.scrollTop;
+          sc.scrollTop = before + step;
+          await sleep(scrollWait);
+          harvestImgs();
+          if (sc.scrollTop <= before + 2) { if (++stuck >= 4) break; await sleep(settleMs); } else stuck = 0;
+          if (imgMap.size) pageCount = Math.max(pageCount, Math.max(...imgMap.keys()));
+          if (pageCount > 0 && pageImgSeq().length >= pageCount) break;
+        }
+        await sleep(aggressive ? 400 : 900); // let the last in-flight requests land
+      };
+      harvestImgs();
+      await scrollPass();
+      // If some pages still haven't fetched, sweep once more from the top.
+      if (pageCount > 0 && pageImgSeq().length < pageCount) { sc.scrollTop = 0; await sleep(settleMs); await scrollPass(); }
+      if (imgMap.size) pageCount = Math.max(pageCount, Math.max(...imgMap.keys()));
+
+      const collected = new Map();
+      if (ssr) for (const it of ssr) collected.set(it.index, it);
+      for (const [idx, url] of imgMap) collected.set(idx, { src: url, index: idx });
+
+      // Fill the remaining (canvas) page numbers from the page-image fetch sequence,
+      // in order. Skip URLs already bound to an <img> page so anchors stay correct.
+      const imgUrlSet = new Set(imgMap.values());
+      const leftover = pageImgSeq().map((e) => e.url).filter((u) => !imgUrlSet.has(u));
+      const missing = [];
+      for (let n = 1; n <= pageCount; n++) if (!collected.has(n)) missing.push(n);
+      for (let i = 0; i < missing.length && i < leftover.length; i++) collected.set(missing[i], { src: leftover[i], index: missing[i] });
 
       const domImgs = [...collected.values()].sort((a, b) => a.index - b.index);
       if (domImgs.length) return domImgs;
@@ -1615,6 +1672,7 @@ async function extractFromTab(url, cfg) {
       try {
         const results = await chrome.scripting.executeScript({
           target: { tabId },
+          world: 'MAIN',   // share the page's Resource Timing buffer (canvas-page URLs)
           func:   extractChapterImagesFromPage,
           args:   [{
             aggressive,
