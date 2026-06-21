@@ -16,19 +16,11 @@
 **[Checkout the Site for a more User-Friendly interface](https://n3uralcreativity.github.io/comix-downloader/index.html)**
 
 
-**Warning: at times, Comix can be slow during busy periods / just bugging cuz why not. This might slow down the download process or even cause it to fail eventually (or require your intervention to get through Cloudflare). This has been happening more often recently, so you may want to enable "Retries After Failure" in the extension settings. I'll probably make this enabled by default in a future update anyway.**
-
-Secondly, if the download buttons aren't showing up, just refresh the page. Your browser tends to load pages from cache sometimes, which can prevent the extension from being triggered properly. Not really much I can do about that unfortunately.
+If the download buttons aren't showing up, just refresh the page. Your browser tends to load pages from cache sometimes, which can prevent the extension from being triggered properly. Not really much I can do about that unfortunately.
 
 
 
 </div>
-
----
-
-# CURRENT "SKIPPING" ISSUE STATUS  : 
-**Yes i am aware the extension currently always skips instead of downloading this issue is caused by comix protecting the images they stole as if it was theirs, either way fear not a fi xstill is underway either later today / tmrw.**
-
 ---
 
 ## What it does
