@@ -1406,12 +1406,22 @@ function canvasToBlob(canvas, type, quality) {
   throw new Error('canvas blob export is unavailable');
 }
 
+// Reproduces comix.to's exact tile permutation for a scrambled page. The seed is
+// the X-Scramble-Seed header value; `count` = cols*rows from X-Scramble-Grid.
+// Reverse-engineered (v2.3.3) by observing the reader's own descramble blits across
+// forced seeds/grids and recovering the generator via the CRT of large grids:
+//   • PRNG state init: 0xe42f XOR (seed with its low bit cleared)  [the low bit is ignored]
+//   • PRNG step: xorshift32 with shifts (13, 17, 5)
+//   • shuffle: Durstenfeld (Fisher-Yates), i = count-1 .. 1, j = state % (i+1)
+// order[srcTile] = destPosition, exactly what unscrambleImageBlob redraws.
 function makeScramblePermutation(seed, count) {
   const order = Array.from({ length: count }, (_, i) => i);
-  let state = seed >>> 0;
+  let state = (0xe42f ^ ((seed >>> 1) << 1)) >>> 0;
 
   for (let remaining = count; remaining >= 2; remaining--) {
-    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    state = (state ^ (state << 13)) >>> 0;
+    state = (state ^ (state >>> 17)) >>> 0;
+    state = (state ^ (state << 5)) >>> 0;
     const swapWith = state % remaining;
     const last = remaining - 1;
     const tmp = order[last];
@@ -1702,7 +1712,7 @@ async function extractFromTab(url, cfg) {
 }
 
 // ── Téléchargement de tous les chapitres ──────────────────────────────────────
-// Up to `download.concurrentChapters` (1–4) chapters are downloaded at the same
+// Up to `download.concurrentChapters` (1–10, default 5) chapters are downloaded at the same
 // time by a small worker pool. Each worker fully downloads its chapter into memory
 // and NEVER touches the shared ZIP; a single in-order "packer" adds finished
 // chapters to the ZIP strictly by chapter order and cuts ZIP parts at the split
@@ -1719,7 +1729,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     const libCfg = await getLibraryConfig();
     if (libCfg && libCfg.enabled && /^https?:\/\//i.test(libCfg.endpoint || '')) opts.pushLib = libCfg;
   }
-  const concurrency = Math.max(1, Math.min(4, parseInt(cfg['download.concurrentChapters'], 10) || 1));
+  const concurrency = Math.max(1, Math.min(10, parseInt(cfg['download.concurrentChapters'], 10) || 5));
   const batchSize = cfg['perf.batchSize'] || BATCH_SIZE;
   const padDigits = cfg['naming.imagePadDigits'] || 3;
   const imageRetries = cfg['retry.imageRetries'] || 0;

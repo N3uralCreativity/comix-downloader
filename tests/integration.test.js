@@ -108,5 +108,31 @@ check('rejects non-numeric filenames',
 check('rejects empty/invalid input',
   analyzeImageSequence(null) === null && analyzeImageSequence([]) === null);
 
+// 7. makeScramblePermutation (background.js) — must reproduce comix.to's EXACT tile
+// order so scrambled pages descramble correctly. The expected permutations below
+// were captured from the reader's own descramble (its drawImage tile blits) for the
+// given seeds, so they are ground truth, not derived from this code.
+const mspStart = bgSrc.indexOf('function makeScramblePermutation');
+const mspEnd = bgSrc.indexOf('\n}', mspStart);
+check('makeScramblePermutation present in background.js', mspStart !== -1 && mspEnd !== -1);
+const makeScramblePermutation = eval('(' + bgSrc.slice(mspStart, mspEnd + 2) + ')');
+check('descramble: real seed 3131104163 (5x5)',
+  JSON.stringify(makeScramblePermutation(3131104163, 25)) ===
+  JSON.stringify([19, 3, 0, 18, 12, 22, 20, 8, 17, 7, 16, 11, 14, 15, 2, 13, 4, 21, 10, 6, 23, 24, 1, 9, 5]));
+check('descramble: real seed 3287645735 (5x5)',
+  JSON.stringify(makeScramblePermutation(3287645735, 25)) ===
+  JSON.stringify([24, 20, 6, 15, 11, 19, 10, 14, 17, 2, 21, 9, 3, 5, 13, 1, 22, 0, 16, 7, 12, 23, 8, 18, 4]));
+check('descramble: seed 0 (5x5)',
+  JSON.stringify(makeScramblePermutation(0, 25)) ===
+  JSON.stringify([4, 20, 18, 12, 13, 7, 8, 15, 23, 11, 10, 3, 5, 0, 22, 1, 6, 2, 16, 24, 9, 21, 14, 19, 17]));
+check('descramble: low bit of seed is ignored (f(0) === f(1))',
+  JSON.stringify(makeScramblePermutation(0, 25)) === JSON.stringify(makeScramblePermutation(1, 25)));
+check('descramble: arbitrary grid (seed 1000000, 16x16 first 6)',
+  JSON.stringify(makeScramblePermutation(1000000, 256).slice(0, 6)) === JSON.stringify([6, 65, 9, 242, 181, 32]));
+check('descramble: output is a valid permutation of 0..N-1', (() => {
+  const p = makeScramblePermutation(3131104163, 25);
+  return p.length === 25 && [...p].sort((a, b) => a - b).every((v, i) => v === i);
+})());
+
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
