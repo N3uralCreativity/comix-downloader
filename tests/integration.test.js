@@ -74,7 +74,10 @@ check('default chapter folder keeps decimal suffix',
 // 5. manifest wiring sanity
 const mf = JSON.parse(read('manifest.json'));
 check('manifest version is 2.x', /^2\./.test(mf.version));
-check('content_scripts load in dependency order', JSON.stringify(mf.content_scripts[0].js) === JSON.stringify(['settings.js', 'cdl-features-core.js', 'content_title.js', 'content_features.js']));
+const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content_title.js'));
+check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['settings.js', 'cdl-features-core.js', 'content_title.js', 'content_features.js']));
+const bridgeCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('scripts/extract-bridge.js'));
+check('extract-bridge runs at document_start in the MAIN world', !!bridgeCs && bridgeCs.run_at === 'document_start' && bridgeCs.world === 'MAIN');
 check('options_ui opens in a tab', mf.options_ui && mf.options_ui.page === 'options.html' && mf.options_ui.open_in_tab === true);
 
 // 6. analyzeImageSequence (background.js) — gate of the CDN page-count probe.

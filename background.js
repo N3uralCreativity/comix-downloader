@@ -489,13 +489,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ── Logique principale ────────────────────────────────────────────────────────
 
+// Extraction tabs are opened in the background (active:false). comix.to's reader
+// throttles its own loading while it thinks the tab is hidden, so a background
+// extraction crawls and times out. We add a #cdlx marker to the tab URL; the
+// document_start MAIN-world content script (scripts/visibility-shim.js) sees it and
+// makes the page report itself visible, so loading runs at full speed without the
+// user needing to focus the tab. The marker is a URL hash — it never reaches the
+// server, and it only ever appears on these throwaway tabs, never on a page the user
+// is reading. The original (marker-free) URL is kept everywhere else for naming/fetch.
+function withExtractMarker(url) {
+  try { const u = new URL(url); u.hash = 'cdlx'; return u.href; }
+  catch (_) { return String(url).split('#')[0] + '#cdlx'; }
+}
+
 async function handleDownloadRequest(chapterUrl, zipName, originTabId, options) {
   cdlLog('info', `Download started: ${zipName}`);
   const cfg = await loadCfg();
   try {
     // Ouvrir un onglet en arrière-plan
     const tab = await chrome.tabs.create({
-      url: chapterUrl,
+      url: withExtractMarker(chapterUrl),
       active: false,
       pinned: false,
     });
@@ -573,18 +586,43 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // alt="Page N" src="<opaque url>"> in a *virtualized* list; the URLs are opaque
 // and extension-less, so the old "derive 01.webp..NN.webp and enumerate" trick no
 // longer works. Strategies, newest first:
-//   A. Re-fetch the raw server HTML (same-origin, cookies, past Cloudflare) and
-//      parse every rpage-page__img out of it — the raw markup predates client-side
-//      virtualization, so it carries the full page set without scrolling.
-//   B. Fallback: drive the live (virtualized) reader, harvesting page images as
-//      they mount while step-scrolling top→bottom.
-//   C. Last resort: the legacy __NEXT_DATA__ + sequential-URL enumeration, kept for
-//      any title still served on the old numbered-CDN scheme (no-op on new reader).
+//   0. The page list captured by scripts/extract-bridge.js from the reader's own
+//      (decrypted) chapters API — instant and works in a BACKGROUND tab with no
+//      scrolling/rendering. This is the primary path.
+//   A. Re-fetch the raw server HTML and parse every rpage-page__img out of it.
+//   B. Drive the live (virtualized) reader, harvesting page images while scrolling
+//      (only works while the tab is focused — kept as a fallback).
+//   C. Last resort: the legacy __NEXT_DATA__ + sequential-URL enumeration.
 async function extractChapterImagesFromPage(opts) {
   opts = opts || {};
   const aggressive = !!opts.aggressive;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  // Scrambled pages render to <canvas> with no DOM src; their image URL is only
+
+  // ── STRATEGY 0: page list captured by scripts/extract-bridge.js ──────────────
+  // The bridge (document_start, MAIN world) grabs the reader's decrypted chapters
+  // API and exposes window.__cdlPages = [{src,index}]. It arrives within ~1s of load
+  // regardless of tab focus, so it both fixes background extraction and skips the
+  // slow scroll entirely. Poll briefly in case extraction is injected before it lands.
+  {
+    const deadline = Date.now() + (aggressive ? 6000 : 12000);
+    while (Date.now() < deadline) {
+      const pages = window.__cdlPages;
+      if (Array.isArray(pages) && pages.length) {
+        return pages
+          .filter((p) => p && /^https?:/i.test(p.src))
+          .map((p, i) => ({ src: p.src, index: p.index || (i + 1) }))
+          .sort((a, b) => a.index - b.index);
+      }
+      await sleep(150);
+    }
+  }
+
+  // Past this point we drive the live reader (strategies A/B), which the browser
+  // throttles in a background tab — kept only as a fallback for when the bridge
+  // (strategy 0) didn't capture the page list (e.g. the user is on the tab and the
+  // API format changed). Scrambled pages render to <canvas> with no DOM src; their
+  // image URL is only visible as a network fetch, recovered below from the Resource
+  // Timing buffer — so make sure a long chapter's entries are not evicted (cap ~250).
   // visible as a network fetch, recovered below from the Resource Timing buffer —
   // so make sure a long chapter's entries are not evicted (default cap is ~250).
   try { performance.setResourceTimingBufferSize(5000); } catch (_) {}
@@ -1646,7 +1684,7 @@ async function extractFromTab(url, cfg) {
   cfg = cfg || {};
   const tabTimeout = cfg['perf.tabLoadTimeoutMs'] || 120000;
   const aggressive = !!cfg['advanced.aggressiveRetrieval'];
-  const tab = await chrome.tabs.create({ url, active: false });
+  const tab = await chrome.tabs.create({ url: withExtractMarker(url), active: false });
   const tabId = tab.id;
 
   // A freshly created background tab can briefly report status:"complete" while
@@ -2058,7 +2096,7 @@ async function fetchSeriesChapterPathsDirect(slug) {
 async function fetchSeriesChapterPathsViaTab(slug) {
   if (!chrome.scripting || !chrome.tabs) return null;
   let tab = null;
-  try { tab = await chrome.tabs.create({ url: `https://comix.to/title/${slug}`, active: false }); }
+  try { tab = await chrome.tabs.create({ url: withExtractMarker(`https://comix.to/title/${slug}`), active: false }); }
   catch (_) { return null; }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try {

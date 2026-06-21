@@ -33,6 +33,12 @@
   },
   "content_scripts": [
     {
+      "matches": ["*://comix.to/*"],
+      "js": ["scripts/extract-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
       "matches": ["*://comix.to/title/*"],
       "js": ["settings.js", "cdl-features-core.js", "content_title.js", "content_features.js"],
       "run_at": "document_idle"
