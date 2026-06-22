@@ -84,6 +84,16 @@ async function init() {
     chrome.tabs.create({ url: GITHUB_URL });
   });
 
+  // Star CTA → repo (keeps users in the loop on new releases)
+  const btnStar = document.getElementById('btn-star');
+  if (btnStar) {
+    btnStar.href = GITHUB_URL;
+    btnStar.addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: GITHUB_URL });
+    });
+  }
+
   // Load and render logs
   const { cdlLogs = [] } = await chrome.storage.local.get('cdlLogs');
   renderLogs(cdlLogs);

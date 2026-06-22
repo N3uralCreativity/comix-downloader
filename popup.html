@@ -56,6 +56,20 @@
     .pill-new { font-size: 9px; font-weight: 800; letter-spacing: .04em; color: #07101f; background: #fff; padding: 1px 5px; border-radius: 4px; }
     .pill-new[hidden] { display: none; }
 
+    /* ── Star CTA ── */
+    .star-cta {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 16px; text-decoration: none;
+      background: rgba(245,197,24,0.06);
+      border-bottom: 1px solid var(--line);
+      color: var(--fg); font-size: 11.5px;
+      transition: background .15s;
+    }
+    .star-cta:hover { background: rgba(245,197,24,0.12); }
+    .star-cta .star-ico { flex-shrink: 0; color: #f5c518; }
+    .star-cta strong { color: var(--fg-strong); font-weight: 700; }
+    .star-cta .star-arrow { margin-left: auto; color: var(--muted-2); flex-shrink: 0; }
+
     /* ── Logs ── */
     .logs-header { display: flex; align-items: center; justify-content: space-between; padding: 11px 16px 7px; }
     .logs-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
@@ -118,6 +132,16 @@
       GitHub
     </a>
   </div>
+
+  <a class="star-cta" id="btn-star" href="#" target="_blank" rel="noopener" title="Star Comix Downloader on GitHub">
+    <svg class="star-ico" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.787 1.401 8.169L12 18.896l-7.335 3.868 1.401-8.169L.132 9.21l8.2-1.192z"/>
+    </svg>
+    <span>Enjoying it? <strong>Star us on GitHub</strong> to stay updated</span>
+    <svg class="star-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 18l6-6-6-6"/>
+    </svg>
+  </a>
 
   <div class="logs-header">
     <span class="logs-title">Activity Log</span>
