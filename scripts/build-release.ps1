@@ -38,6 +38,7 @@ function Copy-ReleaseFiles([string]$Destination) {
     "cdl-features-core.js",
     "cdl-comicinfo.js",
     "content_features.js",
+    "scripts/extract-bridge.js",
     "manifest.json",
     "offscreen.html",
     "offscreen.js",
