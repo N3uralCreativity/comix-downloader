@@ -45,8 +45,8 @@
   .legal-body h3 { font-size: 15.5px; font-weight: 700; color: var(--ink); margin-top: 22px; }
   .legal-body p { color: var(--ink-soft); font-size: 15px; margin-top: 11px; }
   .legal-body ul { margin: 13px 0 0; padding: 0; list-style: none; display: grid; gap: 9px; }
-  .legal-body ul li { display: flex; gap: 11px; align-items: flex-start; color: var(--ink-soft); font-size: 15px; }
-  .legal-body ul li::before { content: ""; flex-shrink: 0; width: 6px; height: 6px; margin-top: 9px; border-radius: 50%; background: var(--accent); }
+  .legal-body ul li { position: relative; padding-left: 17px; color: var(--ink-soft); font-size: 15px; }
+  .legal-body ul li::before { content: ""; position: absolute; left: 0; top: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
   .legal-body a { font-weight: 600; }
 
   .dl { margin-top: 14px; display: grid; gap: 2px; }
