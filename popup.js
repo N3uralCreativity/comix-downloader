@@ -84,12 +84,18 @@ async function init() {
     chrome.tabs.create({ url: GITHUB_URL });
   });
 
-  // Star CTA → repo (keeps users in the loop on new releases)
+  // Star CTA → repo (keeps users in the loop on new releases). Shown until the
+  // user clicks it once, then dismissed for good — they've starred, so the
+  // prompt has done its job.
   const btnStar = document.getElementById('btn-star');
   if (btnStar) {
+    const { cdlStarDismissed } = await chrome.storage.local.get('cdlStarDismissed');
+    if (!cdlStarDismissed) btnStar.hidden = false;
     btnStar.href = GITHUB_URL;
     btnStar.addEventListener('click', (e) => {
       e.preventDefault();
+      btnStar.hidden = true;
+      chrome.storage.local.set({ cdlStarDismissed: true });
       chrome.tabs.create({ url: GITHUB_URL });
     });
   }

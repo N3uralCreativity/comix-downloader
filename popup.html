@@ -66,6 +66,7 @@
       transition: background .15s;
     }
     .star-cta:hover { background: rgba(245,197,24,0.12); }
+    .star-cta[hidden] { display: none; }
     .star-cta .star-ico { flex-shrink: 0; color: #f5c518; }
     .star-cta strong { color: var(--fg-strong); font-weight: 700; }
     .star-cta .star-arrow { margin-left: auto; color: var(--muted-2); flex-shrink: 0; }
@@ -133,7 +134,7 @@
     </a>
   </div>
 
-  <a class="star-cta" id="btn-star" href="#" target="_blank" rel="noopener" title="Star Comix Downloader on GitHub">
+  <a class="star-cta" id="btn-star" href="#" target="_blank" rel="noopener" title="Star Comix Downloader on GitHub" hidden>
     <svg class="star-ico" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.787 1.401 8.169L12 18.896l-7.335 3.868 1.401-8.169L.132 9.21l8.2-1.192z"/>
     </svg>
