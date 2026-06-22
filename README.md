@@ -8,12 +8,15 @@
 [![Firefox Add-on](https://img.shields.io/badge/Firefox-Add--on-FF7139?logo=firefox-browser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/N3uralCreativity/comix-downloader?logo=github&label=Star%20to%20stay%20updated&color=f5c518)](https://github.com/N3uralCreativity/comix-downloader)
 
 
 
 **by [N3uralCreativity](https://github.com/N3uralCreativity)**
 
 **[Checkout the Site for a more User-Friendly interface](https://n3uralcreativity.github.io/comix-downloader/index.html)**
+
+**Find it useful? [Star the repo](https://github.com/N3uralCreativity/comix-downloader) to support development and stay updated on new releases.**
 
 
 If the download buttons aren't showing up, just refresh the page. Your browser tends to load pages from cache sometimes, which can prevent the extension from being triggered properly. Not really much I can do about that unfortunately.
