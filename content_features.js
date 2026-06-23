@@ -495,7 +495,7 @@
         t = document.createElement('div');
         t.id = id;
         t.style.cssText = 'position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:2147483647;' +
-          'background:rgba(19,21,31,0.96);color:#eef1f8;font:600 13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
+          'background:var(--surface-2, rgba(19,21,31,0.96));color:var(--text-emphasis, #eef1f8);font:600 13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
           'padding:9px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);box-shadow:0 6px 20px rgba(0,0,0,0.4);pointer-events:none;';
         document.body.appendChild(t);
       }

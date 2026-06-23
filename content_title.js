@@ -50,7 +50,9 @@ function _setHTML(node, html) {
 
 function getAccent() {
   const c = CFG['appearance.accentColor'];
-  return (CFG['appearance.accentMode'] === 'custom' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c || '')) ? c : '#60a5fa';
+  // Auto mode follows comix.to's own accent (cyan on "Main", purple on "Dark"),
+  // read live from the page's --accent custom property; custom mode wins.
+  return (CFG['appearance.accentMode'] === 'custom' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c || '')) ? c : 'var(--accent, #66e8fa)';
 }
 function _clampScale(v) { v = parseFloat(v); return isFinite(v) ? Math.min(1.5, Math.max(0.8, v)) : 1; }
 function _clampInt(v, min, max, d) { v = parseInt(v, 10); return isFinite(v) ? Math.min(max, Math.max(min, v)) : d; }
@@ -153,7 +155,7 @@ function injectStyles() {
       padding: 0;
       margin-left: 0;
       border-radius: 4px;
-      color: var(--muted, #888);
+      color: var(--text-2, #888);
       transition: color 0.15s ease, background 0.15s ease;
       vertical-align: middle;
       flex-shrink: 0;
@@ -165,11 +167,11 @@ function injectStyles() {
       overflow: hidden;
     }
     .${DOWNLOAD_BTN_CLASS}:hover {
-      color: var(--fg, #e0e0e0);
+      color: var(--text, #e0e0e0);
       background: rgba(255,255,255,0.07);
     }
     .${DOWNLOAD_BTN_CLASS}[data-state="loading"] {
-      color: #60a5fa;
+      color: var(--accent, #60a5fa);
       pointer-events: none;
       gap: 3px;
       width: 68px;
@@ -180,11 +182,11 @@ function injectStyles() {
       animation: cdl-spin 1s linear infinite;
     }
     .${DOWNLOAD_BTN_CLASS}[data-state="done"] {
-      color: #4ade80;
+      color: var(--success, #4ade80);
       pointer-events: none;
     }
     .${DOWNLOAD_BTN_CLASS}[data-state="error"] {
-      color: #f87171;
+      color: var(--danger, #f87171);
     }
     .${DOWNLOAD_BTN_CLASS}[data-state="error"]:hover {
       color: #fca5a5;
@@ -199,7 +201,7 @@ function injectStyles() {
       font-size: 10px;
       line-height: 1;
       font-weight: 600;
-      color: #60a5fa;
+      color: var(--accent, #60a5fa);
       white-space: nowrap;
       pointer-events: none;
       letter-spacing: 0;
@@ -221,31 +223,33 @@ function injectStyles() {
       z-index: 2147483646 !important;
       border-radius: 50px !important;
       padding: 10px 18px !important;
-      background: rgba(19,21,31,0.97) !important;
+      background: var(--surface-2, rgba(19,21,31,0.97)) !important;
       border: 1px solid rgba(255,255,255,0.18) !important;
       box-shadow: 0 4px 24px rgba(0,0,0,0.55) !important;
       margin-top: 0 !important;
     }
     /* ── Popup progression Download All ──────────────────────────────────── */
     #cdl-all-popup {
-      /* Palette flips with the host site via [data-cdl-theme]; dark is default. */
-      --cdl-bg: #13151f;
-      --cdl-header-bg: rgba(255,255,255,0.025);
-      --cdl-text: #d6dae8;
-      --cdl-text-strong: #eef1f8;
-      --cdl-muted: #8088a4;
-      --cdl-faint: #5a6280;
+      /* Inherits comix.to's own theme tokens so it matches whatever palette the
+         user has active — "Main" (cyan) or "Dark" (purple). [data-cdl-theme="light"]
+         below covers comix's light theme; fallbacks are comix's "Main" values. */
+      --cdl-bg: var(--surface, #2a3134);
+      --cdl-header-bg: var(--surface-2, #323a3e);
+      --cdl-text: var(--text, #cdd5d6);
+      --cdl-text-strong: var(--text-emphasis, #ecf4f5);
+      --cdl-muted: var(--text-2, #9da4a5);
+      --cdl-faint: var(--text-3, #6f7778);
       --cdl-border: rgba(255,255,255,0.10);
       --cdl-border-soft: rgba(255,255,255,0.06);
       --cdl-track: rgba(255,255,255,0.09);
       --cdl-log-bg: rgba(255,255,255,0.03);
       --cdl-hover: rgba(255,255,255,0.08);
-      --cdl-shadow: 0 12px 34px rgba(0,0,0,0.42), 0 2px 8px rgba(0,0,0,0.30);
-      --cdl-accent: #60a5fa;
-      --cdl-ok: #4ade80;   --cdl-ok-bg: rgba(74,222,128,0.12);  --cdl-ok-bgh: rgba(74,222,128,0.20);  --cdl-ok-border: rgba(74,222,128,0.28);
-      --cdl-warn: #fbbf24; --cdl-warn-bg: rgba(251,191,36,0.12); --cdl-warn-bgh: rgba(251,191,36,0.20); --cdl-warn-border: rgba(251,191,36,0.30);
-      --cdl-err: #f87171;  --cdl-err-bg: rgba(239,68,68,0.12);   --cdl-err-bgh: rgba(239,68,68,0.20);   --cdl-err-border: rgba(239,68,68,0.28);
-      --cdl-skip: #5a6280;
+      --cdl-shadow: 0 16px 40px -14px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.30);
+      --cdl-accent: var(--accent, #66e8fa);
+      --cdl-ok: var(--success, #4ade80);   --cdl-ok-bg: rgba(74,222,128,0.12);  --cdl-ok-bgh: rgba(74,222,128,0.20);  --cdl-ok-border: rgba(74,222,128,0.28);
+      --cdl-warn: var(--warning, #fbbf24); --cdl-warn-bg: rgba(251,191,36,0.12); --cdl-warn-bgh: rgba(251,191,36,0.20); --cdl-warn-border: rgba(251,191,36,0.30);
+      --cdl-err: var(--danger, #f87171);  --cdl-err-bg: rgba(239,68,68,0.12);   --cdl-err-bgh: rgba(239,68,68,0.20);   --cdl-err-border: rgba(239,68,68,0.28);
+      --cdl-skip: var(--text-3, #5a6280);
 
       position: fixed;
       bottom: 24px;
@@ -1280,10 +1284,10 @@ function injectOptsStyles() {
       display:flex; align-items:center; justify-content:center; padding:20px;
       font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; animation:cdl-ap-in .18s ease both; }
     #cdl-opts-panel {
-      --cdl-bg:#13151f; --cdl-header-bg:rgba(255,255,255,0.025); --cdl-text:#d6dae8; --cdl-text-strong:#eef1f8;
-      --cdl-muted:#8088a4; --cdl-faint:#5a6280; --cdl-border:rgba(255,255,255,0.10); --cdl-border-soft:rgba(255,255,255,0.06);
-      --cdl-hover:rgba(255,255,255,0.06); --cdl-accent:#60a5fa; --cdl-accent-bg:rgba(96,165,250,0.14);
-      --cdl-ok:#4ade80;
+      --cdl-bg:var(--surface,#2a3134); --cdl-header-bg:var(--surface-2,#323a3e); --cdl-text:var(--text,#cdd5d6); --cdl-text-strong:var(--text-emphasis,#ecf4f5);
+      --cdl-muted:var(--text-2,#9da4a5); --cdl-faint:var(--text-3,#6f7778); --cdl-border:rgba(255,255,255,0.10); --cdl-border-soft:rgba(255,255,255,0.06);
+      --cdl-hover:rgba(255,255,255,0.06); --cdl-accent:var(--accent,#66e8fa); --cdl-accent-bg:rgb(var(--accent-rgb,102 232 250) / 0.14);
+      --cdl-ok:var(--success,#4ade80);
       width:440px; max-width:100%; max-height:88vh; overflow-y:auto; background:var(--cdl-bg);
       color:var(--cdl-text); border:1px solid var(--cdl-border); border-radius:14px;
       box-shadow:0 18px 44px rgba(0,0,0,0.5); font-size:13px; }
@@ -1327,7 +1331,7 @@ function injectOptsStyles() {
       padding:12px 16px; border-top:1px solid var(--cdl-border-soft); }
     .cdl-op-btn { border-radius:8px; padding:8px 16px; font-size:12.5px; font-weight:600; cursor:pointer; border:1px solid var(--cdl-border); background:transparent; color:var(--cdl-text); }
     .cdl-op-btn:hover { background:var(--cdl-hover); }
-    .cdl-op-btn.primary { background:var(--cdl-accent); border-color:var(--cdl-accent); color:#07101f; }
+    .cdl-op-btn.primary { background:var(--cdl-accent); border-color:var(--cdl-accent); color:var(--accent-ink, #07101f); }
     .cdl-op-btn.primary:hover { filter:brightness(1.08); }
     .cdl-op-btn:disabled { opacity:.45; cursor:default; }
   `;
