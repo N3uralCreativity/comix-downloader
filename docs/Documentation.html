@@ -323,12 +323,12 @@
     <!-- settings -->
     <section class="doc-sec" id="settings">
       <h2>Settings</h2>
-      <p>A full settings page opens in its own browser tab. The defaults are safe and just work; a few riskier options are clearly flagged. Settings are saved in your browser.</p>
+      <p>The extension's settings live right inside <strong>comix.to's own settings page</strong>, styled to match the site — you'll find a <strong>Comix Downloader</strong> entry alongside comix's own sections. The defaults are safe and just work; a few riskier options are clearly flagged. Changes save <strong>instantly</strong>, in your browser.</p>
 
-      <p>An <em>Additional Features</em> tab adds optional, off-by-default tweaks for comix.to: hide duplicate chapters, force the chapter list into numeric order, and make the reader's next/previous jump to the true neighbouring chapter (switching source when one skips it).</p>
+      <p>An <em>Additional Features</em> section adds optional, off-by-default tweaks for comix.to: hide duplicate chapters, force the chapter list into numeric order, and make the reader's next/previous jump to the true neighbouring chapter (switching source when one skips it).</p>
 
       <h3>Opening the settings</h3>
-      <p>Click the extension icon to open the popup, then press <strong>Settings</strong> (or use <em>Options</em> in your browser's extensions menu). The popup also shows a live activity log of recent downloads.</p>
+      <p>Click the extension icon to open the popup, then press <strong>Settings</strong> — it takes you to <strong>comix.to → Settings</strong> and opens the <strong>Comix Downloader</strong> section automatically. A standalone settings page is also available from your browser's extensions menu under <em>Options</em> (handy if comix.to is unavailable). The popup also shows a live activity log of recent downloads.</p>
 
       <div class="shot" style="margin-top:16px;max-width:330px;">
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">extension popup</span></div>
@@ -336,7 +336,7 @@
       </div>
 
       <h3>How it's organized</h3>
-      <p>Settings are grouped into labelled tabs:</p>
+      <p>Settings are grouped into labelled sections:</p>
       <ul class="tab-list">
         <li><strong>Download &amp; ZIP</strong> — multi-part (default) or single ZIP, the limit per part, and how many chapters to fetch at once.</li>
         <li><strong>Output &amp; Library</strong> — ZIP vs CBZ, ComicInfo.xml, series info, folder layout, and skipping already-downloaded chapters.</li>
@@ -358,7 +358,7 @@
         <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         <div>
           <strong>Risky options are clearly marked.</strong>
-          <p style="margin-top:8px;">Options that can reduce reliability or quality are tagged <span class="badge risky">Risky</span> or <span class="badge glitchy">Glitchy</span>, each with an inline explanation. Saving such a change asks you to confirm first, and a <strong>Reset to defaults</strong> button (also confirmed) is always available under <em>About &amp; Backup</em>.</p>
+          <p style="margin-top:8px;">Options that can reduce reliability or quality are tagged <span class="badge risky">Risky</span> or <span class="badge glitchy">Glitchy</span>, each with an inline explanation. Changing a <strong>risky</strong> one asks you to confirm first, and a <strong>Reset to defaults</strong> action (also confirmed) is always available under <em>Backup &amp; reset</em>.</p>
         </div>
       </div>
 
@@ -431,7 +431,7 @@
       </div>
 
       <ol class="steps">
-        <li>Open <strong>Settings → Sync &amp; Library</strong> and scroll to <strong>Push to library</strong>.</li>
+        <li>Open the extension's settings (popup → <strong>Settings</strong> → <strong>Comix Downloader</strong>) and scroll to <strong>Push to library</strong>.</li>
         <li>Tick <strong>Enable push after download</strong>.</li>
         <li><strong>Endpoint URL</strong> — the WebDAV/HTTP base folder your library watches, e.g.&nbsp;<code>https://nas.homelab.example/webdav/comics</code>. Each new series becomes a sub-folder under it.</li>
         <li><strong>Method</strong> — leave on <strong>PUT (WebDAV / most servers)</strong>; only switch to <strong>POST</strong> if your server specifically requires it.</li>
