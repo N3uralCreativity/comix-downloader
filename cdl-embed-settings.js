@@ -34,6 +34,21 @@
     'naming.allZipTpl': { manga: 'Solo Leveling' },
   };
 
+  // Conditional controls — greyed out when their condition isn't met (mirrors the
+  // standalone options page so irrelevant settings don't mislead).
+  var DEPENDS = {
+    'download.chaptersPerPart': function (d) { return d['download.splitMode'] === 'multipart'; },
+    'download.mbPerPart': function (d) { return d['download.splitMode'] === 'multipart'; },
+    'perf.rateBaseMs': function (d) { return d['perf.rateLimitMode'] !== 'off'; },
+    'perf.rateMinMs': function (d) { return d['perf.rateLimitMode'] === 'dynamic'; },
+    'perf.rateMaxMs': function (d) { return d['perf.rateLimitMode'] === 'dynamic'; },
+    'appearance.accentColor': function (d) { return d['appearance.accentMode'] === 'custom'; },
+    'advanced.jpgQuality': function (d) { return d['advanced.imageFormat'] === 'jpg'; },
+    'subscribe.intervalMinutes': function (d) { return !!d['subscribe.enabled']; },
+    'subscribe.notify': function (d) { return !!d['subscribe.enabled']; },
+    'subscribe.autoDownload': function (d) { return !!d['subscribe.enabled']; },
+  };
+
   // ── helpers ──────────────────────────────────────────────────────────────
   function el(tag, props, kids) {
     var n = document.createElement(tag);
@@ -88,6 +103,7 @@
     s.textContent =
       '.cdl-umenu-sep{padding:14px 12px 6px;font:700 10px/1 var(--f-mono,monospace);letter-spacing:.08em;text-transform:uppercase;color:var(--text-3,#707070);}' +
       '#' + VIEW_ID + ' .cdl-row{cursor:default;}' +
+      '#' + VIEW_ID + ' .cdl-disabled{opacity:.4;pointer-events:none;}' +
       '#' + VIEW_ID + ' .cdl-ctl{flex:0 0 auto;display:flex;align-items:center;gap:8px;}' +
       '#' + VIEW_ID + ' .cdl-input,#' + VIEW_ID + ' .cdl-select{background:var(--surface-2,#282c30);color:var(--text,#d4d4d4);' +
         'border:1px solid rgba(255,255,255,.10);border-radius:var(--radius,6px);padding:7px 10px;font-size:13px;font-family:inherit;outline:none;}' +
@@ -359,7 +375,17 @@
 
   // ── build the whole extension settings view ─────────────────────────────────
   function buildView(cur, lib, subs) {
-    var onChange = function (key, value) { var p = {}; p[key] = value; try { var r = S.patchSettings(p); if (r && r.then) r.catch(function () {}); } catch (_) {} flashSaved(); };
+    var draft = Object.assign({}, S.DEFAULTS, cur);
+    var rowEls = {};
+    var applyDeps = function () {
+      Object.keys(DEPENDS).forEach(function (k) { var r = rowEls[k]; if (r) r.classList.toggle('cdl-disabled', !DEPENDS[k](draft)); });
+    };
+    var onChange = function (key, value) {
+      draft[key] = value;
+      var p = {}; p[key] = value;
+      try { var r = S.patchSettings(p); if (r && r.then) r.catch(function () {}); } catch (_) {}
+      flashSaved(); applyDeps();
+    };
     var view = el('div', { class: 'uview', id: VIEW_ID }, [
       el('div', { class: 'uview__head' }, [
         el('h2', { class: 'uview__title', text: 'Comix Downloader' }),
@@ -370,7 +396,7 @@
       var keys = (tab.keys || []).filter(function (k) { return S.SCHEMA[k]; });
       if (keys.length) {
         var sec = el('section', { class: 'usettings__section' }, [el('h3', { class: 'usettings__section-title', text: tab.label })]);
-        keys.forEach(function (k) { sec.appendChild(makeRow(k, cur, onChange)); });
+        keys.forEach(function (k) { var row = makeRow(k, cur, onChange); rowEls[k] = row; sec.appendChild(row); });
         view.appendChild(sec);
       }
       if (tab.id === 'sync') {
@@ -379,6 +405,7 @@
       }
     });
     view.appendChild(makeBackupSection(activate));
+    applyDeps();
     return view;
   }
 
