@@ -323,12 +323,12 @@
     <!-- settings -->
     <section class="doc-sec" id="settings">
       <h2>Settings</h2>
-      <p><strong>New in v2.0.0.</strong> Comix Downloader now has a full settings page that opens in its own browser tab. You don't have to change a thing — the defaults are safe and set up to just work. Want to tailor how it behaves? Go for it. Just keep in mind that a few options are riskier than the rest (those are clearly flagged), so changing them is at your own risk. Your settings are saved in your browser.</p>
+      <p>A full settings page opens in its own browser tab. The defaults are safe and just work; a few riskier options are clearly flagged. Settings are saved in your browser.</p>
 
-      <p><strong>New in v2.0.2.</strong> A new <em>Additional Features</em> tab adds optional, off-by-default tweaks that make comix.to nicer to read: hide duplicate chapters in a title's list, force the chapter list into correct numeric order, and make the reader's next / previous jump to the true neighbouring chapter — switching source when the current one skips it. Turn on only what you want.</p>
+      <p>An <em>Additional Features</em> tab adds optional, off-by-default tweaks for comix.to: hide duplicate chapters, force the chapter list into numeric order, and make the reader's next/previous jump to the true neighbouring chapter (switching source when one skips it).</p>
 
       <h3>Opening the settings</h3>
-      <p>Click the extension icon in your toolbar to open the popup, then press <strong>Settings</strong>. (You can also reach it from your browser's extensions menu under <em>Options</em>.) The popup also keeps a live activity log of your recent downloads.</p>
+      <p>Click the extension icon to open the popup, then press <strong>Settings</strong> (or use <em>Options</em> in your browser's extensions menu). The popup also shows a live activity log of recent downloads.</p>
 
       <div class="shot" style="margin-top:16px;max-width:330px;">
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">extension popup</span></div>
@@ -336,17 +336,17 @@
       </div>
 
       <h3>How it's organized</h3>
-      <p>Settings are grouped into clearly labelled tabs:</p>
+      <p>Settings are grouped into labelled tabs:</p>
       <ul class="tab-list">
-        <li><strong>Download &amp; ZIP</strong> — how a full-series download is packaged: multiple ZIP parts (default) or one single ZIP, the chapter/size limit per part, and how many chapters to fetch at once.</li>
+        <li><strong>Download &amp; ZIP</strong> — multi-part (default) or single ZIP, the limit per part, and how many chapters to fetch at once.</li>
         <li><strong>Output &amp; Library</strong> — ZIP vs CBZ, ComicInfo.xml, series info, folder layout, and skipping already-downloaded chapters.</li>
-        <li><strong>Performance</strong> — how many images download in parallel, the pacing between chapters, and network timeouts.</li>
-        <li><strong>Retries</strong> — automatically re-attempt images or chapters that fail.</li>
-        <li><strong>Naming</strong> — image-number padding plus templates for chapter folders and ZIP file names, with a live preview.</li>
-        <li><strong>Appearance</strong> — the on-page buttons and the progress panel (see below).</li>
-        <li><strong>Advanced</strong> — powerful, riskier options such as image re-encoding and scramble handling.</li>
-        <li><strong>Sync &amp; Library</strong> — watch subscribed series for new chapters, and optionally push finished CBZ files to your own server.</li>
-        <li><strong>About &amp; Backup</strong> — export or import your settings as a file, and reset everything to defaults.</li>
+        <li><strong>Performance</strong> — parallel image downloads, pacing between chapters, and network timeouts.</li>
+        <li><strong>Retries</strong> — re-attempt images or chapters that fail.</li>
+        <li><strong>Naming</strong> — image padding and templates for chapter folders and ZIP names, with a live preview.</li>
+        <li><strong>Appearance</strong> — the on-page buttons and the progress panel.</li>
+        <li><strong>Advanced</strong> — riskier options like image re-encoding and scramble handling.</li>
+        <li><strong>Sync &amp; Library</strong> — watch series for new chapters, and push finished CBZs to your own server.</li>
+        <li><strong>About &amp; Backup</strong> — export/import settings, and reset to defaults.</li>
       </ul>
 
       <div class="shot" style="margin-top:6px;">
@@ -363,7 +363,7 @@
       </div>
 
       <h3>Appearance &amp; customization</h3>
-      <p>Make the extension fit how you read. You can switch the per-chapter button between icon-only and icon&nbsp;+&nbsp;text, choose a custom accent color, scale the buttons, rename the <strong>Download All</strong> button, turn off animations, and move, resize or auto-hide the download-progress panel.</p>
+      <p>Switch the per-chapter button between icon-only and icon&nbsp;+&nbsp;text, set a custom accent color, scale or rename the buttons, turn off animations, and move, resize or auto-hide the progress panel.</p>
 
       <div class="shot" style="margin-top:6px;">
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings — Appearance</span></div>
@@ -371,7 +371,7 @@
       </div>
 
       <h3>Advanced — use with care</h3>
-      <p>The Advanced tab exposes options for unusual situations. <strong>Preserve original</strong> image format keeps the best quality and is recommended; re-encoding to PNG or JPG is slower and lossy. Leaving scramble correction on keeps protected pages readable. Every risky option spells out exactly what can go wrong before you enable it.</p>
+      <p>Options for unusual situations. <strong>Preserve original</strong> image format keeps the best quality (recommended); re-encoding to PNG/JPG is slower and lossy. Keep scramble correction on so protected pages stay readable. Every risky option explains what can go wrong before you enable it.</p>
 
       <div class="shot" style="margin-top:6px;">
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings — Advanced</span></div>
@@ -382,7 +382,7 @@
     <!-- output, library & sync -->
     <section class="doc-sec" id="library">
       <h2>Output, library &amp; sync</h2>
-      <p><strong>New in v2.3.</strong> When you click <strong>Download All</strong>, a small options panel now opens first — with smart defaults, so you can just hit <strong>Start</strong>. Everything here is also available in <em>Settings → Output &amp; Library</em>, and remembered per-series if you tick “Remember for this series”.</p>
+      <p>Clicking <strong>Download All</strong> opens a small options panel first — with smart defaults, so you can just hit <strong>Start</strong>. Everything here is also in <em>Settings → Output &amp; Library</em>, and remembered per-series if you tick “Remember for this series”.</p>
 
       <h3>ZIP or CBZ</h3>
       <p>Choose <strong>ZIP</strong> (plain folders of images) or <strong>CBZ</strong> — one comic file per chapter that opens directly in Komga, Kavita, Mihon (local source), YACReader and similar. With CBZ, “Download All” still gives you one ZIP, containing a tidy <code>.cbz</code> per chapter.</p>
@@ -401,7 +401,7 @@
       <p>Turn on <em>Reader keyboard shortcuts</em> (Additional Features) to use <kbd>J</kbd>/<kbd>K</kbd> or <kbd>←</kbd>/<kbd>→</kbd> to jump to the previous/next chapter and <kbd>D</kbd> to download the current one. A right-click menu on comix.to also offers “Download this chapter / whole series”.</p>
 
       <h3>Watch for new chapters</h3>
-      <p>On a title page, click <strong>☆ Subscribe</strong> to watch a series. In <em>Settings → Sync &amp; Library</em> you can set how often it checks in the background and whether to show a desktop notification or even auto-download new chapters. Background checks talk only to comix.to and are best-effort (they depend on the site's protection); browsing the site keeps them reliable.</p>
+      <p>On a title page, click <strong>☆ Subscribe</strong> to watch a series. In <em>Settings → Sync &amp; Library</em> you can set how often it checks in the background, and whether to notify or auto-download new chapters. Background checks talk only to comix.to and are best-effort — browsing the site keeps them reliable.</p>
 
       <div class="shot" style="margin-top:6px;">
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings — Sync &amp; Library</span></div>
@@ -409,7 +409,7 @@
       </div>
 
       <h3 id="push-library">Push to your library (advanced)</h3>
-      <p>Optionally upload every finished <strong>CBZ</strong> straight to your own media server as it's built, so a new chapter shows up in <strong>Komga</strong> or <strong>Kavita</strong> minutes after you hit download — no manual copying. It's the one feature that sends data off your device, and always to a server <em>you</em> choose; see the <a href="privacy.html">Privacy page</a>.</p>
+      <p>Optionally upload every finished <strong>CBZ</strong> straight to your own media server as it's built, so a new chapter shows up in <a href="https://komga.org/" target="_blank" rel="noopener" style="font-weight:700">Komga</a> or <a href="https://www.kavitareader.com/" target="_blank" rel="noopener" style="font-weight:700">Kavita</a> minutes after you hit download — no manual copying. It's the one feature that sends data off your device, and always to a server <em>you</em> choose; see the <a href="privacy.html">Privacy page</a>.</p>
 
       <div class="callout">
         <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -510,7 +510,7 @@
       <details>
         <summary>Can I change how downloads are packaged, named, or look?</summary>
         <div class="ans">
-          <p>Yes — open the <a href="#settings">Settings</a> page (the <strong>Settings</strong> button in the extension popup). You can switch a series download from multiple ZIP parts to a single ZIP, set file-name templates, customize the buttons and progress panel, and more. Riskier options are clearly marked and ask for confirmation before they apply.</p>
+          <p>Yes — open the <a href="#settings">Settings</a> page from the extension popup. You can switch between multiple ZIP parts and a single ZIP, set file-name templates, customize the buttons and progress panel, and more. Riskier options are marked and ask for confirmation.</p>
         </div>
       </details>
 
