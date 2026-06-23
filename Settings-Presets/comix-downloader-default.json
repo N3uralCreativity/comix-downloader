@@ -5,7 +5,7 @@
     "download.splitMode": "multipart",
     "download.chaptersPerPart": 5,
     "download.mbPerPart": 300,
-    "download.concurrentChapters": 5,
+    "download.concurrentChapters": 2,
     "perf.batchSize": 3,
     "perf.rateLimitMode": "dynamic",
     "perf.rateBaseMs": 1500,

@@ -44,7 +44,7 @@ check('content_features.js reads the feature flags', cfKeys.length >= 3);
 cfKeys.forEach((k) => check('content_features.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
 
 // 3. options.js dependency + preview maps must reference real keys
-const opt = read('options.js');
+const opt = read('legacy/options.js');
 function blockKeys(src, marker) {
   const i = src.indexOf(marker);
   if (i === -1) return [];
@@ -81,7 +81,7 @@ check('extract-bridge runs at document_start in the MAIN world', !!bridgeCs && b
 const embedCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('cdl-embed-settings.js'));
 check('settings-embed content script is registered on comix.to', !!embedCs && embedCs.matches.indexOf('*://comix.to/*') !== -1);
 check('settings-embed loads the settings module (CDLSettings)', !!embedCs && embedCs.js.indexOf('settings.js') !== -1);
-check('options_ui opens in a tab', mf.options_ui && mf.options_ui.page === 'options.html' && mf.options_ui.open_in_tab === true);
+check('options_ui points at the archived legacy page', mf.options_ui && mf.options_ui.page === 'legacy/options.html' && mf.options_ui.open_in_tab === true);
 
 // 6. analyzeImageSequence (background.js) — gate of the CDN page-count probe.
 // It must recognize ONLY the enumerator's signature (same base/ext, exactly

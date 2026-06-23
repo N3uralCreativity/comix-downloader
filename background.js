@@ -500,7 +500,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'openOptions') {
     try {
       if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
-      else chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
+      else chrome.tabs.create({ url: chrome.runtime.getURL('legacy/options.html') });
     } catch (_) {}
     sendResponse({ ok: true });
     return true;
@@ -1771,7 +1771,7 @@ async function extractFromTab(url, cfg) {
 }
 
 // ── Téléchargement de tous les chapitres ──────────────────────────────────────
-// Up to `download.concurrentChapters` (1–10, default 5) chapters are downloaded at the same
+// Up to `download.concurrentChapters` (1–10, default 2) chapters are downloaded at the same
 // time by a small worker pool. Each worker fully downloads its chapter into memory
 // and NEVER touches the shared ZIP; a single in-order "packer" adds finished
 // chapters to the ZIP strictly by chapter order and cuts ZIP parts at the split
@@ -1788,7 +1788,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     const libCfg = await getLibraryConfig();
     if (libCfg && libCfg.enabled && /^https?:\/\//i.test(libCfg.endpoint || '')) opts.pushLib = libCfg;
   }
-  const concurrency = Math.max(1, Math.min(10, parseInt(cfg['download.concurrentChapters'], 10) || 5));
+  const concurrency = Math.max(1, Math.min(10, parseInt(cfg['download.concurrentChapters'], 10) || 2));
   const batchSize = cfg['perf.batchSize'] || BATCH_SIZE;
   const padDigits = cfg['naming.imagePadDigits'] || 3;
   const imageRetries = cfg['retry.imageRetries'] || 0;

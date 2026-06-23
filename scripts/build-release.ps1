@@ -46,9 +46,9 @@ function Copy-ReleaseFiles([string]$Destination) {
     "popup.html",
     "popup.js",
     "settings.js",
-    "options.html",
-    "options.js",
-    "options.css",
+    "legacy/options.html",
+    "legacy/options.js",
+    "legacy/options.css",
     "icons",
     "lib"
   )
