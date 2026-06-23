@@ -24,6 +24,7 @@
   var hiddenComixView = null;
   var pollTimer = null;
   var observer = null;
+  var autoChecked = false;
 
   // Sample context for live naming-template previews (mirrors the options page).
   var PREVIEW_CTX = {
@@ -397,6 +398,22 @@
     setActiveNav(false);
   }
 
+  // If the popup's "Settings" button sent us here, open our view automatically
+  // once (consumes a short-lived flag set by the popup).
+  function maybeAutoActivate() {
+    if (autoChecked || !document.getElementById(NAV_ID)) return;
+    autoChecked = true;
+    try {
+      chrome.storage.local.get('cdlOpenExtSettings', function (r) {
+        var ts = r && r.cdlOpenExtSettings;
+        if (ts && (Date.now() - ts) < 60000) {
+          try { chrome.storage.local.remove('cdlOpenExtSettings'); } catch (_) {}
+          activate();
+        }
+      });
+    } catch (_) {}
+  }
+
   function setActiveNav(on) {
     var ours = document.getElementById(NAV_ID);
     document.querySelectorAll('.umenu__item.is-active').forEach(function (b) { if (b !== ours) b.classList.toggle('is-active', !on); });
@@ -422,6 +439,7 @@
       var tries = 0;
       pollTimer = setInterval(function () {
         ensureNavItem();
+        maybeAutoActivate();
         var n = document.getElementById(NAV_ID);
         if (n && n.classList.contains('is-active') && !document.getElementById(VIEW_ID)) activate();
         if (++tries > 60) { clearInterval(pollTimer); pollTimer = null; }

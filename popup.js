@@ -56,13 +56,14 @@ function renderLogs(logs) {
   wrap.appendChild(frag);
 }
 
+// Settings opens comix.to's own settings page, where the extension injects its
+// settings natively. A short-lived flag tells the in-page content script to
+// auto-open the "Comix Downloader" section on arrival. (The standalone options
+// page is still reachable from the browser's extension menu → Options.)
+var COMIX_SETTINGS_URL = 'https://comix.to/user?tab=settings';
 function openSettings() {
-  if (chrome.runtime.openOptionsPage) {
-    chrome.runtime.openOptionsPage();
-  } else {
-    chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
-  }
-  window.close();
+  var go = function () { chrome.tabs.create({ url: COMIX_SETTINGS_URL }); window.close(); };
+  try { chrome.storage.local.set({ cdlOpenExtSettings: Date.now() }, go); } catch (e) { go(); }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
