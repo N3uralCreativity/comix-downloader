@@ -25,6 +25,7 @@
   var pollTimer = null;
   var observer = null;
   var autoChecked = false;
+  var savedToast = null, savedTimer = null;
 
   // Sample context for live naming-template previews (mirrors the options page).
   var PREVIEW_CTX = {
@@ -60,6 +61,17 @@
   }
   function setLocal(key, val) { var o = {}; o[key] = val; try { chrome.storage.local.set(o); } catch (_) {} }
   function send(msg) { return new Promise(function (res) { try { chrome.runtime.sendMessage(msg, function (r) { res(chrome.runtime.lastError ? null : r); }); } catch (_) { res(null); } }); }
+
+  // Settings save instantly (like comix's own toggles); flash a brief confirmation.
+  function flashSaved(msg) {
+    try {
+      if (!savedToast || !savedToast.isConnected) { savedToast = el('div', { id: 'cdl-saved-toast' }); (document.body || document.documentElement).appendChild(savedToast); }
+      savedToast.textContent = msg || '✓ Saved';
+      savedToast.classList.remove('show'); void savedToast.offsetWidth; savedToast.classList.add('show');
+      clearTimeout(savedTimer);
+      savedTimer = setTimeout(function () { if (savedToast) savedToast.classList.remove('show'); }, 1400);
+    } catch (_) {}
+  }
 
   function onSettingsPage() {
     if (document.querySelector('.usettings__section') || document.getElementById(VIEW_ID)) return true;
@@ -103,7 +115,12 @@
       '#' + VIEW_ID + ' .cdl-sub-meta{font-size:11.5px;color:var(--text-3,#8a8a8a);margin-left:auto;}' +
       '#' + VIEW_ID + ' .cdl-sub-x{background:none;border:none;color:var(--text-3,#8a8a8a);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;border-radius:6px;}' +
       '#' + VIEW_ID + ' .cdl-sub-x:hover{color:#ef9a9a;background:rgba(239,68,68,.1);}' +
-      '#' + VIEW_ID + ' .cdl-foot{margin-top:8px;font-size:11.5px;color:var(--text-3,#8a8a8a);}';
+      '#' + VIEW_ID + ' .cdl-foot{margin-top:8px;font-size:11.5px;color:var(--text-3,#8a8a8a);}' +
+      '#cdl-saved-toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,8px);z-index:2147483647;' +
+        'background:var(--surface-2,#282c30);color:var(--text-emphasis,#f5f5f5);border:1px solid rgba(255,255,255,.12);' +
+        'border-radius:8px;padding:8px 16px;font:600 13px/1 system-ui,sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.45);' +
+        'opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;}' +
+      '#cdl-saved-toast.show{opacity:1;transform:translate(-50%,0);}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -196,7 +213,7 @@
   }
   function makeLibrarySection(lib, rerender) {
     var cfg = Object.assign({ enabled: false, endpoint: '', method: 'PUT', username: '', password: '' }, lib || {});
-    var saveCfg = function () { setLocal('cdlLibrary', cfg); };
+    var saveCfg = function () { setLocal('cdlLibrary', cfg); flashSaved(); };
 
     var enableCb = el('input', { type: 'checkbox' });
     enableCb.checked = !!cfg.enabled;
@@ -342,7 +359,7 @@
 
   // ── build the whole extension settings view ─────────────────────────────────
   function buildView(cur, lib, subs) {
-    var onChange = function (key, value) { var p = {}; p[key] = value; try { var r = S.patchSettings(p); if (r && r.then) r.catch(function () {}); } catch (_) {} };
+    var onChange = function (key, value) { var p = {}; p[key] = value; try { var r = S.patchSettings(p); if (r && r.then) r.catch(function () {}); } catch (_) {} flashSaved(); };
     var view = el('div', { class: 'uview', id: VIEW_ID }, [
       el('div', { class: 'uview__head' }, [
         el('h2', { class: 'uview__title', text: 'Comix Downloader' }),
