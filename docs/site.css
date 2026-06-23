@@ -12,7 +12,7 @@
   --surface-2: oklch(97.3% 0.004 290);
   --ink:       oklch(23% 0.018 290);
   --ink-soft:  oklch(44% 0.014 290);
-  --muted:     oklch(60% 0.012 290);
+  --muted:     oklch(52% 0.012 290);
   --faint:     oklch(72% 0.01 290);
   --line:      oklch(91.5% 0.006 290);
   --line-strong: oklch(86% 0.008 290);
@@ -51,6 +51,30 @@ body {
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { color: var(--accent-deep); }
+
+/* visible keyboard-focus ring */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* skip-to-content link — visible only when focused */
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -64px;
+  z-index: 100;
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 14px/1 var(--font);
+  padding: 11px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  transition: top .18s ease;
+}
+.skip-link:focus { top: 12px; color: var(--ink); }
 
 ::selection { background: var(--accent-wash); color: var(--accent-deep); }
 
@@ -326,4 +350,14 @@ code {
 
 @media (max-width: 420px) {
   .brand .ver { display: none; }
+}
+
+/* respect the user's reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

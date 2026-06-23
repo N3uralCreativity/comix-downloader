@@ -3,7 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comix Downloader</title>
+<title>Comix Downloader — One-click comic downloads for comix.to</title>
+<meta name="description" content="Free, open-source browser extension that adds one-click download buttons to comix.to. Save whole series or single chapters as organized ZIP or CBZ files.">
+<meta name="theme-color" content="#774fd0">
+<link rel="canonical" href="https://n3uralcreativity.github.io/comix-downloader/">
+
+<!-- Open Graph / social sharing -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Comix Downloader">
+<meta property="og:title" content="Comix Downloader — One-click comic downloads for comix.to">
+<meta property="og:description" content="Free, open-source browser extension that adds one-click download buttons to comix.to. Save whole series or single chapters as organized ZIP or CBZ files.">
+<meta property="og:url" content="https://n3uralcreativity.github.io/comix-downloader/">
+<meta property="og:image" content="https://n3uralcreativity.github.io/comix-downloader/assets/screenshot-title.png">
+<meta property="og:image:width" content="1524">
+<meta property="og:image:height" content="676">
+<meta property="og:image:alt" content="Comix Downloader's Download All button on a comix.to title page">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Comix Downloader — One-click comic downloads for comix.to">
+<meta name="twitter:description" content="Free, open-source browser extension that adds one-click download buttons to comix.to. Save whole series or single chapters as organized ZIP or CBZ files.">
+<meta name="twitter:image" content="https://n3uralcreativity.github.io/comix-downloader/assets/screenshot-title.png">
+<meta name="twitter:image:alt" content="Comix Downloader's Download All button on a comix.to title page">
 <link rel="icon" href="assets/icon128.png">
 <link rel="stylesheet" href="site.css">
 <style>
@@ -117,6 +136,7 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 
 <header class="nav">
   <div class="nav-inner">
@@ -125,10 +145,10 @@
       Comix Downloader
       <span class="ver">v2.3.4</span>
     </a>
-    <button class="nav-burger" aria-label="Menu" aria-expanded="false" onclick="const n=this.nextElementSibling;const o=n.classList.toggle('open');this.setAttribute('aria-expanded',o)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
-    <nav class="nav-links">
+    <nav class="nav-links" id="nav-links">
       <a href="index.html" class="active">Home</a>
       <a href="Documentation.html">Documentation</a>
       <a href="privacy.html">Privacy</a>
@@ -137,7 +157,7 @@
   </div>
 </header>
 
-<main class="container">
+<main class="container" id="main" tabindex="-1">
 
   <!-- hero -->
   <section class="hero">
@@ -149,19 +169,19 @@
         <a class="btn btn-primary" href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">
           <span class="btn-logo">
             <img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/firefox.svg" alt="" width="14" height="14" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
           </span>
           Firefox Add-on
         </a>
         <a class="btn btn-primary" href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">
           <span class="btn-logo">
             <img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/chrome.svg" alt="" width="14" height="14" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 9h9"/><path d="m7.5 16.5 4.5-7.5"/><path d="M16.5 16.5h-9"/></svg>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 9h9"/><path d="m7.5 16.5 4.5-7.5"/><path d="M16.5 16.5h-9"/></svg>
           </span>
           Chrome Extension
         </a>
         <a class="btn btn-ghost" href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
           GitHub
         </a>
       </div>
@@ -218,9 +238,9 @@
       <h2>Every chapter, its own button.</h2>
       <p>The extension injects a download control into each row of the chapter list, exactly where you're already looking. Grab a single update or cherry-pick a back-catalogue.</p>
       <ul>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Inline, no extra clicks or new tabs</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Consistent naming &amp; numbering</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Works on every title page</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Inline, no extra clicks or new tabs</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Consistent naming &amp; numbering</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Works on every title page</li>
       </ul>
     </div>
     <div class="shot">
@@ -236,10 +256,10 @@
       <h2>Library-grade, and smart about it.</h2>
       <p>Save as <strong>CBZ with ComicInfo.xml</strong> and a cover — drop-in ready for Komga, Kavita, Mihon and YACReader. Pick everything from a simple panel when you hit Download All, or just press Start.</p>
       <ul>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> CBZ + metadata + Kavita/Komga folder layout</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Skip already-downloaded — grab only what's new</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Subscribe &amp; get notified of new chapters</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Optional push straight to your own media server</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> CBZ + metadata + Kavita/Komga folder layout</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Skip already-downloaded — grab only what's new</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Subscribe &amp; get notified of new chapters</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Optional push straight to your own media server</li>
       </ul>
     </div>
     <div class="shot">
@@ -275,6 +295,8 @@
     </div>
   </div>
 </footer>
+
+<script src="site.js" defer></script>
 
 </body>
 </html>

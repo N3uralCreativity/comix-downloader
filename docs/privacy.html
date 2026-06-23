@@ -5,6 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Privacy Policy &amp; Legal Notice — Comix Downloader</title>
 <meta name="description" content="Privacy Policy and Legal Notice for the Comix Downloader browser extension. The extension collects no personal data and stores everything locally on your device.">
+<meta name="theme-color" content="#774fd0">
+<link rel="canonical" href="https://n3uralcreativity.github.io/comix-downloader/privacy.html">
+
+<!-- Open Graph / social sharing -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Comix Downloader">
+<meta property="og:title" content="Privacy Policy &amp; Legal Notice — Comix Downloader">
+<meta property="og:description" content="Comix Downloader collects no personal data and stores everything locally on your device. Read the full privacy policy and legal notice.">
+<meta property="og:url" content="https://n3uralcreativity.github.io/comix-downloader/privacy.html">
+<meta property="og:image" content="https://n3uralcreativity.github.io/comix-downloader/assets/screenshot-title.png">
+<meta property="og:image:width" content="1524">
+<meta property="og:image:height" content="676">
+<meta property="og:image:alt" content="Comix Downloader on a comix.to title page">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Privacy Policy &amp; Legal Notice — Comix Downloader">
+<meta name="twitter:description" content="Comix Downloader collects no personal data and stores everything locally on your device. Read the full privacy policy and legal notice.">
+<meta name="twitter:image" content="https://n3uralcreativity.github.io/comix-downloader/assets/screenshot-title.png">
+<meta name="twitter:image:alt" content="Comix Downloader on a comix.to title page">
 <link rel="icon" href="assets/icon128.png">
 <link rel="stylesheet" href="site.css">
 <style>
@@ -75,6 +93,7 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 
 <header class="nav">
   <div class="nav-inner">
@@ -83,10 +102,10 @@
       Comix Downloader
       <span class="ver">v2.3.4</span>
     </a>
-    <button class="nav-burger" aria-label="Menu" aria-expanded="false" onclick="const n=this.nextElementSibling;const o=n.classList.toggle('open');this.setAttribute('aria-expanded',o)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
-    <nav class="nav-links">
+    <nav class="nav-links" id="nav-links">
       <a href="index.html">Home</a>
       <a href="Documentation.html">Documentation</a>
       <a href="privacy.html" class="active">Privacy</a>
@@ -95,7 +114,7 @@
   </div>
 </header>
 
-<main class="container">
+<main class="container" id="main" tabindex="-1">
 
   <section class="legal-hero">
     <span class="eyebrow">Legal</span>
@@ -104,7 +123,7 @@
     <p class="lede">This document explains how the Comix Downloader browser extension handles information, the browser permissions it uses, and the legal terms that apply to its use. Please read it carefully.</p>
 
     <div class="summary">
-      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
       <div>
         <p><strong>In short:</strong> Comix Downloader does not collect, transmit, sell, or share any personal information. It has no servers of its own, no analytics, and no tracking. Almost everything it does happens locally inside your own browser, and the data it stores stays on your device. The <strong>one exception</strong> is the optional <strong>Push-to-library</strong> feature (off by default): if <em>you</em> turn it on and enter <em>your own</em> server's address, the extension uploads the comic files it builds to that server — at your request, to a destination you choose, never to the Developer.</p>
         <p><strong>Also important:</strong> The extension is a general-purpose tool. You are solely responsible for using it lawfully and in accordance with the terms of any website you access. See the Legal Disclaimer and Acceptable Use sections below.</p>
@@ -347,6 +366,8 @@
     </div>
   </div>
 </footer>
+
+<script src="site.js" defer></script>
 
 </body>
 </html>
