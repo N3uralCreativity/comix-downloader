@@ -152,7 +152,16 @@
     if (sc.help) body.appendChild(el('span', { class: 'usettings__row-hint', text: sc.help }));
     if (sc.warn) body.appendChild(el('span', { class: 'cdl-warn', text: sc.warn }));
 
-    var save = function (v) { try { onChange(key, S.validateValue ? S.validateValue(key, v) : v); } catch (_) {} };
+    // Risky changes confirm first; on cancel the control reverts to `prior`.
+    // (Glitchy settings keep their inline warning but save instantly.)
+    var prior = val;
+    var needsConfirm = sc.risk === 'risky' && !!sc.warn;
+    var commit = function (raw) {
+      var v = S.validateValue ? S.validateValue(key, raw) : raw;
+      if (needsConfirm && String(v) !== String(prior) && !window.confirm(sc.warn + '\n\nApply this change?')) return;
+      prior = v;
+      try { onChange(key, v); } catch (_) {}
+    };
 
     if (type === 'bool') {
       var cb = el('input', { type: 'checkbox' });
@@ -163,7 +172,7 @@
           cb, el('span', { class: 'usettings__switch-track' }), el('span', { class: 'usettings__switch-thumb' }),
         ]),
       ]);
-      cb.addEventListener('change', function () { row.classList.toggle('is-on', cb.checked); save(cb.checked); });
+      cb.addEventListener('change', function () { commit(cb.checked); cb.checked = !!prior; row.classList.toggle('is-on', !!prior); });
       return row;
     }
 
@@ -181,15 +190,16 @@
         if (String(val) === String(opt)) o.selected = true;
         sel.appendChild(o);
       });
-      sel.addEventListener('change', function () { save(sel.value); });
+      sel.addEventListener('change', function () { commit(sel.value); sel.value = prior; });
       nodes = [sel];
     } else if (type === 'color') {
       var col = el('input', { type: 'color', class: 'cdl-color' });
       col.value = /^#/.test(val) ? val : '#60a5fa';
       var hex = el('input', { type: 'text', class: 'cdl-input hex', maxlength: '7' });
       hex.value = String(col.value).toUpperCase();
-      col.addEventListener('change', function () { hex.value = col.value.toUpperCase(); save(col.value); });
-      hex.addEventListener('change', function () { var v = S.validateValue ? S.validateValue(key, hex.value) : hex.value; col.value = v; hex.value = String(v).toUpperCase(); save(v); });
+      var syncColor = function () { if (/^#/.test(prior)) col.value = prior; hex.value = String(prior).toUpperCase(); };
+      col.addEventListener('change', function () { commit(col.value); syncColor(); });
+      hex.addEventListener('change', function () { commit(hex.value); syncColor(); });
       nodes = [col, hex];
     } else if (type === 'float' || (type === 'int' && (sc.max - sc.min) <= 64)) {
       var step = sc.step || (type === 'float' ? 0.05 : 1);
@@ -198,20 +208,20 @@
       rng.value = val;
       var readout = el('span', { class: 'cdl-rangeval', text: fmt(parseFloat(val)) });
       rng.addEventListener('input', function () { readout.textContent = fmt(parseFloat(rng.value)); });
-      rng.addEventListener('change', function () { save(parseFloat(rng.value)); });
+      rng.addEventListener('change', function () { commit(parseFloat(rng.value)); rng.value = prior; readout.textContent = fmt(parseFloat(prior)); });
       nodes = [rng, readout];
     } else if (type === 'int') {
       var step2 = sc.step || (sc.max > 5000 ? 500 : 1);
       var num = el('input', { type: 'number', class: 'cdl-input num', min: String(sc.min), max: String(sc.max), step: String(step2) });
       num.value = val;
-      num.addEventListener('change', function () { var v = S.validateValue ? S.validateValue(key, num.value) : num.value; num.value = v; save(v); });
+      num.addEventListener('change', function () { commit(num.value); num.value = prior; });
       nodes = [num];
     } else { // string / template
       var inp = el('input', { type: 'text', class: 'cdl-input txt' });
       if (sc.maxLen) inp.maxLength = sc.maxLen;
       inp.value = val == null ? '' : val;
       if (type === 'template' && PREVIEW_CTX[key]) { preview = el('p', { class: 'cdl-preview' }); inp.addEventListener('input', function () { updatePreview(inp.value); }); }
-      inp.addEventListener('change', function () { save(inp.value); });
+      inp.addEventListener('change', function () { commit(inp.value); inp.value = prior == null ? '' : prior; updatePreview(prior); });
       nodes = [inp];
     }
 
