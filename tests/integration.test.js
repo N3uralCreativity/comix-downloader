@@ -78,6 +78,10 @@ const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includ
 check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['settings.js', 'cdl-features-core.js', 'content_title.js', 'content_features.js']));
 const bridgeCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('scripts/extract-bridge.js'));
 check('extract-bridge runs at document_start in the MAIN world', !!bridgeCs && bridgeCs.run_at === 'document_start' && bridgeCs.world === 'MAIN');
+const embedCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('cdl-embed-settings.js'));
+check('settings-embed content script is registered on comix.to', !!embedCs && embedCs.matches.indexOf('*://comix.to/*') !== -1);
+const optWar = (mf.web_accessible_resources || []).find((w) => Array.isArray(w.resources) && w.resources.includes('options.html'));
+check('options.html is web-accessible to comix.to (framable)', !!optWar && optWar.matches.indexOf('*://comix.to/*') !== -1);
 check('options_ui opens in a tab', mf.options_ui && mf.options_ui.page === 'options.html' && mf.options_ui.open_in_tab === true);
 
 // 6. analyzeImageSequence (background.js) — gate of the CDN page-count probe.

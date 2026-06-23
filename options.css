@@ -223,10 +223,19 @@ a.sub-name:hover { text-decoration: underline; }
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 8;
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   padding: 13px 28px;
-  background: rgba(19,21,31,0.97); backdrop-filter: blur(8px);
+  background: rgba(28,31,34,0.97); backdrop-filter: blur(8px);
   border-top: 1px solid var(--line-2);
   box-shadow: 0 -8px 28px rgba(0,0,0,0.4);
 }
+
+/* ── Embedded mode (inside comix.to's settings page) ─────────────────────── */
+:root[data-embed] .topbar { display: none; }
+:root[data-embed] .app { min-height: 0; }
+:root[data-embed] .layout { align-items: stretch; }
+:root[data-embed] .sidebar { top: 8px; }
+:root[data-embed] .content { padding-top: 18px; padding-bottom: 28px; }
+:root[data-embed] .savebar { position: sticky; }
+:root[data-embed] body { background: var(--bg); }
 .savebar-msg { font-size: 13px; font-weight: 600; color: var(--warn); }
 .savebar-actions { display: flex; gap: 10px; }
 

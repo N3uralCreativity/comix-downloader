@@ -18,6 +18,9 @@ dist/
 build/
 .gradle/
 
+# Local scratch / saved pages used for development (may contain personal data)
+temp/
+
 # Android local config (machine-specific)
 local.properties
 

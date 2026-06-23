@@ -42,6 +42,11 @@
       "matches": ["*://comix.to/title/*"],
       "js": ["settings.js", "cdl-features-core.js", "content_title.js", "content_features.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://comix.to/*"],
+      "js": ["cdl-embed-settings.js"],
+      "run_at": "document_idle"
     }
   ],
   "options_ui": {
@@ -52,6 +57,10 @@
     {
       "resources": ["lib/jszip.min.js"],
       "matches": ["<all_urls>"]
+    },
+    {
+      "resources": ["options.html"],
+      "matches": ["*://comix.to/*"]
     }
   ],
   "icons": {

@@ -708,8 +708,37 @@
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
+  // When loaded as ?embed=1 (inside comix.to's settings page via an iframe),
+  // strip the standalone chrome and report our height to the parent so the
+  // host can size the frame to fit — no inner scrollbar.
+  function applyEmbedMode() {
+    var params;
+    try { params = new URLSearchParams(location.search); } catch (e) { return; }
+    if (params.get('embed') !== '1') return;
+    document.documentElement.setAttribute('data-embed', '1');
+    var last = 0;
+    var post = function () {
+      var h = Math.ceil(document.documentElement.scrollHeight);
+      if (h === last) return;
+      last = h;
+      try { parent.postMessage({ type: 'cdl-embed-height', height: h }, '*'); } catch (e) {}
+    };
+    try {
+      if (window.ResizeObserver) {
+        var ro = new ResizeObserver(post);
+        ro.observe(document.documentElement);
+        if (document.body) ro.observe(document.body);
+      }
+    } catch (e) {}
+    window.addEventListener('load', post);
+    // tab switches / dynamic rows change height without a resize of the root
+    document.addEventListener('click', function () { setTimeout(post, 60); }, true);
+    [120, 400, 900].forEach(function (t) { setTimeout(post, t); });
+  }
+
   function init() {
     if (!S) { document.getElementById('content').textContent = 'Settings module failed to load.'; return; }
+    applyEmbedMode();
     var m = chrome.runtime.getManifest();
     document.getElementById('ver').textContent = 'v' + m.version;
 
