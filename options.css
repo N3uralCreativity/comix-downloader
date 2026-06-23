@@ -144,13 +144,13 @@ html, body {
 .preview code { color: var(--accent); background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
 
 /* ── Controls ────────────────────────────────────────────────────────── */
-input[type="text"], input[type="number"], select {
+input[type="text"], input[type="password"], input[type="number"], select {
   background: var(--panel-2); color: var(--fg);
   border: 1px solid var(--line-2); border-radius: var(--radius-sm);
   padding: 8px 11px; font-size: 13.5px; font-family: var(--font);
   transition: border-color .12s, box-shadow .12s;
 }
-input[type="text"] { min-width: 280px; }
+input[type="text"], input[type="password"] { min-width: 280px; }
 input[type="number"] { width: 130px; }
 select { min-width: 220px; cursor: pointer; }
 input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
