@@ -3,7 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Documentation · Comix Downloader</title>
+<title>Documentation — Comix Downloader</title>
+<meta name="description" content="How to install and use Comix Downloader on Firefox, Chrome and Android — plus CBZ/ComicInfo export, library-server push, settings, and troubleshooting.">
+<meta name="theme-color" content="#774fd0">
+<link rel="canonical" href="https://n3uralcreativity.github.io/comix-downloader/Documentation.html">
+
+<!-- Open Graph / social sharing -->
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Comix Downloader">
+<meta property="og:title" content="Documentation — Comix Downloader">
+<meta property="og:description" content="How to install and use Comix Downloader on Firefox, Chrome and Android — plus CBZ/ComicInfo export, library-server push, settings, and troubleshooting.">
+<meta property="og:url" content="https://n3uralcreativity.github.io/comix-downloader/Documentation.html">
+<meta property="og:image" content="https://n3uralcreativity.github.io/comix-downloader/assets/screenshot-title.png">
+<meta property="og:image:width" content="1524">
+<meta property="og:image:height" content="676">
+<meta property="og:image:alt" content="Comix Downloader on a comix.to title page">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Documentation — Comix Downloader">
+<meta name="twitter:description" content="How to install and use Comix Downloader on Firefox, Chrome and Android — plus CBZ/ComicInfo export, library-server push, settings, and troubleshooting.">
+<meta name="twitter:image" content="https://n3uralcreativity.github.io/comix-downloader/assets/screenshot-title.png">
+<meta name="twitter:image:alt" content="Comix Downloader on a comix.to title page">
 <link rel="icon" href="assets/icon128.png">
 <link rel="stylesheet" href="site.css">
 <style>
@@ -154,6 +173,7 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 
 <header class="nav">
   <div class="nav-inner">
@@ -162,10 +182,10 @@
       Comix Downloader
       <span class="ver">v2.3.4</span>
     </a>
-    <button class="nav-burger" aria-label="Menu" aria-expanded="false" onclick="const n=this.nextElementSibling;const o=n.classList.toggle('open');this.setAttribute('aria-expanded',o)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
-    <nav class="nav-links">
+    <nav class="nav-links" id="nav-links">
       <a href="index.html">Home</a>
       <a href="Documentation.html" class="active">Documentation</a>
       <a href="privacy.html">Privacy</a>
@@ -188,13 +208,14 @@
       <a href="#usage">How to use</a>
       <a href="#settings">Settings</a>
       <a href="#library">Output, library &amp; sync</a>
+      <a href="#push-library" class="sub">— Push to library</a>
       <a href="#warning">The background-tab warning</a>
       <a href="#faq">Troubleshooting &amp; FAQ</a>
     </nav>
   </aside>
 
   <!-- content -->
-  <main class="doc-main">
+  <main class="doc-main" id="main" tabindex="-1">
     <div class="lede-block">
       <h1>Documentation</h1>
       <p class="sub">Everything you need to install Comix Downloader and start saving chapters from comix.to. Pick your platform below.</p>
@@ -281,16 +302,16 @@
 
       <h3>Download an entire series</h3>
       <ul class="plain">
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Click <strong>Download All</strong> in the sidebar of the title page.</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> An options panel opens — pick ZIP or CBZ, metadata, and which chapters (or just hit <strong>Start</strong>). See <a href="#library">Output, library &amp; sync</a>.</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Every chapter is fetched, named and padded, then bundled into one ZIP (with a <code>.cbz</code> per chapter in CBZ mode).</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Open the extension popup to watch live progress and the activity log.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Click <strong>Download All</strong> in the sidebar of the title page.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> An options panel opens — pick ZIP or CBZ, metadata, and which chapters (or just hit <strong>Start</strong>). See <a href="#library">Output, library &amp; sync</a>.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Every chapter is fetched, named and padded, then bundled into one ZIP (with a <code>.cbz</code> per chapter in CBZ mode).</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Open the extension popup to watch live progress and the activity log.</li>
       </ul>
 
       <h3>Download a single chapter</h3>
       <ul class="plain">
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Each chapter row has its own download button on the right.</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Click it to grab just that chapter as a ZIP.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Each chapter row has its own download button on the right.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Click it to grab just that chapter as a ZIP.</li>
       </ul>
 
       <div class="shot" style="margin-top:18px;max-width:520px;">
@@ -334,7 +355,7 @@
       </div>
 
       <div class="callout" style="margin-top:24px;">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         <div>
           <strong>Risky options are clearly marked.</strong>
           <p style="margin-top:8px;">Options that can reduce reliability or quality are tagged <span class="badge risky">Risky</span> or <span class="badge glitchy">Glitchy</span>, each with an inline explanation. Saving such a change asks you to confirm first, and a <strong>Reset to defaults</strong> button (also confirmed) is always available under <em>About &amp; Backup</em>.</p>
@@ -368,9 +389,9 @@
 
       <h3>Metadata for your library</h3>
       <ul class="plain">
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>ComicInfo.xml</strong> in each chapter (series, number, count, authors, artists, genres, summary, page count) so servers index it correctly.</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Series info</strong> — saves <code>cover.jpg</code> + <code>series.json</code> (cover, author, status, description, tags) for the title.</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Folder layout</strong> — Default (<code>Ch0001</code>) or Kavita/Komga (<code>Series / Series - Chapter 0001</code>).</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>ComicInfo.xml</strong> in each chapter (series, number, count, authors, artists, genres, summary, page count) so servers index it correctly.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Series info</strong> — saves <code>cover.jpg</code> + <code>series.json</code> (cover, author, status, description, tags) for the title.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Folder layout</strong> — Default (<code>Ch0001</code>) or Kavita/Komga (<code>Series / Series - Chapter 0001</code>).</li>
       </ul>
 
       <h3>Only download what's new</h3>
@@ -382,15 +403,61 @@
       <h3>Watch for new chapters</h3>
       <p>On a title page, click <strong>☆ Subscribe</strong> to watch a series. In <em>Settings → Sync &amp; Library</em> you can set how often it checks in the background and whether to show a desktop notification or even auto-download new chapters. Background checks talk only to comix.to and are best-effort (they depend on the site's protection); browsing the site keeps them reliable.</p>
 
-      <h3>Push to your library (advanced)</h3>
-      <p>Optionally upload each finished CBZ straight to your own media server. In <em>Settings → Sync &amp; Library</em>, enter a WebDAV / HTTP endpoint (a folder your Komga/Kavita watches) and optional credentials, then <strong>Save &amp; grant access</strong>. Files are sent to <code>&lt;endpoint&gt;/&lt;Series&gt;/&lt;chapter&gt;.cbz</code>. This is the only feature that sends data off your device, always to a server <em>you</em> choose — see the <a href="privacy.html">Privacy page</a>.</p>
+      <div class="shot" style="margin-top:6px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings — Sync &amp; Library</span></div>
+        <img src="assets/settings-sync.png" alt="Settings page, Sync &amp; Library tab: subscription checks and Push to library">
+      </div>
+
+      <h3 id="push-library">Push to your library (advanced)</h3>
+      <p>Optionally upload every finished <strong>CBZ</strong> straight to your own media server as it's built, so a new chapter shows up in <strong>Komga</strong> or <strong>Kavita</strong> minutes after you hit download — no manual copying. It's the one feature that sends data off your device, and always to a server <em>you</em> choose; see the <a href="privacy.html">Privacy page</a>.</p>
+
+      <div class="callout">
+        <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <div>
+          <strong>How it actually works — read this first.</strong>
+          <p style="margin-top:8px;">The extension is a <strong>WebDAV / HTTP&nbsp;PUT client</strong>, not a Komga/Kavita plugin — it never talks to them directly. It uploads each CBZ to a folder on a server <em>you</em> run, at <code>&lt;endpoint&gt;/&lt;Series&gt;/&lt;chapter&gt;.cbz</code> (creating the per-series folder for you). <strong>Komga and Kavita then scan that same folder</strong> like any other library. So you need two things: a folder your library already watches, and a way to write into it over WebDAV/HTTP.</p>
+        </div>
+      </div>
+
+      <p><strong>Before you start</strong></p>
+      <ul class="plain">
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Set <strong>Output → Format</strong> to <strong>CBZ</strong> — push only runs for CBZ files — and keep <strong>Include ComicInfo.xml</strong> on so the server indexes series, numbers and metadata.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Have a folder served over <strong>WebDAV</strong> (or any HTTP server that accepts <code>PUT</code>) — for example <code>rclone serve webdav</code>, <a href="https://github.com/sigoden/dufs" target="_blank" rel="noopener">dufs</a>, a NAS's built-in WebDAV, or Apache/nginx with the WebDAV module — pointing at the same folder your Komga/Kavita library scans.</li>
+      </ul>
+
+      <div class="shot" style="margin-top:14px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings — Sync &amp; Library — Push to library</span></div>
+        <img src="assets/settings-push-library.png" alt="Push-to-library form filled with a WebDAV endpoint, PUT method, a username and password">
+      </div>
+
+      <ol class="steps">
+        <li>Open <strong>Settings → Sync &amp; Library</strong> and scroll to <strong>Push to library</strong>.</li>
+        <li>Tick <strong>Enable push after download</strong>.</li>
+        <li><strong>Endpoint URL</strong> — the WebDAV/HTTP base folder your library watches, e.g.&nbsp;<code>https://nas.homelab.example/webdav/comics</code>. Each new series becomes a sub-folder under it.</li>
+        <li><strong>Method</strong> — leave on <strong>PUT (WebDAV / most servers)</strong>; only switch to <strong>POST</strong> if your server specifically requires it.</li>
+        <li><strong>Username / Password</strong> — the credentials of that WebDAV/HTTP server (<em>not</em> your Komga/Kavita login). Leave blank if it's open on your LAN.</li>
+        <li>Click <strong>Save &amp; grant access</strong> and approve the one-time browser permission for that server, then <strong>Test connection</strong> — you want <code>✓ Server reachable</code>.</li>
+      </ol>
+      <p>Done. From now on every chapter you download as CBZ is also <code>PUT</code> to <code>&lt;endpoint&gt;/&lt;Series&gt;/&lt;chapter&gt;.cbz</code>, quietly in the background. Watch the toolbar popup's activity log for <em>Library push ok</em> / <em>Library push failed</em> lines.</p>
+
+      <p style="margin-top:18px;"><strong>Setting up Komga.</strong> Point a Komga <strong>Library</strong> at your comics root folder. Komga treats each sub-folder as a <strong>series</strong> and the CBZ files inside as its books — exactly the <code>&lt;Series&gt;/&lt;chapter&gt;.cbz</code> layout the extension writes — so set the <strong>Endpoint URL</strong> to the WebDAV path that maps to that library root. Komga reads the embedded <strong>ComicInfo.xml</strong> for titles, numbering and metadata, and shows new chapters after its next scan (it scans on a schedule; you can also run <em>Scan library files</em> to pick them up immediately).</p>
+
+      <p style="margin-top:14px;"><strong>Setting up Kavita.</strong> Create a Kavita <strong>library</strong> (Comic/Manga) on that same WebDAV-served folder. Kavita also reads <strong>ComicInfo.xml</strong>; for the cleanest grouping set the extension's <strong>Folder layout</strong> (under <em>Output &amp; Library</em>) to <strong>Kavita/Komga</strong>, which names files <code>Series / Series - Chapter 0001</code>. Kavita imports new files on its scheduled scan — enable its <strong>folder/library watching</strong> if you want them added automatically the moment they finish uploading.</p>
+
+      <div class="callout">
+        <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div>
+          <strong>Send credentials over HTTPS.</strong>
+          <p style="margin-top:8px;">Username and password are sent as HTTP Basic auth (base64, <em>not</em> encryption). Over anything but localhost, use an <code>https://</code> endpoint so they aren't exposed on the network. They're stored locally on your device, never sent to the developer, and are left out of the settings-export file.</p>
+        </div>
+      </div>
     </section>
 
     <!-- warning -->
     <section class="doc-sec" id="warning">
       <h2>The background-tab warning</h2>
       <div class="callout">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         <div>
           <strong>Don't close the browser while a series download is in progress.</strong>
           <p style="margin-top:8px;">During a download session the extension automatically opens and closes background browser tabs to extract each chapter. This is completely normal. Your current tab is never touched, but you may notice tabs briefly appearing in your taskbar.</p>
@@ -505,6 +572,8 @@
     onScroll();
   })();
 </script>
+
+<script src="site.js" defer></script>
 
 </body>
 </html>
