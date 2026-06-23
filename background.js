@@ -484,6 +484,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     testLibrary(message.config).then((r) => sendResponse(r)).catch((e) => sendResponse({ ok: false, error: e.message }));
     return true;
   }
+  // Request the optional host permission for a library server. Content scripts
+  // can't call chrome.permissions, so the native settings embed routes it here.
+  // (A user gesture may not carry across the message; the caller falls back to
+  // opening the options page, where the grant always works.)
+  if (message.action === 'libraryGrant') {
+    try {
+      chrome.permissions.request({ origins: [message.origin] }, (granted) => {
+        const err = chrome.runtime.lastError;
+        sendResponse({ ok: !err && !!granted, granted: !!granted, error: err && err.message });
+      });
+    } catch (e) { sendResponse({ ok: false, error: e.message }); }
+    return true;
+  }
+  if (message.action === 'openOptions') {
+    try {
+      if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
+      else chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
+    } catch (_) {}
+    sendResponse({ ok: true });
+    return true;
+  }
 
 });
 
