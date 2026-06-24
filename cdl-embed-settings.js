@@ -510,6 +510,46 @@
     check();
   }
 
+  // ── Mirror comix's active theme into storage ────────────────────────────────
+  // The toolbar popup is a separate extension page that can't read comix's CSS,
+  // so we snapshot the live theme tokens here; the popup applies them on open.
+  var _lastThemeSig = '';
+  function captureSiteTheme() {
+    try {
+      var cs = getComputedStyle(document.documentElement);
+      var g = function (n) { return (cs.getPropertyValue(n) || '').trim(); };
+      var bg = g('--bg'); if (!bg) return;
+      var rgb = g('--accent-rgb') || '135 101 235';
+      var lum = (function () {
+        var m = bg.match(/#?([0-9a-fA-F]{6})/);
+        if (m) { var h = m[1]; return (0.2126 * parseInt(h.slice(0, 2), 16) + 0.7152 * parseInt(h.slice(2, 4), 16) + 0.0722 * parseInt(h.slice(4, 6), 16)) / 255; }
+        var r = bg.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+        return r ? (0.2126 * +r[1] + 0.7152 * +r[2] + 0.0722 * +r[3]) / 255 : 0.1;
+      })();
+      var light = lum > 0.5;
+      var theme = {
+        name: document.documentElement.getAttribute('data-theme') || 'main',
+        bg: bg, panel: g('--surface') || bg,
+        line: light ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.07)',
+        line2: light ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.11)',
+        fg: g('--text') || (light ? '#222' : '#ddd'), fgStrong: g('--text-emphasis') || (light ? '#000' : '#fff'),
+        muted: g('--text-2') || '#8a8a8a', muted2: g('--text-3') || '#666',
+        accent: g('--accent') || '#8765eb', accentInk: g('--accent-ink') || (light ? '#ffffff' : '#0b0b0b'),
+        accentBg: 'rgb(' + rgb + ' / 0.16)', accentLine: 'rgb(' + rgb + ' / 0.32)', accentSoft: 'rgb(' + rgb + ' / 0.18)',
+        ok: g('--success') || '#22c55e', warn: g('--warning') || '#eab308', err: g('--danger') || '#ef4444',
+      };
+      var sig = theme.name + '|' + theme.accent + '|' + theme.bg;
+      if (sig === _lastThemeSig) return;
+      _lastThemeSig = sig;
+      chrome.storage.local.set({ cdlSiteTheme: theme });
+    } catch (_) {}
+  }
+  function installThemeWatcher() {
+    captureSiteTheme();
+    try { new MutationObserver(captureSiteTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] }); } catch (_) {}
+    [400, 1500].forEach(function (t) { setTimeout(captureSiteTheme, t); });
+  }
+
   // ── lifecycle (SPA-aware) ───────────────────────────────────────────────────
   function sync() {
     if (onSettingsPage()) { startWatching(); ensureNavItem(); }
@@ -549,4 +589,5 @@
   window.addEventListener('cdl:locationchange', sync);
   sync();
   installQuickDialogWatcher();
+  installThemeWatcher();
 })();

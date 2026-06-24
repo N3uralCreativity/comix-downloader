@@ -7,11 +7,15 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* Defaults = comix "Dark" theme; popup.js overrides these with comix's
+       actual live theme (captured by the content script) when available. */
     :root {
       --bg: #181a1c; --panel: #202326; --line: rgba(255,255,255,0.07);
       --line-2: rgba(255,255,255,0.11); --fg: #d4d4d4; --fg-strong: #f5f5f5;
       --muted: #a0a0a0; --muted-2: #707070; --accent: #8765eb;
-      --accent-bg: rgba(135,101,235,0.16); --ok: #22c55e; --warn: #eab308; --err: #ef4444;
+      --accent-bg: rgba(135,101,235,0.16); --accent-line: rgba(135,101,235,0.3);
+      --accent-soft: rgba(135,101,235,0.18); --accent-ink: #1a1133;
+      --ok: #22c55e; --warn: #eab308; --err: #ef4444;
     }
 
     body {
@@ -36,7 +40,7 @@
     .header-sub { font-size: 11px; color: var(--muted-2); margin-top: 2px; }
     .header-version {
       font-size: 10px; font-weight: 600; color: var(--accent);
-      background: var(--accent-bg); border: 1px solid rgba(135,101,235,0.3);
+      background: var(--accent-bg); border: 1px solid var(--accent-line);
       border-radius: 5px; padding: 2px 6px; flex-shrink: 0;
     }
 
@@ -49,8 +53,8 @@
       transition: background .15s, border-color .15s;
     }
     .btn svg { flex-shrink: 0; }
-    .btn-primary { background: var(--accent); color: #1a1133; }
-    .btn-primary:hover { background: #9b80ee; }
+    .btn-primary { background: var(--accent); color: var(--accent-ink); }
+    .btn-primary:hover { filter: brightness(1.12); }
     .btn-ghost { background: rgba(255,255,255,0.05); border-color: var(--line-2); color: var(--fg); }
     .btn-ghost:hover { background: rgba(255,255,255,0.1); }
     .pill-new { font-size: 9px; font-weight: 800; letter-spacing: .04em; color: #07101f; background: #fff; padding: 1px 5px; border-radius: 4px; }
@@ -89,7 +93,7 @@
     .log-ts { color: var(--muted-2); flex-shrink: 0; font-variant-numeric: tabular-nums; }
     .log-badge { flex-shrink: 0; font-weight: 700; font-size: 10px; padding: 0 4px; border-radius: 3px; line-height: 1.6; align-self: flex-start; }
     .log-msg { color: #8892b0; flex: 1; }
-    .log-entry.info  .log-badge { background: rgba(135,101,235,.18); color: var(--accent); }
+    .log-entry.info  .log-badge { background: var(--accent-soft); color: var(--accent); }
     .log-entry.ok    .log-badge { background: rgba(34,197,94,.18); color: var(--ok); }
     .log-entry.warn  .log-badge { background: rgba(234,179,8,.18); color: var(--warn); }
     .log-entry.error .log-badge { background: rgba(239,68,68,.18);  color: var(--err); }
@@ -109,7 +113,14 @@
 <body>
 
   <div class="header">
-    <img class="header-icon" src="icons/icon48.png" alt="">
+    <svg class="header-icon" viewBox="0 0 128 128" aria-hidden="true">
+      <rect width="128" height="128" rx="28" fill="var(--bg)"></rect>
+      <g fill="none" stroke="var(--accent)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="64" y1="28" x2="64" y2="72"></line>
+        <path d="M42 54 64 76 86 54"></path>
+        <line x1="34" y1="98" x2="94" y2="98"></line>
+      </g>
+    </svg>
     <div class="header-info">
       <div class="header-title">Comix Downloader</div>
       <div class="header-sub">comix.to chapter downloader</div>

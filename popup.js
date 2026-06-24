@@ -66,9 +66,30 @@ function openSettings() {
   try { chrome.storage.local.set({ cdlOpenExtSettings: Date.now() }, go); } catch (e) { go(); }
 }
 
+// Apply comix.to's live theme (snapshotted into storage by the content script)
+// so the popup matches the site. Falls back to the CSS defaults when unknown.
+function applySiteTheme() {
+  try {
+    chrome.storage.local.get('cdlSiteTheme', (r) => {
+      const t = r && r.cdlSiteTheme;
+      if (!t) return;
+      const s = document.documentElement.style;
+      const map = {
+        '--bg': t.bg, '--panel': t.panel, '--line': t.line, '--line-2': t.line2,
+        '--fg': t.fg, '--fg-strong': t.fgStrong, '--muted': t.muted, '--muted-2': t.muted2,
+        '--accent': t.accent, '--accent-ink': t.accentInk, '--accent-bg': t.accentBg,
+        '--accent-line': t.accentLine, '--accent-soft': t.accentSoft,
+        '--ok': t.ok, '--warn': t.warn, '--err': t.err,
+      };
+      Object.keys(map).forEach((k) => { if (map[k]) s.setProperty(k, map[k]); });
+    });
+  } catch (e) {}
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
+  applySiteTheme();
   // Version from manifest
   const manifest = chrome.runtime.getManifest();
   const verEl = document.getElementById('ext-version');
