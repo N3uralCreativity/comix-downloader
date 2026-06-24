@@ -521,7 +521,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function setThemedIcon(theme) {
   try {
     if (!chrome.action || !chrome.action.setIcon) return;
-    const base = (theme && theme.name === 'main') ? 'icons/icon-cyan' : 'icons/icon';
+    const name = theme && theme.name;
+    // Main = cyan on dark, Light = purple on white, Dark/default = purple on dark.
+    const base = name === 'main' ? 'icons/icon-cyan' : name === 'light' ? 'icons/icon-light' : 'icons/icon';
     chrome.action.setIcon({ path: { 16: base + '16.png', 48: base + '48.png', 128: base + '128.png' } });
   } catch (_) {}
 }
