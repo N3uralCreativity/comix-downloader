@@ -62,6 +62,12 @@ function renderLogs(logs) {
 // page is still reachable from the browser's extension menu → Options.)
 var COMIX_SETTINGS_URL = 'https://comix.to/user?tab=settings';
 function openSettings() {
+  // Dismiss the "NEW" indicator the instant Settings is opened: hide the pill
+  // now, and let the background clear the notices + toolbar badge (it persists
+  // even as this popup closes).
+  var pill = document.getElementById('settings-new');
+  if (pill) pill.hidden = true;
+  try { chrome.runtime.sendMessage({ action: 'dismissNew' }); } catch (e) {}
   var go = function () { chrome.tabs.create({ url: COMIX_SETTINGS_URL }); window.close(); };
   try { chrome.storage.local.set({ cdlOpenExtSettings: Date.now() }, go); } catch (e) { go(); }
 }

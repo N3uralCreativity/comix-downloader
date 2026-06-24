@@ -511,6 +511,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true });
     return false;
   }
+  // Popup's Settings button was clicked → dismiss the "what's new" notices and
+  // the toolbar NEW badge (until the next update).
+  if (message.action === 'dismissNew') {
+    try {
+      const ver = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || null;
+      chrome.storage.local.set({
+        cdlFeaturesNotice: { active: false, seenVersion: ver },
+        cdlConcurrencyNotice: { active: false, seenVersion: ver },
+      });
+      if (chrome.action && chrome.action.getBadgeText) {
+        chrome.action.getBadgeText({}, (txt) => { if (txt === 'NEW') chrome.action.setBadgeText({ text: '' }); });
+      }
+    } catch (_) {}
+    sendResponse({ ok: true });
+    return false;
+  }
 
 });
 
