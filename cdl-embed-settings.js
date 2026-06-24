@@ -479,6 +479,37 @@
     if (item && item.id !== NAV_ID && document.getElementById(VIEW_ID)) deactivate();
   }, true);
 
+  // ── comix's quick-settings popover (gear in the top bar) ─────────────────────
+  // Add a clear row that jumps to the full extension settings with our section
+  // already open. We clone comix's own "Content preferences" row so it looks
+  // 100% native, then repoint it.
+  function openExtSettings() {
+    var go = function () { location.href = 'https://comix.to/user?tab=settings'; };
+    try { chrome.storage.local.set({ cdlOpenExtSettings: Date.now() }, go); } catch (_) { go(); }
+  }
+  function injectQuickLink(dialog) {
+    try {
+      if (!dialog || dialog.querySelector('#cdl-quick-link')) return;
+      var orig = dialog.querySelector('.settings-advanced-row');
+      if (!orig || !orig.parentNode) return;
+      var clone = orig.cloneNode(true);
+      clone.id = 'cdl-quick-link';
+      var setLeaf = function (find, to) {
+        var els = clone.querySelectorAll('*');
+        for (var i = 0; i < els.length; i++) { if (!els[i].children.length && (els[i].textContent || '').trim() === find) { els[i].textContent = to; return; } }
+      };
+      setLeaf('Content preferences', 'Comix Downloader settings');
+      setLeaf('Types, demographics & blocked genres', 'Downloads, library, push to Komga / Kavita & more');
+      clone.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); openExtSettings(); }, true);
+      orig.parentNode.insertBefore(clone, orig.nextSibling);
+    } catch (_) {}
+  }
+  function installQuickDialogWatcher() {
+    var check = function () { var d = document.querySelector('.settings-dialog'); if (d) injectQuickLink(d); };
+    try { new MutationObserver(check).observe(document.documentElement, { childList: true, subtree: true }); } catch (_) {}
+    check();
+  }
+
   // ── lifecycle (SPA-aware) ───────────────────────────────────────────────────
   function sync() {
     if (onSettingsPage()) { startWatching(); ensureNavItem(); }
@@ -517,4 +548,5 @@
   window.addEventListener('hashchange', sync);
   window.addEventListener('cdl:locationchange', sync);
   sync();
+  installQuickDialogWatcher();
 })();
