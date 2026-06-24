@@ -508,6 +508,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 });
 
+// ── Toolbar icon follows comix.to's accent ────────────────────────────────────
+// The content script snapshots comix's theme into cdlSiteTheme; we re-render the
+// browser-action icon (download glyph) in that accent whenever it changes.
+function _roundRect(ctx, x, y, w, h, r) {
+  if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); return; }
+  ctx.beginPath(); ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function renderActionIcon(accent) {
+  try {
+    if (typeof OffscreenCanvas === 'undefined' || !chrome.action || !chrome.action.setIcon) return;
+    const imageData = {};
+    for (const n of [16, 32, 48]) {
+      const ctx = new OffscreenCanvas(n, n).getContext('2d');
+      const s = n / 128;
+      ctx.clearRect(0, 0, n, n);
+      ctx.fillStyle = '#1c1f22'; _roundRect(ctx, 0, 0, n, n, 28 * s); ctx.fill();
+      ctx.strokeStyle = accent || '#8765eb'; ctx.lineWidth = 11 * s; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(64 * s, 28 * s); ctx.lineTo(64 * s, 72 * s); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(42 * s, 54 * s); ctx.lineTo(64 * s, 76 * s); ctx.lineTo(86 * s, 54 * s); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(34 * s, 98 * s); ctx.lineTo(94 * s, 98 * s); ctx.stroke();
+      imageData[n] = ctx.getImageData(0, 0, n, n);
+    }
+    chrome.action.setIcon({ imageData });
+  } catch (_) {}
+}
+try {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.cdlSiteTheme) {
+      const t = changes.cdlSiteTheme.newValue;
+      if (t && t.accent) renderActionIcon(t.accent);
+    }
+  });
+  chrome.storage.local.get('cdlSiteTheme', (r) => { const t = r && r.cdlSiteTheme; if (t && t.accent) renderActionIcon(t.accent); });
+} catch (_) {}
+
 // ── Logique principale ────────────────────────────────────────────────────────
 
 // Extraction tabs are opened in the background (active:false). comix.to's reader
