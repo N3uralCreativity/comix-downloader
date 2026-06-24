@@ -546,6 +546,8 @@
     if (sig === _lastThemeSig) return;
     _lastThemeSig = sig;
     try { chrome.storage.local.set({ cdlSiteTheme: theme }); } catch (_) {}
+    // Direct nudge so the background recolours the toolbar icon promptly.
+    try { chrome.runtime.sendMessage({ action: 'cdlIconTheme', name: theme.name }); } catch (_) {}
   }
   function installThemeWatcher() {
     captureSiteTheme();
