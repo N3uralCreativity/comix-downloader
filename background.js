@@ -143,19 +143,24 @@ function restoreIdleBadge() {
 }
 
 // ── Right-click context menu ──────────────────────────────────────────────────
+// setupContextMenus runs on both onInstalled and onStartup; if those race, the
+// second create() hits a "duplicate id" — harmless, but we read runtime.lastError
+// in each callback so it never surfaces as an "Unchecked runtime.lastError".
 function setupContextMenus() {
   if (!chrome.contextMenus) return;
+  const swallow = () => { void chrome.runtime.lastError; };
   try {
     chrome.contextMenus.removeAll(() => {
+      swallow();
       try {
         chrome.contextMenus.create({
           id: 'cdl-dl-chapter', title: 'Download this chapter',
           contexts: ['link'], targetUrlPatterns: ['*://comix.to/title/*']
-        });
+        }, swallow);
         chrome.contextMenus.create({
           id: 'cdl-dl-series', title: 'Download whole series (open options)',
           contexts: ['page'], documentUrlPatterns: ['*://comix.to/title/*']
-        });
+        }, swallow);
       } catch (_) {}
     });
   } catch (_) {}
