@@ -864,6 +864,51 @@ async function collectChaptersFromRenderedPagination() {
   return unique(allUrls);
 }
 
+// Each chapter row on the new title page is `.mchap-row` and carries its
+// scanlation group in `.mchap-row__group` (name in the trailing <span>, id in
+// the /groups/<id> href). We read full rows — one per chapter PER group, since
+// comix's "All groups" view lists every group's upload — so the download panel
+// can offer a translator filter. Returns [] on the old/legacy layout.
+function extractChapterRowsFromDom(root = getChaptersSection()) {
+  const rows = [];
+  root.querySelectorAll('.mchap-row').forEach((row) => {
+    const a = row.querySelector('a.mchap-row__primary[href]') || row.querySelector('a[href*="-chapter-"]');
+    if (!a) return;
+    const url = normalizeChapterUrl(a.getAttribute('href') || a.href);
+    if (!/\/\d+-chapter-/i.test(url)) return;
+    const gEl = row.querySelector('.mchap-row__group');
+    const group = gEl ? ((gEl.querySelector('span') || gEl).textContent || '').trim() : '';
+    const groupId = gEl ? (((gEl.getAttribute('href') || '').match(/\/groups\/(\d+)/) || [])[1] || '') : '';
+    rows.push({ chapterUrl: url, chapterLabel: extractChapterLabel(url), group, groupId });
+  });
+  return rows;
+}
+
+async function collectChapterRowsWithGroups() {
+  const seen = new Set();
+  const rows = [];
+  const add = (rs) => { for (const r of rs) { if (!seen.has(r.chapterUrl)) { seen.add(r.chapterUrl); rows.push(r); } } };
+  add(extractChapterRowsFromDom());
+  if (!rows.length) return rows; // not the new chapter-list DOM → caller falls back
+
+  const initialRange = getChapterListRange(getChaptersSection());
+  if (initialRange && initialRange.to < initialRange.total) {
+    const originalPage = getCurrentRenderedChapterPage();
+    const originalScrollY = window.scrollY;
+    if (originalPage !== 1) await clickChapterPagerButton('First page');
+    for (let i = 0; i < MAX_CHAPTER_LIST_PAGES; i++) {
+      add(extractChapterRowsFromDom());
+      const range = getChapterListRange(getChaptersSection());
+      if (!range || range.to >= range.total) break;
+      const moved = await clickChapterPagerButton('Next page');
+      if (!moved) break;
+    }
+    await restoreRenderedChapterPage(originalPage);
+    window.scrollTo(0, originalScrollY);
+  }
+  return rows;
+}
+
 /**
  * Collecte TOUTES les URLs de chapitres :
  *  1. Read embedded page payloads when present.
@@ -1188,20 +1233,25 @@ function injectDownloadAllButton() {
     btn.disabled = true;
     _setHTML(btn, `${ICON_DOWNLOAD} Loading chapters…`);
 
-    let chapters;
+    let rows;
     try {
-      chapters = await getAllChapters();
+      rows = await collectChapterRowsWithGroups();
+      if (!rows.length) {
+        // Legacy layout (no .mchap-row): fall back to the URL-only scraper.
+        const legacy = await getAllChapters();
+        rows = legacy.map((c) => ({ chapterUrl: c.chapterUrl, chapterLabel: c.chapterLabel, group: '', groupId: '' }));
+      }
     } catch (_) {
-      chapters = [];
+      rows = [];
     } finally {
       btn.disabled = false;
       _setHTML(btn, `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`);
     }
 
-    if (chapters.length === 0) { alert('No chapters found on this page.'); return; }
+    if (rows.length === 0) { alert('No chapters found on this page.'); return; }
 
     // Open the options panel; it launches the download (or export) on Start.
-    showDownloadAllOptionsPanel(getMangaName(), chapters);
+    showDownloadAllOptionsPanel(getMangaName(), rows);
   });
 
   if (mode === 'floating') document.body.appendChild(btn);
@@ -1338,7 +1388,7 @@ function injectOptsStyles() {
   document.head.appendChild(style);
 }
 
-async function showDownloadAllOptionsPanel(mangaName, chapters) {
+async function showDownloadAllOptionsPanel(mangaName, rows) {
   injectOptsStyles();
   const meta = scrapeSeriesMeta();
   const [prefs, downloaded] = await Promise.all([getSeriesPrefs(), getDownloadedKeySet()]);
@@ -1350,7 +1400,28 @@ async function showDownloadAllOptionsPanel(mangaName, chapters) {
     includeSeriesMeta: prefs.includeSeriesMeta != null ? prefs.includeSeriesMeta : !!CFG['output.includeSeriesMeta'],
     folderLayout: prefs.folderLayout || CFG['output.folderLayout'] || 'default',
   };
-  const newCount = chapters.filter((c) => !downloaded.has(chapterKeyOf(c.chapterLabel))).length;
+
+  // ── Translator / group filter ──────────────────────────────────────────────
+  // `rows` holds one entry per chapter PER group; for a given group we collapse
+  // to one chapter per number (newest upload first), ascending. "All groups"
+  // collapses across every group — the original (single-source-per-chapter) set.
+  const GROUP_ALL = '__all';
+  const dedupeByLabel = (rs) => {
+    const seen = new Set(); const out = [];
+    for (const r of rs) { if (!seen.has(r.chapterLabel)) { seen.add(r.chapterLabel); out.push(r); } }
+    return out.sort((a, b) => parseFloat(a.chapterLabel.replace(/[^0-9.]/g, '')) - parseFloat(b.chapterLabel.replace(/[^0-9.]/g, '')));
+  };
+  const groupTally = new Map();
+  rows.forEach((r) => { const g = r.group || 'Unknown group'; if (!groupTally.has(g)) groupTally.set(g, new Set()); groupTally.get(g).add(r.chapterLabel); });
+  const groupList = [...groupTally.entries()].map(([name, set]) => ({ name, count: set.size }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const hasGroups = groupList.length > 1;
+  const baseFor = (g) => (g === GROUP_ALL) ? dedupeByLabel(rows) : dedupeByLabel(rows.filter((r) => (r.group || 'Unknown group') === g));
+
+  let currentGroup = GROUP_ALL;
+  let chapters = baseFor(currentGroup);
+  const newCountOf = (set) => set.filter((c) => !downloaded.has(chapterKeyOf(c.chapterLabel))).length;
+  let newCount = newCountOf(chapters);
   const hasManifest = downloaded.size > 0;
   const defaultScope = (CFG['download.skipDownloaded'] !== false && newCount > 0 && newCount < chapters.length) ? 'new' : 'all';
 
@@ -1383,11 +1454,19 @@ async function showDownloadAllOptionsPanel(mangaName, chapters) {
           <option value="kavita">Kavita / Komga (Series / Series - Chapter 0001)</option>
         </select>
       </div>
+      ${hasGroups ? `
+      <div class="cdl-op-field">
+        <label for="cdl-op-group">Translator / group</label>
+        <select id="cdl-op-group">
+          <option value="${GROUP_ALL}">All groups (${dedupeByLabel(rows).length})</option>
+          ${groupList.map((g) => `<option value="${escapeHtml(g.name)}">${escapeHtml(g.name)} (${g.count})</option>`).join('')}
+        </select>
+      </div>` : ''}
       <div>
         <div class="cdl-op-sec-label">Which chapters</div>
         <div class="cdl-op-scope">
-          <label><input type="radio" name="cdl-op-scope" value="all"> All chapters (${chapters.length})</label>
-          <label><input type="radio" name="cdl-op-scope" value="new"${newCount === 0 ? ' disabled' : ''}> Only new — not yet downloaded (${newCount})</label>
+          <label><input type="radio" name="cdl-op-scope" value="all"> All chapters (<span id="cdl-op-all-n">${chapters.length}</span>)</label>
+          <label><input type="radio" name="cdl-op-scope" value="new"${newCount === 0 ? ' disabled' : ''}> Only new — not yet downloaded (<span id="cdl-op-new-n">${newCount}</span>)</label>
           <label><input type="radio" name="cdl-op-scope" value="range"> <span class="cdl-op-range">Range&nbsp;<input type="number" id="cdl-op-from" min="1" max="${chapters.length}" value="1">to<input type="number" id="cdl-op-to" min="1" max="${chapters.length}" value="${chapters.length}"></span></label>
         </div>
       </div>
@@ -1449,6 +1528,29 @@ async function showDownloadAllOptionsPanel(mangaName, chapters) {
   panel.querySelectorAll('input[name="cdl-op-scope"], #cdl-op-from, #cdl-op-to')
     .forEach((el) => el.addEventListener('input', updateEstimate));
   updateEstimate();
+
+  // Switching translator rebuilds the active chapter set and its counts.
+  if (hasGroups) {
+    const groupSel = q('#cdl-op-group');
+    groupSel.value = GROUP_ALL;
+    groupSel.addEventListener('change', () => {
+      currentGroup = groupSel.value;
+      chapters = baseFor(currentGroup);
+      newCount = newCountOf(chapters);
+      q('#cdl-op-all-n').textContent = String(chapters.length);
+      q('#cdl-op-new-n').textContent = String(newCount);
+      const newRadio = scopeRadio('new');
+      if (newRadio) {
+        newRadio.disabled = newCount === 0;
+        if (newCount === 0 && currentScope() === 'new') scopeRadio('all').checked = true;
+      }
+      const fromI = q('#cdl-op-from'); const toI = q('#cdl-op-to');
+      fromI.max = String(chapters.length); toI.max = String(chapters.length);
+      toI.value = String(chapters.length);
+      if (parseInt(fromI.value, 10) > chapters.length) fromI.value = '1';
+      updateEstimate();
+    });
+  }
 
   const close = () => backdrop.remove();
   q('#cdl-op-close').addEventListener('click', close);
