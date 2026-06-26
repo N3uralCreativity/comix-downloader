@@ -1449,6 +1449,15 @@ function getImageExtension(src, contentType = '') {
   return 'webp';
 }
 
+// comix.to ships more than one tile-scramble variant (the X-Scramble-Algo header
+// changed in 2026). They share the same xorshift+Durstenfeld generator and differ
+// only in the PRNG's init constant — and the response headers don't reliably say
+// which. So we descramble with each known constant and keep the result whose tile
+// seams join most smoothly: a wrong permutation leaves hard edges at every tile
+// boundary, the right one is continuous. Content-based, so it needs no per-image
+// metadata and degrades gracefully if a new variant appears.
+const SCRAMBLE_INIT_CONSTS = [0xe42f, 0x1];
+
 async function unscrambleImageBlob(blob, { seed, cols, rows }) {
   if (typeof createImageBitmap !== 'function') {
     throw new Error('createImageBitmap is unavailable');
@@ -1456,25 +1465,32 @@ async function unscrambleImageBlob(blob, { seed, cols, rows }) {
 
   const bitmap = await createImageBitmap(blob);
   try {
-    const canvas = createZipCanvas(bitmap.width, bitmap.height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('2D canvas context is unavailable');
-
     const tileW = Math.floor(bitmap.width / cols);
     const tileH = Math.floor(bitmap.height / rows);
     if (tileW < 1 || tileH < 1) throw new Error('invalid scramble grid');
+    const count = cols * rows;
+    const multi = count > 1 && SCRAMBLE_INIT_CONSTS.length > 1;
 
-    const permutation = makeScramblePermutation(seed, cols * rows);
-    for (let i = 0; i < permutation.length; i++) {
-      const srcX = (i % cols) * tileW;
-      const srcY = Math.floor(i / cols) * tileH;
-      const dstIndex = permutation[i];
-      const dstX = (dstIndex % cols) * tileW;
-      const dstY = Math.floor(dstIndex / cols) * tileH;
-      ctx.drawImage(bitmap, srcX, srcY, tileW, tileH, dstX, dstY, tileW, tileH);
+    let best = null;
+    for (const initConst of SCRAMBLE_INIT_CONSTS) {
+      const canvas = createZipCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('2D canvas context is unavailable');
+
+      const permutation = makeScramblePermutation(seed, count, initConst);
+      for (let i = 0; i < count; i++) {
+        const srcX = (i % cols) * tileW;
+        const srcY = Math.floor(i / cols) * tileH;
+        const dstIndex = permutation[i];
+        ctx.drawImage(bitmap, srcX, srcY, tileW, tileH, (dstIndex % cols) * tileW, Math.floor(dstIndex / cols) * tileH, tileW, tileH);
+      }
+
+      const score = multi ? scrambleSeamScore(ctx, tileW * cols, tileH * rows, tileW, tileH, cols, rows) : 0;
+      if (!best || score < best.score) best = { canvas, score };
+      if (!multi) break;
     }
 
-    const outBlob = await canvasToBlob(canvas, 'image/png');
+    const outBlob = await canvasToBlob(best.canvas, 'image/png');
     return {
       buffer: await outBlob.arrayBuffer(),
       ext: 'png',
@@ -1482,6 +1498,30 @@ async function unscrambleImageBlob(blob, { seed, cols, rows }) {
   } finally {
     bitmap.close?.();
   }
+}
+
+// Total colour discontinuity along the internal tile seams. Low = tiles line up
+// (correct descramble); high = visible seams (wrong permutation).
+function scrambleSeamScore(ctx, W, H, tileW, tileH, cols, rows) {
+  let data;
+  try { data = ctx.getImageData(0, 0, W, H).data; } catch (_) { return Infinity; }
+  const STEP = 3;
+  let s = 0;
+  for (let c = 1; c < cols; c++) {
+    const x = c * tileW;
+    for (let y = 0; y < H; y += STEP) {
+      const a = (y * W + x - 1) * 4, b = (y * W + x) * 4;
+      s += Math.abs(data[a] - data[b]) + Math.abs(data[a + 1] - data[b + 1]) + Math.abs(data[a + 2] - data[b + 2]);
+    }
+  }
+  for (let r = 1; r < rows; r++) {
+    const y = r * tileH;
+    for (let x = 0; x < W; x += STEP) {
+      const a = ((y - 1) * W + x) * 4, b = (y * W + x) * 4;
+      s += Math.abs(data[a] - data[b]) + Math.abs(data[a + 1] - data[b + 1]) + Math.abs(data[a + 2] - data[b + 2]);
+    }
+  }
+  return s;
 }
 
 function createZipCanvas(width, height) {
@@ -1516,13 +1556,16 @@ function canvasToBlob(canvas, type, quality) {
 // the X-Scramble-Seed header value; `count` = cols*rows from X-Scramble-Grid.
 // Reverse-engineered (v2.3.3) by observing the reader's own descramble blits across
 // forced seeds/grids and recovering the generator via the CRT of large grids:
-//   • PRNG state init: 0xe42f XOR (seed with its low bit cleared)  [the low bit is ignored]
+//   • PRNG state init: initConst XOR (seed with its low bit cleared)  [low bit ignored]
 //   • PRNG step: xorshift32 with shifts (13, 17, 5)
 //   • shuffle: Durstenfeld (Fisher-Yates), i = count-1 .. 1, j = state % (i+1)
 // order[srcTile] = destPosition, exactly what unscrambleImageBlob redraws.
-function makeScramblePermutation(seed, count) {
+// comix's 2026 "algo 3" uses the same generator but with two different init
+// constants (0xe42f and 0x1) across pages; unscrambleImageBlob tries both and
+// keeps whichever produces continuous tile seams.
+function makeScramblePermutation(seed, count, initConst = 0xe42f) {
   const order = Array.from({ length: count }, (_, i) => i);
-  let state = (0xe42f ^ ((seed >>> 1) << 1)) >>> 0;
+  let state = (initConst ^ ((seed >>> 1) << 1)) >>> 0;
 
   for (let remaining = count; remaining >= 2; remaining--) {
     state = (state ^ (state << 13)) >>> 0;

@@ -139,6 +139,12 @@ check('descramble: output is a valid permutation of 0..N-1', (() => {
   const p = makeScramblePermutation(3131104163, 25);
   return p.length === 25 && [...p].sort((a, b) => a - b).every((v, i) => v === i);
 })());
+// comix's 2026 "algo 3" reuses the generator with init constant 0x1 on some
+// pages. Ground truth captured from the reader's own descramble of a real
+// scrambled page (seed 3620498592, 5x5) — see unscrambleImageBlob's seam pick.
+check('descramble: algo-3 0x1 init variant (real seed 3620498592, 5x5)',
+  JSON.stringify(makeScramblePermutation(3620498592, 25, 0x1)) ===
+  JSON.stringify([20, 15, 0, 12, 1, 10, 9, 18, 6, 7, 17, 8, 5, 2, 16, 19, 22, 3, 11, 13, 23, 14, 4, 24, 21]));
 
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
