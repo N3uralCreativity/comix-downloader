@@ -29,8 +29,16 @@
   var HIDDEN_CLASS = 'cdl-dupe-hidden';
   var MAX_PAGES = 100;
 
-  var pathParts = location.pathname.split('/').filter(Boolean);
-  var isReader = pathParts[0] === 'title' && pathParts.length >= 3 && /^\d+/.test(pathParts[2]);
+  // comix.to is a Next.js SPA; the page type can change without a content-script
+  // re-run, so derive it from location.pathname on demand instead of once at load.
+  //   'reader' = /title/{slug}/{numericId}, 'list' = /title/{slug}, else 'other'.
+  function currentPageType() {
+    var p = location.pathname.split('/').filter(Boolean);
+    if (p[0] !== 'title' || !p[1]) return 'other';
+    if (p.length >= 3 && /^\d+/.test(p[2])) return 'reader';
+    return 'list';
+  }
+  var isReader = currentPageType() === 'reader';
 
   var cfg = Object.assign({}, CDLSettings.DEFAULTS);
 
@@ -399,14 +407,6 @@
       });
     } catch (e) {}
   }
-  function unpatchHistory() {
-    try {
-      ['pushState', 'replaceState'].forEach(function (m) {
-        if (history[m] && history[m].__cdlPatched && history[m].__cdlOrig) history[m] = history[m].__cdlOrig;
-      });
-    } catch (e) {}
-  }
-
   function stopReaderNav() {
     if (!readerState) return;
     unpatchNavControls();
@@ -414,7 +414,9 @@
     window.removeEventListener('cdl:locationchange', onReaderRouteChange);
     window.removeEventListener('popstate', onReaderRouteChange);
     if (routeDebounce) { clearTimeout(routeDebounce); routeDebounce = null; }
-    unpatchHistory();
+    // NOTE: the history pushState/replaceState patch is intentionally NOT removed
+    // here. It is now a session-wide concern: content_title.js and applyForPage()
+    // rely on cdl:locationchange for the whole SPA session, not just reader nav.
     readerState = null;
   }
 
@@ -519,12 +521,21 @@
   // ════════════════════════ wiring ════════════════════════
   function applyForPage() {
     try {
-      if (isReader) {
+      var type = currentPageType();
+      isReader = (type === 'reader');
+      if (type === 'reader') {
+        // Crossed into a reader (possibly from a list via SPA nav) — drop list features.
+        stopListObserver();
+        cleanupListFeatures();
+        removeStyleIfUnused();
         if (cfg['features.fixReaderNav']) startReaderNav();
         else stopReaderNav();
         if (cfg['reader.keyboardShortcuts']) startReaderKb();
         else stopReaderKb();
-      } else {
+      } else if (type === 'list') {
+        // Crossed into a chapter list (possibly from a reader) — drop reader features.
+        stopReaderNav();
+        stopReaderKb();
         var anyList = cfg['features.dedupeChapters'] || cfg['features.enforceChapterOrder'];
         if (anyList) {
           ensureStyle();
@@ -535,6 +546,13 @@
           cleanupListFeatures(); // flags off → unhide + clear order, no row tagging
           removeStyleIfUnused();
         }
+      } else {
+        // Some other comix page (home, search, …): nothing applies — tear it all down.
+        stopReaderNav();
+        stopReaderKb();
+        stopListObserver();
+        cleanupListFeatures();
+        removeStyleIfUnused();
       }
     } catch (e) { /* no-op */ }
   }
@@ -545,6 +563,23 @@
       applyForPage();
     }).catch(function () { applyForPage(); });
     CDLSettings.onChange(function (next) { cfg = next; applyForPage(); });
+
+    // SPA-aware: the page type can change without a content-script re-run, so
+    // re-apply on every soft navigation + bfcache restore. The `cdl:locationchange`
+    // event is emitted by the MAIN-world bridge in scripts/extract-bridge.js — an
+    // isolated-world history patch can't observe the page's own pushState calls.
+    // Next fires pushState/replaceState often with the SAME path; only re-apply on a
+    // real path change (in-page list changes are handled by the list MutationObserver).
+    var lastPath = location.pathname;
+    var onRoute = function () {
+      if (location.pathname === lastPath) return;
+      lastPath = location.pathname;
+      applyForPage();
+    };
+    window.addEventListener('cdl:locationchange', onRoute);
+    window.addEventListener('popstate', onRoute);
+    window.addEventListener('hashchange', onRoute);
+    window.addEventListener('pageshow', function (e) { if (e.persisted) applyForPage(); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

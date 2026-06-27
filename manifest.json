@@ -39,7 +39,7 @@
       "world": "MAIN"
     },
     {
-      "matches": ["*://comix.to/title/*"],
+      "matches": ["*://comix.to/*"],
       "js": ["settings.js", "cdl-features-core.js", "content_title.js", "content_features.js"],
       "run_at": "document_idle"
     },

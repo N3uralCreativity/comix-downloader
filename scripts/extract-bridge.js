@@ -22,6 +22,34 @@
  */
 (function () {
   'use strict';
+
+  // ── SPA route bridge (runs on EVERY comix page, in the MAIN world) ────────────
+  // comix.to is a Next.js app: it navigates client-side via history.pushState /
+  // replaceState in the page's MAIN world. A content script in its ISOLATED world
+  // CANNOT intercept those calls (verified: an isolated-world pushState override
+  // never fires for the page's own navigations), so the download-button content
+  // scripts never learned about soft navigations and their UI only appeared after a
+  // hard refresh. We patch history HERE, in the MAIN world (at document_start, before
+  // Next's router captures it), and relay a `cdl:locationchange` DOM event — which
+  // DOES cross into the isolated world — so content_title.js / content_features.js /
+  // cdl-embed-settings.js can re-inject on every route change. No #cdlx gate: this
+  // must run on the pages the user actually browses.
+  try {
+    if (!(history.pushState && history.pushState.__cdlBridge)) {
+      ['pushState', 'replaceState'].forEach(function (m) {
+        var orig = history[m];
+        if (typeof orig !== 'function') return;
+        var wrapped = function () {
+          var ret = orig.apply(this, arguments);
+          try { window.dispatchEvent(new Event('cdl:locationchange')); } catch (e) {}
+          return ret;
+        };
+        wrapped.__cdlBridge = true;
+        history[m] = wrapped;
+      });
+    }
+  } catch (_) {}
+
   try {
     if (!/cdlx/.test(location.hash)) return;
 

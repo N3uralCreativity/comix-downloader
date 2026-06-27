@@ -2013,7 +2013,9 @@ function scanAndInject() {
   markDownloadedButtons();
 }
 
+let _cdlBodyObserver = null;
 function observeDOM() {
+  if (_cdlBodyObserver) return; // already watching — keep a single observer
   const observer = new MutationObserver((mutations) => {
     let shouldScan = false;
     for (const mutation of mutations) {
@@ -2053,20 +2055,40 @@ function observeDOM() {
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
+  _cdlBodyObserver = observer;
+}
+function disconnectDOM() {
+  if (_cdlBodyObserver) { _cdlBodyObserver.disconnect(); _cdlBodyObserver = null; }
 }
 
 // ── Point d'entrée ────────────────────────────────────────────────────────────
 
-(async function init() {
-  // Ne pas s'exécuter sur les pages de lecture de chapitre
-  // URL format de chapitre : /title/{slug}/{chapterId}
-  const pathParts = location.pathname.split('/').filter(Boolean);
-  // pathParts[0] === 'title', pathParts[1] === slug, pathParts[2] === chapterId (si présent)
-  if (pathParts.length >= 3 && /^\d+/.test(pathParts[2])) {
-    // Nous sommes sur une page de lecture de chapitre, ne rien faire
-    return;
-  }
+// Are we on a title *overview* page (chapter list), as opposed to a chapter
+// reader (/title/{slug}/{numericId}) or any other comix page? The download
+// buttons only belong on the overview. URL format chapitre : /title/{slug}/{id}.
+function isTitleOverviewPage() {
+  const p = location.pathname.split('/').filter(Boolean);
+  if (p[0] !== 'title' || !p[1]) return false;       // not a /title/{slug} page
+  if (p.length >= 3 && /^\d+/.test(p[2])) return false; // chapter reader
+  return true;
+}
 
+// Inject (or tear down) the title-page UI for the current route. Idempotent:
+// the inject* helpers no-op when their target already exists, and observeDOM()
+// keeps a single observer, so this is safe to call repeatedly.
+function cdlSyncRoute() {
+  if (isTitleOverviewPage()) {
+    scanAndInject();
+    observeDOM();
+    restoreDownloadAllPopupFromBackground();
+  } else {
+    // Left the overview (reader/home/search/…); the injected nodes vanish with
+    // the old DOM that Next.js replaces, so just stop observing until we return.
+    disconnectDOM();
+  }
+}
+
+(async function init() {
   if (typeof CDLSettings !== 'undefined') {
     try { CFG = await CDLSettings.getSettings(); } catch (_) {}
     CDLSettings.onChange((next) => { CFG = next; onSettingsChanged(); });
@@ -2074,9 +2096,6 @@ function observeDOM() {
 
   injectStyles();
   applyDynamicStyles();
-  scanAndInject();
-  observeDOM();
-  restoreDownloadAllPopupFromBackground();
 
   // Refresh the "already-downloaded" dots when the manifest changes (e.g. after a run).
   try {
@@ -2086,4 +2105,21 @@ function observeDOM() {
       });
     }
   } catch (_) {}
+
+  // SPA-aware lifecycle. comix's MAIN-world bridge (scripts/extract-bridge.js) emits
+  // `cdl:locationchange` on every pushState/replaceState — Next fires those often with
+  // the SAME path (shallow updates), so only re-sync when the path actually changes.
+  // (In-page DOM swaps that keep the path are still caught by the MutationObserver.)
+  let _cdlLastPath = location.pathname;
+  const onRouteChange = () => {
+    if (location.pathname === _cdlLastPath) return;
+    _cdlLastPath = location.pathname;
+    cdlSyncRoute();
+  };
+  window.addEventListener('cdl:locationchange', onRouteChange);
+  window.addEventListener('popstate', onRouteChange);
+  window.addEventListener('hashchange', onRouteChange);
+  window.addEventListener('pageshow', (e) => { if (e.persisted) cdlSyncRoute(); });
+
+  cdlSyncRoute();
 })();

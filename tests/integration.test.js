@@ -76,6 +76,10 @@ const mf = JSON.parse(read('manifest.json'));
 check('manifest version is 2.x', /^2\./.test(mf.version));
 const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content_title.js'));
 check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['settings.js', 'cdl-features-core.js', 'content_title.js', 'content_features.js']));
+// The title/features bundle must match ALL of comix.to (not just /title/*) so it
+// is present when a Next.js soft-navigation lands on a title page — otherwise the
+// download buttons only appear after a hard refresh (SPA injection fix).
+check('title content scripts match all of comix.to (SPA soft-nav)', !!mainCs && mainCs.matches.indexOf('*://comix.to/*') !== -1);
 const bridgeCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('scripts/extract-bridge.js'));
 check('extract-bridge runs at document_start in the MAIN world', !!bridgeCs && bridgeCs.run_at === 'document_start' && bridgeCs.world === 'MAIN');
 const embedCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('cdl-embed-settings.js'));
