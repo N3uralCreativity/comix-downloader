@@ -122,6 +122,10 @@ function applyDynamicStyles() {
 
 // Re-apply everything that depends on settings (called on storage change).
 function onSettingsChanged() {
+  // Only touch the DOM on title overview pages. The extension's `.cdl-btn` class is
+  // also used by the embedded settings UI (Export/Import/Reset), so running this on
+  // the settings page would restyle / overwrite those buttons.
+  if (!isTitleOverviewPage()) return;
   applyDynamicStyles();
   const all = document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)');
   if (all && !all.disabled) _setHTML(all, `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`);
@@ -2078,13 +2082,18 @@ function isTitleOverviewPage() {
 // keeps a single observer, so this is safe to call repeatedly.
 function cdlSyncRoute() {
   if (isTitleOverviewPage()) {
+    injectStyles();
+    applyDynamicStyles();
     scanAndInject();
     observeDOM();
     restoreDownloadAllPopupFromBackground();
   } else {
-    // Left the overview (reader/home/search/…); the injected nodes vanish with
-    // the old DOM that Next.js replaces, so just stop observing until we return.
+    // Left the overview (reader/home/settings/search/…). The injected nodes vanish
+    // with the old DOM that Next.js replaces, so just stop observing — but DO remove
+    // our injected <style>s: their `.cdl-btn` rules would otherwise restyle the
+    // embedded settings page's Export/Import/Reset buttons (same class).
     disconnectDOM();
+    ['cdl-styles', 'cdl-dyn-styles'].forEach((id) => document.getElementById(id)?.remove());
   }
 }
 
@@ -2094,14 +2103,14 @@ function cdlSyncRoute() {
     CDLSettings.onChange((next) => { CFG = next; onSettingsChanged(); });
   }
 
-  injectStyles();
-  applyDynamicStyles();
+  // Styles are injected per-route by cdlSyncRoute() (title pages only) so they never
+  // leak onto other comix pages such as the embedded settings UI.
 
   // Refresh the "already-downloaded" dots when the manifest changes (e.g. after a run).
   try {
     if (chrome?.storage?.onChanged) {
       chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === 'local' && changes.cdlManifest) markDownloadedButtons();
+        if (area === 'local' && changes.cdlManifest && isTitleOverviewPage()) markDownloadedButtons();
       });
     }
   } catch (_) {}
