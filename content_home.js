@@ -184,6 +184,9 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
 #${ROOT_ID} .cdl-pct{position:absolute;top:7px;right:7px;font-size:var(--text-2xs,.625rem);font-weight:800;color:#fff;
   background:rgba(0,0,0,.74);padding:2px 6px;border-radius:3px;}
 #${ROOT_ID} .cdl-empty{color:var(--text-2,#9da4a5);font-size:var(--text-base,.875rem);padding:14px 2px;}
+#${ROOT_ID} .cdl-emptystate{margin:8px 2px 30px;padding:30px 26px;border-radius:8px;border:1px dashed var(--surface-3,#3a4248);background:var(--surface,#2a3134);text-align:center;animation:cdlFadeUp .4s ease both;}
+#${ROOT_ID} .cdl-emptystate-title{font-size:var(--text-xl,1rem);font-weight:800;color:var(--text-emphasis,#ecf4f5);}
+#${ROOT_ID} .cdl-emptystate-sub{margin:8px auto 0;max-width:640px;font-size:var(--text-sm,.8125rem);line-height:1.55;color:var(--text-3,#6f7778);}
 
 /* classic card: cover + caption below (no overlay text) */
 #${ROOT_ID} .cdl-card--classic{background:transparent;}
@@ -411,9 +414,24 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
 
   function sectionDone(n) {
     loadedCount++; totalCards += n;
-    // No personalized data anywhere (logged out / alt / empty account): don't leave a
-    // blank page — restore comix's native Home instead.
-    if (!bailed && loadedCount >= sections.length && totalCards === 0) { bailed = true; revertToNative(); }
+    if (bailed || loadedCount < sections.length || totalCards !== 0) return;
+    // Everything came back empty. Only fall back to comix's native Home when the user is
+    // LOGGED OUT — a logged-in account with an empty library still gets the custom Home with a
+    // friendly empty state (so the redesign works for every account, not just data-rich ones).
+    fetchUser().then(function (u) {
+      if (bailed || totalCards !== 0) return;
+      if (u && u.loggedIn) showEmptyState();
+      else { bailed = true; revertToNative(); }
+    }).catch(function () { if (!bailed && totalCards === 0) { bailed = true; revertToNative(); } });
+  }
+
+  // Logged-in but nothing to show: a small in-Home message instead of a blank page or a revert.
+  function showEmptyState() {
+    var root = document.getElementById(ROOT_ID); if (!root || document.getElementById('cdl-home-empty')) return;
+    root.appendChild(el('div', { id: 'cdl-home-empty', class: 'cdl-emptystate' }, [
+      el('div', { class: 'cdl-emptystate-title', text: 'Your Home is ready' }),
+      el('div', { class: 'cdl-emptystate-sub', text: 'Follow comics and start reading and they’ll show up here. Tip: enable Most Recent Popular or Latest Updates in the extension Settings → Home to fill your Home with trending titles right away.' })
+    ]));
   }
 
   // Hero feeding + rail fill, shared by API and DOM sections. `s` is the registry entry.
