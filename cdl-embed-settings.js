@@ -26,6 +26,11 @@
   var observer = null;
   var autoChecked = false;
   var savedToast = null, savedTimer = null;
+  // Scroll persistence: keep the reader's scroll position while our panel is open, across
+  // comix's React re-renders (which wipe + re-inject our panel) and across page refreshes.
+  var OPEN_KEY = 'cdlExtSettingsOpen';   // sessionStorage flag: our panel is open
+  var SCROLL_KEY = 'cdlExtSettingsScroll'; // sessionStorage: last window.scrollY while open
+  var scrollSaveTimer = null, scrollTracking = false;
 
   // Sample context for live naming-template previews (mirrors the options page).
   var PREVIEW_CTX = {
@@ -483,11 +488,32 @@
       el('span', { class: 'umenu__icon' }, [svg(['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M7 10l5 5 5-5', 'M12 15V3'], 16)]),
       el('span', { class: 'umenu__text', text: 'Comix Downloader' }),
     ]);
-    btn.addEventListener('click', activate);
+    btn.addEventListener('click', function () { activate(true); });
     list.appendChild(el('li', {}, [btn]));
   }
 
-  function activate() {
+  // ── scroll persistence ──────────────────────────────────────────────────────
+  function readScroll() { try { var v = sessionStorage.getItem(SCROLL_KEY); return v == null ? null : parseInt(v, 10); } catch (_) { return null; } }
+  function saveScroll() { if (!document.getElementById(VIEW_ID)) return; try { sessionStorage.setItem(SCROLL_KEY, String(window.scrollY)); } catch (_) {} }
+  function onScrollSave() {
+    if (scrollSaveTimer) return;
+    scrollSaveTimer = setTimeout(function () { scrollSaveTimer = null; saveScroll(); }, 150);
+  }
+  function startScrollTracking() { if (scrollTracking) return; scrollTracking = true; window.addEventListener('scroll', onScrollSave, { passive: true }); }
+  function stopScrollTracking() {
+    if (!scrollTracking) return; scrollTracking = false;
+    window.removeEventListener('scroll', onScrollSave);
+    if (scrollSaveTimer) { clearTimeout(scrollSaveTimer); scrollSaveTimer = null; }
+  }
+  // Restore where the reader was: their saved position if any (covers React re-injects +
+  // refresh); otherwise, only on a deliberate open, bring the panel into view.
+  function restoreScroll(box, userInitiated) {
+    var saved = readScroll();
+    if (saved != null && isFinite(saved)) { try { window.scrollTo(0, saved); } catch (_) {} return; }
+    if (userInitiated) { try { var y = box.getBoundingClientRect().top + window.scrollY - 80; window.scrollTo(0, y); saveScroll(); } catch (_) {} }
+  }
+
+  function activate(userInitiated) {
     injectStyle();
     var box = contentBox(); if (!box) return;
     var cv = comixView(); if (cv) { hiddenComixView = cv; cv.style.display = 'none'; }
@@ -497,7 +523,9 @@
       var existing = document.getElementById(VIEW_ID); if (existing) existing.remove();
       contentBox().appendChild(buildView(r[0] || {}, r[1] || {}, r[2] || {}));
       setActiveNav(true);
-      try { window.scrollTo(0, box.getBoundingClientRect().top + window.scrollY - 80); } catch (_) {}
+      try { sessionStorage.setItem(OPEN_KEY, '1'); } catch (_) {}
+      startScrollTracking();
+      restoreScroll(box, userInitiated === true);
     });
   }
 
@@ -505,6 +533,9 @@
     var v = document.getElementById(VIEW_ID); if (v) v.remove();
     if (hiddenComixView) { try { hiddenComixView.style.display = ''; } catch (_) {} hiddenComixView = null; }
     setActiveNav(false);
+    stopScrollTracking();
+    // An explicit close forgets the saved spot, so the next open starts at the panel top.
+    try { sessionStorage.removeItem(OPEN_KEY); sessionStorage.removeItem(SCROLL_KEY); } catch (_) {}
   }
 
   // If the popup's "Settings" button sent us here, open our view automatically
@@ -517,7 +548,7 @@
         var ts = r && r.cdlOpenExtSettings;
         if (ts && (Date.now() - ts) < 60000) {
           try { chrome.storage.local.remove('cdlOpenExtSettings'); } catch (_) {}
-          activate();
+          activate(true);
         }
       });
     } catch (_) {}
@@ -628,7 +659,10 @@
         ensureNavItem();
         maybeAutoActivate();
         var n = document.getElementById(NAV_ID);
-        if (n && n.classList.contains('is-active') && !document.getElementById(VIEW_ID)) activate();
+        // Re-open after a refresh (our panel was open last time) or re-inject after comix's
+        // React wiped our panel — both restore the saved scroll position (no jump to top).
+        var wasOpen = false; try { wasOpen = sessionStorage.getItem(OPEN_KEY) === '1'; } catch (_) {}
+        if (n && !document.getElementById(VIEW_ID) && (n.classList.contains('is-active') || wasOpen)) activate(false);
         if (++tries > 60) { clearInterval(pollTimer); pollTimer = null; }
       }, 300);
     }
