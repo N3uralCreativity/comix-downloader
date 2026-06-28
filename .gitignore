@@ -31,3 +31,6 @@ local.properties
 # Python tooling
 __pycache__/
 *.pyc
+
+# Cloudflare Wrangler local cache (contains the account id / email — NEVER commit)
+.wrangler/

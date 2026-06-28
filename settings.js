@@ -94,8 +94,47 @@
     // Additional Features (comix.to site enhancements — all OFF by default)
     'features.dedupeChapters': false,      // hide duplicate chapters in the title list
     'features.enforceChapterOrder': false, // force ascending numeric order in the list
-    'features.fixReaderNav': false         // accurate reader next/prev w/ source switching
+    'features.fixReaderNav': false,        // accurate reader next/prev w/ source switching
+
+    // Home (v3.0.0 custom Home redesign — OFF by default)
+    'home.customLayout': false,            // replace comix's Home with the focused custom layout
+    // Ordered section selection. id order = display order; on = shown. Personal sections on by
+    // default, comix's global carousels off (opt-in). Mirrors CDLHomeCore.defaultHomeSections().
+    'home.sections': [
+      { id: 'continue-reading', on: true },
+      { id: 'new-chapters', on: true },
+      { id: 'recently-followed', on: true },
+      { id: 'most-recent-popular', on: false },
+      { id: 'most-follows-new', on: false },
+      { id: 'latest-updates', on: false },
+      { id: 'user-collections', on: false }
+    ],
+    'home.hero': 'two',                     // 'two' | 'one' | 'off' — featured hero panels
+    'home.heroSource': 'new-chapters',     // which section's data feeds the hero
+    'home.heroSkipRead': true,             // skip series whose latest chapter you've already read
+    'home.cardStyle': 'overlay',           // 'overlay' (title on art) | 'classic' (title below)
+    'home.rows': 2,                        // rows per carousel (1–3)
+    'home.density': 'comfortable',         // 'comfortable' | 'compact' — card size / per-row count
+    'home.showProgress': true,             // progress bar + % on Continue Reading cards
+    'home.itemsPerSection': 24,            // max cards fetched/shown per section (6–40)
+    'home.openInNewTab': false,            // open comics in a new tab
+    'home.greeting': true,                 // show a welcome header at the top
+    'home.hoverPreview': true              // cursor-following detail popup on card hover
+    // Note: the profile "Comix-Downloader user" tenure badge (v3.0.0) is a built-in,
+    // always-on feature — intentionally NOT a setting (see content_profile.js).
   };
+
+  // Section ids/labels for the home.sections picker (kept in sync with CDLHomeCore.HOME_SECTIONS;
+  // a unit test asserts the id sets match). Defined here so the options UIs render without home-core.
+  var HOME_SECTION_LABELS = [
+    { id: 'continue-reading', label: 'Continue Reading' },
+    { id: 'new-chapters', label: 'New Chapters from Followed Comics' },
+    { id: 'recently-followed', label: 'Recently Followed Comics' },
+    { id: 'most-recent-popular', label: 'Most Recent Popular' },
+    { id: 'most-follows-new', label: 'Most Follows · New Comics' },
+    { id: 'latest-updates', label: 'Latest Updates' },
+    { id: 'user-collections', label: 'User Collections' }
+  ];
 
   // ── SCHEMA (type, bounds, risk, label, help) ─────────────────────────────────
   // risk: 'none' | 'glitchy' | 'risky'. `warn` shows in the confirm dialog.
@@ -232,7 +271,39 @@
       label: 'Force numeric chapter order', help: 'Reorder the title-page chapter list strictly by chapter number when the site renders it out of order.' },
     'features.fixReaderNav': { type: 'bool', risk: 'glitchy',
       label: 'Accurate next/prev in reader', help: 'Make the reader’s next / previous go to the true neighbouring chapter number, switching source if the current one skips it.',
-      warn: 'Overrides the site’s built-in next / previous buttons and arrow keys in the reader. Turn it off to restore the native behaviour.' }
+      warn: 'Overrides the site’s built-in next / previous buttons and arrow keys in the reader. Turn it off to restore the native behaviour.' },
+
+    'home.customLayout': { type: 'bool', risk: 'glitchy',
+      label: 'Custom Home page', help: 'Replace comix.to’s Home with a focused, larger layout built from the sections you choose below. Everything else (announcements, banners, sidebar) is hidden.',
+      warn: 'Restyles and hides parts of comix’s Home page. Turn it off to restore the native Home exactly as it was.' },
+    'home.sections': { type: 'sectionList', risk: 'none', sections: HOME_SECTION_LABELS,
+      label: 'Home sections', help: 'Pick which sections appear and drag them into the order you want. Continue Reading, New Chapters and Recently Followed are your own data; the rest are comix’s global carousels, re-styled to match.' },
+    'home.hero': { type: 'enum', enum: ['two', 'one', 'off'], risk: 'none',
+      label: 'Featured hero', help: 'Big spotlight banner(s) at the very top of the Home.',
+      options: { two: 'Two side-by-side', one: 'One wide', off: 'Off' } },
+    'home.heroSource': { type: 'enum', enum: ['new-chapters', 'recently-followed', 'continue-reading'], risk: 'none',
+      label: 'Hero picks from', help: 'Which section’s comics get featured in the hero.',
+      options: { 'new-chapters': 'New chapters from followed', 'recently-followed': 'Recently followed', 'continue-reading': 'Continue reading' } },
+    'home.heroSkipRead': { type: 'bool', risk: 'none',
+      label: 'Hero skips already-read', help: 'Don’t feature a series in the hero once you’ve read its latest chapter — the next unread series takes its place.' },
+    'home.cardStyle': { type: 'enum', enum: ['overlay', 'classic'], risk: 'none',
+      label: 'Card style', help: 'How comics look in the carousels.',
+      options: { overlay: 'Cover with overlay text', classic: 'Cover with text below' } },
+    'home.rows': { type: 'int', min: 1, max: 3, risk: 'none',
+      label: 'Rows per section', help: 'How many rows tall each carousel is.' },
+    'home.density': { type: 'enum', enum: ['comfortable', 'compact'], risk: 'none',
+      label: 'Card density', help: 'Comfortable shows larger cards; Compact fits more per row.',
+      options: { comfortable: 'Comfortable', compact: 'Compact' } },
+    'home.showProgress': { type: 'bool', risk: 'none',
+      label: 'Reading progress bars', help: 'Show a progress bar and % on Continue Reading cards.' },
+    'home.itemsPerSection': { type: 'int', min: 6, max: 40, risk: 'none',
+      label: 'Comics per section', help: 'How many comics each section loads at most.' },
+    'home.openInNewTab': { type: 'bool', risk: 'none',
+      label: 'Open in new tab', help: 'Open a comic in a new browser tab when you click it on the custom Home.' },
+    'home.greeting': { type: 'bool', risk: 'none',
+      label: 'Welcome header', help: 'Show a short welcome header at the top of the custom Home.' },
+    'home.hoverPreview': { type: 'bool', risk: 'none',
+      label: 'Home hover preview', help: 'On the custom Home, hovering a comic shows a cursor-following popup with its cover, title, latest chapter and synopsis.' }
   };
 
   // ── Tab grouping for the options UI ──────────────────────────────────────────
@@ -253,6 +324,10 @@
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
     { id: 'features', label: 'Additional Features', icon: 'sparkles',
       keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'reader.keyboardShortcuts'] },
+    { id: 'home', label: 'Home', icon: 'sparkles',
+      keys: ['home.customLayout', 'home.sections', 'home.hero', 'home.heroSource', 'home.heroSkipRead',
+        'home.cardStyle', 'home.rows', 'home.density', 'home.showProgress', 'home.itemsPerSection',
+        'home.openInNewTab', 'home.greeting', 'home.hoverPreview'] },
     { id: 'sync', label: 'Sync & Library', icon: 'repeat',
       keys: ['subscribe.enabled', 'subscribe.intervalMinutes', 'subscribe.notify', 'subscribe.autoDownload'] },
     { id: 'about', label: 'About & Backup', icon: 'info',
@@ -272,6 +347,30 @@
     return typeof v === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
   }
 
+  // Normalize a sectionList value (e.g. home.sections) into a full, ordered [{id,on}] list over
+  // the known section ids: drop unknown/duplicate ids, coerce `on` to boolean, preserve the
+  // stored order, then append any known sections missing from the stored list (using their
+  // default `on` from `def`) so newly added sections always surface. Falls back to `def`.
+  function validateSectionList(value, sections, def) {
+    var known = Object.create(null);
+    (sections || []).forEach(function (s) { if (s && s.id) known[s.id] = true; });
+    var defOn = Object.create(null);
+    (Array.isArray(def) ? def : []).forEach(function (d) { if (d && d.id) defOn[d.id] = !!d.on; });
+    var out = [], seen = Object.create(null);
+    if (Array.isArray(value)) {
+      value.forEach(function (it) {
+        var id = it && typeof it === 'object' ? it.id : it;
+        if (typeof id !== 'string' || !known[id] || seen[id]) return;
+        seen[id] = true;
+        out.push({ id: id, on: it && typeof it === 'object' ? Boolean(it.on) : true });
+      });
+    }
+    (sections || []).forEach(function (s) {
+      if (s && s.id && !seen[s.id]) out.push({ id: s.id, on: !!defOn[s.id] });
+    });
+    return out;
+  }
+
   function validateValue(key, value) {
     var s = SCHEMA[key];
     var def = DEFAULTS[key];
@@ -282,6 +381,7 @@
       case 'bool':  return Boolean(value);
       case 'enum':  return (s.enum.indexOf(value) !== -1) ? value : def;
       case 'color': return isHexColor(value) ? value : def;
+      case 'sectionList': return validateSectionList(value, s.sections, def);
       case 'string':
       case 'template': {
         var str = (value == null) ? def : String(value);

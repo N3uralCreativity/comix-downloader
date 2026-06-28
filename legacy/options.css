@@ -175,6 +175,17 @@ input[type="color"] { width: 42px; height: 32px; padding: 2px; background: var(-
 .switch input:focus-visible + .track { box-shadow: 0 0 0 3px var(--accent-bg); }
 .switch-label { font-size: 13px; color: var(--muted); }
 
+/* Home section picker (home.sections) — reorderable list */
+.seclist { width: 100%; display: flex; flex-direction: column; gap: 7px; }
+.sec-row { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: var(--radius-sm); background: var(--panel-2); border: 1px solid var(--line-2); opacity: .6; transition: opacity .14s, border-color .14s; }
+.sec-row.is-on { opacity: 1; border-color: var(--line); }
+.sec-ord { display: flex; flex-direction: column; gap: 2px; }
+.sec-move { width: 24px; height: 17px; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; font-size: 11px; line-height: 1; color: var(--muted); background: var(--panel); border: 1px solid var(--line-2); border-radius: 4px; }
+.sec-move:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.sec-move:disabled { opacity: .3; cursor: default; }
+.sec-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; cursor: pointer; }
+.sec-name { font-size: 13px; font-weight: 600; color: var(--text); }
+
 /* ── Buttons ─────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex; align-items: center; gap: 7px; justify-content: center;

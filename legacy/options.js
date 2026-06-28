@@ -86,7 +86,19 @@
     'advanced.jpgQuality':      function () { return draft['advanced.imageFormat'] === 'jpg'; },
     'subscribe.intervalMinutes': function () { return !!draft['subscribe.enabled']; },
     'subscribe.notify':          function () { return !!draft['subscribe.enabled']; },
-    'subscribe.autoDownload':    function () { return !!draft['subscribe.enabled']; }
+    'subscribe.autoDownload':    function () { return !!draft['subscribe.enabled']; },
+    'home.sections':       function () { return !!draft['home.customLayout']; },
+    'home.hero':           function () { return !!draft['home.customLayout']; },
+    'home.heroSource':     function () { return !!draft['home.customLayout'] && draft['home.hero'] !== 'off'; },
+    'home.heroSkipRead':   function () { return !!draft['home.customLayout'] && draft['home.hero'] !== 'off'; },
+    'home.cardStyle':      function () { return !!draft['home.customLayout']; },
+    'home.rows':           function () { return !!draft['home.customLayout']; },
+    'home.density':        function () { return !!draft['home.customLayout']; },
+    'home.showProgress':   function () { return !!draft['home.customLayout']; },
+    'home.itemsPerSection': function () { return !!draft['home.customLayout']; },
+    'home.openInNewTab':   function () { return !!draft['home.customLayout']; },
+    'home.greeting':       function () { return !!draft['home.customLayout']; },
+    'home.hoverPreview':   function () { return !!draft['home.customLayout']; }
   };
 
   // Sample context for live template previews.
@@ -105,7 +117,33 @@
 
     function commit(v) { setDraft(key, v); }
 
-    if (s.type === 'bool') {
+    if (s.type === 'sectionList') {
+      var labels = {}; (s.sections || []).forEach(function (sec) { labels[sec.id] = sec.label; });
+      var items = [];
+      var list = el('div', { class: 'seclist' });
+      function commitList() { commit(items.map(function (x) { return { id: x.id, on: !!x.on }; })); }
+      function moveItem(i, j) { if (j < 0 || j >= items.length) return; var t = items[i]; items[i] = items[j]; items[j] = t; commitList(); renderList(); }
+      function renderList() {
+        list.textContent = '';
+        items.forEach(function (it, idx) {
+          var cb = el('input', { type: 'checkbox', onchange: function () { items[idx].on = cb.checked; row.className = 'sec-row' + (cb.checked ? ' is-on' : ''); commitList(); } });
+          cb.checked = !!it.on;
+          var up = el('button', { type: 'button', class: 'sec-move', title: 'Move up', text: '↑', onclick: function () { moveItem(idx, idx - 1); } });
+          var dn = el('button', { type: 'button', class: 'sec-move', title: 'Move down', text: '↓', onclick: function () { moveItem(idx, idx + 1); } });
+          if (idx === 0) up.disabled = true;
+          if (idx === items.length - 1) dn.disabled = true;
+          var row = el('div', { class: 'sec-row' + (it.on ? ' is-on' : '') }, [
+            el('span', { class: 'sec-ord' }, [up, dn]),
+            el('label', { class: 'sec-main' }, [cb, el('span', { class: 'sec-name', text: labels[it.id] || it.id })])
+          ]);
+          list.appendChild(row);
+        });
+      }
+      wrap.appendChild(list);
+      api.setValue = function (v) { items = (S.validateValue ? S.validateValue(key, v) : (v || [])).map(function (x) { return { id: x.id, on: !!x.on }; }); renderList(); };
+      api.setEnabled = function (on) { wrap.querySelectorAll('input,button').forEach(function (n) { n.disabled = !on; }); if (on) renderList(); };
+
+    } else if (s.type === 'bool') {
       var cb = el('input', { type: 'checkbox', id: id, onchange: function () { commit(cb.checked); api.label.textContent = cb.checked ? 'On' : 'Off'; } });
       var sw = el('label', { class: 'switch' }, [cb, el('span', { class: 'track' })]);
       api.label = el('span', { class: 'switch-label' });

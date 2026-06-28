@@ -18,6 +18,7 @@
   "host_permissions": [
     "*://comix.to/*",
     "*://*.comix.to/*",
+    "https://*.workers.dev/*",
     "*://*.wowpic1.store/*",
     "*://*.wowpic2.store/*",
     "*://*.wowpic3.store/*",
@@ -40,7 +41,7 @@
     },
     {
       "matches": ["*://comix.to/*"],
-      "js": ["settings.js", "cdl-features-core.js", "content_title.js", "content_features.js"],
+      "js": ["settings.js", "cdl-features-core.js", "cdl-home-core.js", "cdl-badge-core.js", "content_title.js", "content_features.js", "content_home.js", "content_profile.js"],
       "run_at": "document_idle"
     },
     {

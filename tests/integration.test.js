@@ -43,6 +43,10 @@ const cfKeys = refsIn(read('content_features.js'), 'cfg');
 check('content_features.js reads the feature flags', cfKeys.length >= 3);
 cfKeys.forEach((k) => check('content_features.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
 
+// 2c. content_profile.js (tenure badge) keys
+const cpKeys = refsIn(read('content_profile.js'), 'cfg');
+cpKeys.forEach((k) => check('content_profile.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
+
 // 3. options.js dependency + preview maps must reference real keys
 const opt = read('legacy/options.js');
 function blockKeys(src, marker) {
@@ -75,7 +79,7 @@ check('default chapter folder keeps decimal suffix',
 const mf = JSON.parse(read('manifest.json'));
 check('manifest version is 2.x', /^2\./.test(mf.version));
 const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content_title.js'));
-check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['settings.js', 'cdl-features-core.js', 'content_title.js', 'content_features.js']));
+check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['settings.js', 'cdl-features-core.js', 'cdl-home-core.js', 'cdl-badge-core.js', 'content_title.js', 'content_features.js', 'content_home.js', 'content_profile.js']));
 // The title/features bundle must match ALL of comix.to (not just /title/*) so it
 // is present when a Next.js soft-navigation lands on a title page — otherwise the
 // download buttons only appear after a hard refresh (SPA injection fix).

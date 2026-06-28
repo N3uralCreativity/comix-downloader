@@ -47,6 +47,19 @@
     'subscribe.intervalMinutes': function (d) { return !!d['subscribe.enabled']; },
     'subscribe.notify': function (d) { return !!d['subscribe.enabled']; },
     'subscribe.autoDownload': function (d) { return !!d['subscribe.enabled']; },
+    // Home sub-settings only matter when the custom Home is on; hero source/skip only when a hero shows.
+    'home.sections': function (d) { return !!d['home.customLayout']; },
+    'home.hero': function (d) { return !!d['home.customLayout']; },
+    'home.heroSource': function (d) { return !!d['home.customLayout'] && d['home.hero'] !== 'off'; },
+    'home.heroSkipRead': function (d) { return !!d['home.customLayout'] && d['home.hero'] !== 'off'; },
+    'home.cardStyle': function (d) { return !!d['home.customLayout']; },
+    'home.rows': function (d) { return !!d['home.customLayout']; },
+    'home.density': function (d) { return !!d['home.customLayout']; },
+    'home.showProgress': function (d) { return !!d['home.customLayout']; },
+    'home.itemsPerSection': function (d) { return !!d['home.customLayout']; },
+    'home.openInNewTab': function (d) { return !!d['home.customLayout']; },
+    'home.greeting': function (d) { return !!d['home.customLayout']; },
+    'home.hoverPreview': function (d) { return !!d['home.customLayout']; },
   };
 
   // ── helpers ──────────────────────────────────────────────────────────────
@@ -132,6 +145,19 @@
       '#' + VIEW_ID + ' .cdl-sub-x{background:none;border:none;color:var(--text-3,#8a8a8a);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;border-radius:6px;}' +
       '#' + VIEW_ID + ' .cdl-sub-x:hover{color:#ef9a9a;background:rgba(239,68,68,.1);}' +
       '#' + VIEW_ID + ' .cdl-foot{margin-top:8px;font-size:11.5px;color:var(--text-3,#8a8a8a);}' +
+      // section picker (home.sections) — full-width reorderable list
+      '#' + VIEW_ID + ' .cdl-row--block{display:block;}' +
+      '#' + VIEW_ID + ' .cdl-seclist{margin-top:10px;display:flex;flex-direction:column;gap:6px;}' +
+      '#' + VIEW_ID + ' .cdl-sec-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius,6px);' +
+        'background:var(--surface-2,#282c30);border:1px solid rgba(255,255,255,.08);opacity:.62;transition:opacity .14s,border-color .14s;}' +
+      '#' + VIEW_ID + ' .cdl-sec-row.is-on{opacity:1;border-color:rgba(255,255,255,.16);}' +
+      '#' + VIEW_ID + ' .cdl-sec-ord{display:flex;flex-direction:column;gap:2px;}' +
+      '#' + VIEW_ID + ' .cdl-sec-move{width:22px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;' +
+        'border:1px solid rgba(255,255,255,.12);border-radius:4px;background:var(--surface,#1f2226);color:var(--text-2,#a0a0a0);font-size:10px;line-height:1;padding:0;}' +
+      '#' + VIEW_ID + ' .cdl-sec-move:hover:not(:disabled){color:var(--text-emphasis,#f5f5f5);border-color:var(--accent,#8765eb);}' +
+      '#' + VIEW_ID + ' .cdl-sec-move:disabled{opacity:.3;cursor:default;}' +
+      '#' + VIEW_ID + ' .cdl-sec-main{display:flex;align-items:center;gap:9px;cursor:pointer;flex:1;min-width:0;}' +
+      '#' + VIEW_ID + ' .cdl-sec-name{font-size:13px;font-weight:600;color:var(--text,#d4d4d4);}' +
       '#cdl-saved-toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,8px);z-index:2147483647;' +
         'background:var(--surface-2,#282c30);color:var(--text-emphasis,#f5f5f5);border:1px solid rgba(255,255,255,.12);' +
         'border-radius:8px;padding:8px 16px;font:600 13px/1 system-ui,sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.45);' +
@@ -174,6 +200,35 @@
       ]);
       cb.addEventListener('change', function () { commit(cb.checked); cb.checked = !!prior; row.classList.toggle('is-on', !!prior); });
       return row;
+    }
+
+    // Ordered, reorderable section picker (home.sections). Full-width list of toggle rows with
+    // up/down reordering; commits the [{id,on}] array (patchSettings normalizes it).
+    if (type === 'sectionList') {
+      var labels = {}; (sc.sections || []).forEach(function (s) { labels[s.id] = s.label; });
+      var items = (S.validateValue ? S.validateValue(key, val) : (val || [])).map(function (x) { return { id: x.id, on: !!x.on }; });
+      var list = el('div', { class: 'cdl-seclist' });
+      var commitList = function () { try { onChange(key, items.map(function (x) { return { id: x.id, on: !!x.on }; })); } catch (_) {} };
+      var move = function (i, j) { if (j < 0 || j >= items.length) return; var t = items[i]; items[i] = items[j]; items[j] = t; commitList(); renderList(); };
+      function renderList() {
+        list.textContent = '';
+        items.forEach(function (it, idx) {
+          var cb = el('input', { type: 'checkbox' }); cb.checked = !!it.on;
+          cb.addEventListener('change', function () { items[idx].on = cb.checked; row.classList.toggle('is-on', cb.checked); commitList(); });
+          var up = el('button', { type: 'button', class: 'cdl-sec-move', title: 'Move up', text: '↑' });
+          var dn = el('button', { type: 'button', class: 'cdl-sec-move', title: 'Move down', text: '↓' });
+          up.disabled = idx === 0; dn.disabled = idx === items.length - 1;
+          up.addEventListener('click', function () { move(idx, idx - 1); });
+          dn.addEventListener('click', function () { move(idx, idx + 1); });
+          var row = el('div', { class: 'cdl-sec-row' + (it.on ? ' is-on' : '') }, [
+            el('span', { class: 'cdl-sec-ord' }, [up, dn]),
+            el('label', { class: 'cdl-sec-main' }, [cb, el('span', { class: 'cdl-sec-name', text: labels[it.id] || it.id })]),
+          ]);
+          list.appendChild(row);
+        });
+      }
+      renderList();
+      return el('div', { class: 'usettings__row cdl-row cdl-row--block' }, [body, list]);
     }
 
     var preview = null;

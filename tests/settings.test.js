@@ -76,6 +76,56 @@ check('renderName sanitizes', S.renderName('{manga}', { manga: 'a/b:c*?' }) === 
 check('renderName maxLen', S.renderName('{manga}', { manga: 'x'.repeat(100) }, 60).length === 60);
 check('string maxLen', S.validate({ 'appearance.allLabel': 'y'.repeat(100) })['appearance.allLabel'].length === 40);
 
+// 5b. Home personalization keys
+check('home.* keys all exist in DEFAULTS', [
+  'home.customLayout', 'home.sections', 'home.hero', 'home.heroSource', 'home.heroSkipRead',
+  'home.cardStyle', 'home.rows', 'home.density', 'home.showProgress', 'home.itemsPerSection',
+  'home.openInNewTab', 'home.greeting', 'home.hoverPreview'
+].every(function (k) { return k in S.DEFAULTS; }));
+
+// enums fall back to their defaults on garbage, accept valid values
+check('home.hero default two', S.validate({})['home.hero'] === 'two');
+check('home.hero bad -> default', S.validate({ 'home.hero': 'nope' })['home.hero'] === 'two');
+check('home.hero good', S.validate({ 'home.hero': 'off' })['home.hero'] === 'off');
+check('home.heroSource good', S.validate({ 'home.heroSource': 'continue-reading' })['home.heroSource'] === 'continue-reading');
+check('home.heroSource bad -> default', S.validate({ 'home.heroSource': 'x' })['home.heroSource'] === 'new-chapters');
+check('home.cardStyle good', S.validate({ 'home.cardStyle': 'classic' })['home.cardStyle'] === 'classic');
+check('home.cardStyle bad -> default', S.validate({ 'home.cardStyle': 'x' })['home.cardStyle'] === 'overlay');
+check('home.density bad -> default', S.validate({ 'home.density': 'x' })['home.density'] === 'comfortable');
+// ints clamp to their bounds
+check('home.rows clamp high', S.validate({ 'home.rows': 9 })['home.rows'] === 3);
+check('home.rows clamp low', S.validate({ 'home.rows': 0 })['home.rows'] === 1);
+check('home.itemsPerSection clamp high', S.validate({ 'home.itemsPerSection': 999 })['home.itemsPerSection'] === 40);
+check('home.itemsPerSection clamp low', S.validate({ 'home.itemsPerSection': 1 })['home.itemsPerSection'] === 6);
+// bools cast
+check('home.showProgress bool cast', S.validate({ 'home.showProgress': 0 })['home.showProgress'] === false);
+check('home.openInNewTab bool cast', S.validate({ 'home.openInNewTab': 1 })['home.openInNewTab'] === true);
+
+// 5b-profile. The tenure badge is built-in / always-on — intentionally NOT a setting.
+check('profile.badge is NOT a setting (mandatory feature)', !('profile.badge' in S.DEFAULTS) && !S.SCHEMA['profile.badge']);
+
+// 5c. home.sections (sectionList) normalization
+const SECT = (v) => S.validate({ 'home.sections': v })['home.sections'];
+check('home.sections default has 7 entries', SECT(undefined).length === 7);
+check('home.sections drops unknown + dedupes + keeps known set', (function () {
+  var v = SECT([{ id: 'latest-updates', on: true }, { id: 'latest-updates', on: false }, { id: 'bogus', on: true }]);
+  var ids = v.map(function (s) { return s.id; });
+  return v.length === 7 && ids.filter(function (i) { return i === 'latest-updates'; }).length === 1 && ids.indexOf('bogus') === -1;
+})());
+check('home.sections preserves stored order, appends missing', (function () {
+  var v = SECT([{ id: 'user-collections', on: true }, { id: 'new-chapters', on: false }]);
+  return v[0].id === 'user-collections' && v[1].id === 'new-chapters';
+})());
+check('home.sections coerces on to boolean', (function () {
+  var v = SECT([{ id: 'continue-reading', on: 1 }, { id: 'new-chapters', on: 0 }]);
+  var byId = {}; v.forEach(function (s) { byId[s.id] = s.on; });
+  return byId['continue-reading'] === true && byId['new-chapters'] === false;
+})());
+check('home.sections garbage -> default selection', (function () {
+  var v = SECT('not an array');
+  return v.length === 7 && v.filter(function (s) { return s.on; }).length === 3;
+})());
+
 // 6. Async API + onChange broadcast + export/import
 (async () => {
   let changes = 0;

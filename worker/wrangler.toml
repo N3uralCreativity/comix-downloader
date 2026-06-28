@@ -1,0 +1,10 @@
+name = "comix-downloader-badge"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# KV namespace that stores  hashedId -> "YYYY-MM-DD"  (first-seen).
+# Create it once with:  wrangler kv namespace create BADGES
+# then paste the returned id below (replace REPLACE_WITH_KV_ID).
+kv_namespaces = [
+  { binding = "BADGES", id = "8eebf9a8f2734ebab0efb54b7d94ea36" }
+]

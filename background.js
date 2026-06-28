@@ -43,6 +43,83 @@ async function loadCfg() {
   return {};
 }
 
+// ── Comix-Downloader "tenure badge" service (v3.0.0) ─────────────────────────
+// Records when the badge service first saw a user, and looks up other users'
+// first-seen dates, so content_profile.js can show "Comix-Downloader user · N months"
+// on comix profiles. Only an OPAQUE salted hash of the comix user id + a coarse date
+// ever leave the device, and only when the user enabled `profile.badge`.
+//
+// CDL_BADGE_API is empty until the free Cloudflare Worker is deployed (see worker/),
+// which keeps the feature inert (no network) by default. A `cdlBadgeApi` storage key
+// overrides it (used by the E2E harness; could also let advanced users self-host).
+const CDL_BADGE_API = 'https://comix-downloader-badge.comixdl.workers.dev';
+const CDL_BADGE_SALT = 'cdl-badge-v1'; // not secret; keeps raw comix ids out of the KV store
+const _BADGE_LOOKUP_TTL = 7 * 24 * 60 * 60 * 1000; // cache a found date ~7 days
+const _BADGE_NEG_TTL = 30 * 60 * 1000;             // cache "no record" only ~30 min (they may register soon)
+const _BADGE_REGISTER_EVERY = 20 * 60 * 60 * 1000;  // re-register at most ~once/day
+let _badgeMem = Object.create(null); // hashId -> { first, at } in-memory lookup cache
+
+async function badgeApiBase() {
+  try {
+    const r = await chrome.storage.local.get('cdlBadgeApi');
+    if (r && typeof r.cdlBadgeApi === 'string' && r.cdlBadgeApi) return r.cdlBadgeApi.replace(/\/+$/, '');
+  } catch (_) {}
+  return CDL_BADGE_API ? CDL_BADGE_API.replace(/\/+$/, '') : '';
+}
+async function badgeHash(hashId) {
+  const data = new TextEncoder().encode(String(hashId) + CDL_BADGE_SALT);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return hex.slice(0, 32); // 128-bit hex id is plenty and keeps requests small
+}
+
+// Register the current user (server timestamps first-seen). Throttled ~once/day.
+async function badgeRegister(hashId) {
+  const base = await badgeApiBase();
+  if (!base || !hashId) return { ok: false };
+  try {
+    const store = await chrome.storage.local.get('cdlBadgeReg');
+    const reg = store && store.cdlBadgeReg;
+    if (reg && reg.hashId === hashId && reg.at && (Date.now() - reg.at) < _BADGE_REGISTER_EVERY) {
+      return { ok: true, first: reg.first, cached: true };
+    }
+    const id = await badgeHash(hashId);
+    const resp = await fetch(base + '/v1/seen', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+    });
+    if (!resp.ok) return { ok: false };
+    const j = await resp.json();
+    await chrome.storage.local.set({ cdlBadgeReg: { hashId, first: j.first, at: Date.now() } });
+    return { ok: true, first: j.first };
+  } catch (_) { return { ok: false }; }
+}
+
+// Look up another user's first-seen date (cached in memory + storage, ~7-day TTL).
+async function badgeLookup(hashId) {
+  const base = await badgeApiBase();
+  if (!base || !hashId) return { ok: false };
+  // A found date is cached long; a "no record" only briefly, so a freshly-registered user shows up soon.
+  var ttl = function (e) { return e.first ? _BADGE_LOOKUP_TTL : _BADGE_NEG_TTL; };
+  const mem = _badgeMem[hashId];
+  if (mem && (Date.now() - mem.at) < ttl(mem)) return { ok: true, first: mem.first };
+  try {
+    const store = await chrome.storage.local.get('cdlBadgeCache');
+    const cache = (store && store.cdlBadgeCache) || {};
+    const hit = cache[hashId];
+    if (hit && (Date.now() - hit.at) < ttl(hit)) { _badgeMem[hashId] = hit; return { ok: true, first: hit.first }; }
+    const id = await badgeHash(hashId);
+    const resp = await fetch(base + '/v1/seen?ids=' + encodeURIComponent(id));
+    if (!resp.ok) return { ok: false };
+    const j = await resp.json();
+    const first = (j && j[id]) || null;
+    const entry = { first, at: Date.now() };
+    _badgeMem[hashId] = entry;
+    cache[hashId] = entry;
+    try { await chrome.storage.local.set({ cdlBadgeCache: cache }); } catch (_) {}
+    return { ok: true, first };
+  } catch (_) { return { ok: false }; }
+}
+
 // Firefox exposes `browser` in addition to `chrome`; Chrome does not.
 // In Firefox Android, blob: URLs created in a service worker cannot be resolved
 // by the downloads API, so we use base64 data: URLs there instead.
@@ -500,6 +577,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: !err && !!granted, granted: !!granted, error: err && err.message });
       });
     } catch (e) { sendResponse({ ok: false, error: e.message }); }
+    return true;
+  }
+  // Tenure-badge: register the current user (server-timestamped) and look up others'
+  // first-seen dates. Network happens here (SW has host permission → no CORS issues).
+  if (message.action === 'cdlBadgeRegister') {
+    badgeRegister(message.hashId).then((r) => sendResponse(r)).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (message.action === 'cdlBadgeLookup') {
+    badgeLookup(message.hashId).then((r) => sendResponse(r)).catch(() => sendResponse({ ok: false }));
     return true;
   }
   if (message.action === 'openOptions') {
