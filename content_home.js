@@ -64,7 +64,7 @@
   var apiMeta = Object.create(null);    // url -> { synopsis, rating, type, status, contentRating } (instant hover)
   var genreCache = Object.create(null); // url -> Promise<{genres,tags}> (lazy from title page)
   var pop = null, hoverWired = false, curHoverUrl = null;
-  var loadedCount = 0, totalCards = 0, bailed = false; // empty-account fallback bookkeeping
+  var loggedInState = null; // null=unknown, true, false — drives the per-section empty messages
   var userCache = null; // Promise<{loggedIn,name}> for the greeting
 
   function isHome() { var p = location.pathname.replace(/\/+$/, '') || '/'; return p === '/' || p === '/home'; }
@@ -184,9 +184,9 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
 #${ROOT_ID} .cdl-pct{position:absolute;top:7px;right:7px;font-size:var(--text-2xs,.625rem);font-weight:800;color:#fff;
   background:rgba(0,0,0,.74);padding:2px 6px;border-radius:3px;}
 #${ROOT_ID} .cdl-empty{color:var(--text-2,#9da4a5);font-size:var(--text-base,.875rem);padding:14px 2px;}
-#${ROOT_ID} .cdl-emptystate{margin:8px 2px 30px;padding:30px 26px;border-radius:8px;border:1px dashed var(--surface-3,#3a4248);background:var(--surface,#2a3134);text-align:center;animation:cdlFadeUp .4s ease both;}
-#${ROOT_ID} .cdl-emptystate-title{font-size:var(--text-xl,1rem);font-weight:800;color:var(--text-emphasis,#ecf4f5);}
-#${ROOT_ID} .cdl-emptystate-sub{margin:8px auto 0;max-width:640px;font-size:var(--text-sm,.8125rem);line-height:1.55;color:var(--text-3,#6f7778);}
+/* per-section empty message (logged out / no history / no follows) */
+#${ROOT_ID} .cdl-emptymsg{margin:2px 2px 8px;padding:26px 22px;border-radius:6px;border:1px dashed var(--surface-3,#3a4248);
+  background:var(--surface,#2a3134);color:var(--text-2,#9da4a5);font-size:var(--text-base,.875rem);font-weight:600;text-align:center;}
 
 /* classic card: cover + caption below (no overlay text) */
 #${ROOT_ID} .cdl-card--classic{background:transparent;}
@@ -412,31 +412,40 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
     slot.textContent = ''; slot.appendChild(row);
   }
 
-  function sectionDone(n) {
-    loadedCount++; totalCards += n;
-    if (bailed || loadedCount < sections.length || totalCards !== 0) return;
-    // Everything came back empty. Only fall back to comix's native Home when the user is
-    // LOGGED OUT — a logged-in account with an empty library still gets the custom Home with a
-    // friendly empty state (so the redesign works for every account, not just data-rich ones).
-    fetchUser().then(function (u) {
-      if (bailed || totalCards !== 0) return;
-      if (u && u.loggedIn) showEmptyState();
-      else { bailed = true; revertToNative(); }
-    }).catch(function () { if (!bailed && totalCards === 0) { bailed = true; revertToNative(); } });
+  // Per-section empty messages (when the custom Home is on we never revert to native — each
+  // empty section says why). A logged-out account overrides them all.
+  var EMPTY_MSG = {
+    'continue-reading': 'You don’t have any reading history.',
+    'new-chapters': 'You don’t have any comics followed.',
+    'recently-followed': 'You don’t have any comics followed.',
+    'most-recent-popular': 'Nothing to show right now.',
+    'most-follows-new': 'Nothing to show right now.',
+    'latest-updates': 'Nothing to show right now.',
+    'user-collections': 'No collections to show right now.'
+  };
+  function emptyMessage(id) {
+    if (loggedInState === false) return 'You’re logged out — log in to comix to see this.';
+    return EMPTY_MSG[id] || 'Nothing to show here yet.';
   }
-
-  // Logged-in but nothing to show: a small in-Home message instead of a blank page or a revert.
-  function showEmptyState() {
-    var root = document.getElementById(ROOT_ID); if (!root || document.getElementById('cdl-home-empty')) return;
-    root.appendChild(el('div', { id: 'cdl-home-empty', class: 'cdl-emptystate' }, [
-      el('div', { class: 'cdl-emptystate-title', text: 'Your Home is ready' }),
-      el('div', { class: 'cdl-emptystate-sub', text: 'Follow comics and start reading and they’ll show up here. Tip: enable Most Recent Popular or Latest Updates in the extension Settings → Home to fill your Home with trending titles right away.' })
-    ]));
+  function refreshEmpties() {
+    document.querySelectorAll('#' + ROOT_ID + ' .cdl-emptymsg').forEach(function (m) {
+      m.textContent = emptyMessage(m.getAttribute('data-sec'));
+    });
+  }
+  // Show a section with an empty-state message in place of its rail (never hide/revert).
+  function fillEmpty(sec, s) {
+    sec.style.display = '';
+    var rail = sec.querySelector('.cdl-rail'); if (rail) rail.style.display = 'none';
+    var msg = sec.querySelector('.cdl-emptymsg');
+    if (!msg) { msg = el('div', { class: 'cdl-emptymsg' }); sec.appendChild(msg); }
+    msg.setAttribute('data-sec', s.id);
+    msg.textContent = emptyMessage(s.id);
+    // Resolve auth once, then correct every empty message (e.g. → "logged out").
+    fetchUser().then(function (u) { var v = !!(u && u.loggedIn); if (v !== loggedInState) { loggedInState = v; refreshEmpties(); } });
   }
 
   // Hero feeding + rail fill, shared by API and DOM sections. `s` is the registry entry.
   function fillSection(s, sec, cards) {
-    var n = cards.length;
     if (s.id === heroFeedId()) {
       // Feature the freshest titles with an UNREAD latest chapter (unless that's disabled); once
       // you've read a series' newest chapter it drops out of the hero on the next visit.
@@ -446,10 +455,11 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
       heroPicks.forEach(function (t) { picked[t.hid] = true; });
       cards = cards.filter(function (t) { return !picked[t.hid]; }); // no dupe in the rail
     }
-    if (!cards.length) { sec.style.display = 'none'; sectionDone(n); return; }
+    if (!cards.length) { fillEmpty(sec, s); return; }
     sec.style.display = '';
+    var rail0 = sec.querySelector('.cdl-rail'); if (rail0) rail0.style.display = '';
+    var msg0 = sec.querySelector('.cdl-emptymsg'); if (msg0) msg0.remove();
     fillRail(sec, cards.map(function (t) { return cardEl(t, s); }));
-    sectionDone(n);
   }
 
   function loadSection(s) {
@@ -465,9 +475,9 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
         fillSection(s, sec2, cards);
       })
       .catch(function () {
-        var sec2 = document.getElementById(secDomId(s)); if (sec2 && !sec2.querySelector('.cdl-card')) sec2.style.display = 'none';
+        var sec2 = document.getElementById(secDomId(s)); if (!sec2) return;
         if (s.id === heroFeedId()) buildHero([]);
-        sectionDone(0);
+        if (!sec2.querySelector('.cdl-card')) fillEmpty(sec2, s);
       });
   }
 
@@ -561,23 +571,22 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
       .then(function (json) {
         var sec2 = document.getElementById(secDomId(s)); if (!sec2) return;
         var cols = Core.parseCollectionsApi(json, location.origin).slice(0, itemsLimit());
-        if (!cols.length) { sec2.style.display = 'none'; sectionDone(0); return; }
+        if (!cols.length) { fillEmpty(sec2, s); return; }
         sec2.style.display = '';
         sec2.classList.add('cdl-sec--coll');
-        var rail = sec2.querySelector('.cdl-rail'); if (rail) rail.classList.add('cdl-rail--coll');
+        var rail = sec2.querySelector('.cdl-rail'); if (rail) { rail.style.display = ''; rail.classList.add('cdl-rail--coll'); }
+        var msg0 = sec2.querySelector('.cdl-emptymsg'); if (msg0) msg0.remove();
         fillRail(sec2, cols.map(collectionCard));
-        sectionDone(cols.length);
       })
       .catch(function () {
-        var sec2 = document.getElementById(secDomId(s)); if (sec2 && !sec2.querySelector('.cdl-coll')) sec2.style.display = 'none';
-        sectionDone(0);
+        var sec2 = document.getElementById(secDomId(s)); if (sec2 && !sec2.querySelector('.cdl-coll')) fillEmpty(sec2, s);
       });
   }
 
   function ensureRoot() {
     var col = mainCol(); if (!col) return null;
     var root = document.getElementById(ROOT_ID);
-    if (!root) { root = el('div', { id: ROOT_ID }); col.insertBefore(root, col.firstChild); loadedCount = 0; totalCards = 0; }
+    if (!root) { root = el('div', { id: ROOT_ID }); col.insertBefore(root, col.firstChild); }
     else if (root.parentElement !== col) { col.insertBefore(root, col.firstChild); }
     // greeting (top) — async-filled with the logged-in name (or a login prompt)
     var greet = document.getElementById(GREET_ID);
@@ -590,15 +599,6 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
     // section shells, in configured order
     sections.forEach(function (s) { if (!document.getElementById(secDomId(s))) root.appendChild(buildShell(s)); });
     return root;
-  }
-  // Tear down our UI and bring back the native Home (used when there's no personal data).
-  function revertToNative() {
-    stopObserver(); unwireHover();
-    document.documentElement.classList.remove(ROOT_CLASS);
-    var root = document.getElementById(ROOT_ID); if (root) root.remove();
-    var st = document.getElementById(STYLE_ID); if (st) st.remove();
-    var pp = document.getElementById(POP_ID); if (pp) pp.remove();
-    unhideAll(); pop = null;
   }
   function hideNative() {
     var col = mainCol(); if (!col) return;
@@ -733,7 +733,7 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
   }
 
   function doApply() {
-    if (applying || bailed || !mainCol()) return;
+    if (applying || !mainCol()) return;
     applying = true;
     try {
       sections = Core.resolveSections(cfg['home.sections']); // active, ordered for this config
@@ -752,7 +752,7 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
   }
   function applyHome() { applied = true; doApply(); ensureObserver(); }
   function clearHome() {
-    applied = false; bailed = false; userCache = null; // fresh start on the next home visit (e.g. after login)
+    applied = false; userCache = null; loggedInState = null; // fresh start on the next home visit (e.g. after login)
     stopObserver(); unwireHover();
     document.documentElement.classList.remove(ROOT_CLASS);
     var root = document.getElementById(ROOT_ID); if (root) root.remove();
