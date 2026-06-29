@@ -210,10 +210,11 @@ check('parseUser: logged-out has empty name', C.parseUser(null).name === '');
 
 // ── section registry: defaultHomeSections / normalizeSections / resolveSections ───
 const def = C.defaultHomeSections();
-check('defaultHomeSections: all 7 known sections', def.length === 7);
-check('defaultHomeSections: 3 personal on by default', def.filter(function (s) { return s.on; }).length === 3);
-check('defaultHomeSections: personal sections are the on ones',
+check('defaultHomeSections: all 8 known sections', def.length === 8);
+check('defaultHomeSections: 3 personal rails on by default', def.filter(function (s) { return s.on; }).length === 3);
+check('defaultHomeSections: the on ones are the 3 rails (feed off by default)',
   def.filter(function (s) { return s.on; }).map(function (s) { return s.id; }).join() === 'continue-reading,new-chapters,recently-followed');
+check('defaultHomeSections: whats-new feed exists but is off', def.some(function (s) { return s.id === 'whats-new' && s.on === false; }));
 
 // normalizeSections: drop unknown, dedupe, coerce on, append missing (off)
 const norm = C.normalizeSections([
@@ -223,7 +224,7 @@ const norm = C.normalizeSections([
   { id: 'no-such-section', on: true },        // unknown → dropped
   'recently-followed'                         // bare string id → on:true
 ]);
-check('normalizeSections: full known set, no dupes/unknowns', norm.length === 7);
+check('normalizeSections: full known set, no dupes/unknowns', norm.length === 8);
 check('normalizeSections: preserves stored order first', norm[0].id === 'latest-updates' && norm[1].id === 'continue-reading' && norm[2].id === 'recently-followed');
 check('normalizeSections: coerces on (off honored)', norm[1].id === 'continue-reading' && norm[1].on === false);
 check('normalizeSections: bare string id → on', norm[2].on === true);
@@ -234,8 +235,22 @@ check('normalizeSections: appends missing sections with their default on-state',
 })());
 check('normalizeSections: garbage → all known, default on flags', (function () {
   var n = C.normalizeSections(null);
-  return n.length === 7 && n.filter(function (s) { return s.on; }).length === 3;
+  return n.length === 8 && n.filter(function (s) { return s.on; }).length === 3;
 })());
+
+// sortFeed: unread (haven't read the latest) first, then read; order within each group preserved.
+const feed = C.sortFeed([
+  { hid: 'a', latestChapter: 10, lastRead: 10 }, // read
+  { hid: 'b', latestChapter: 20, lastRead: 18 }, // unread
+  { hid: 'c', latestChapter: 5, lastRead: null }, // unread (never read)
+  { hid: 'd', latestChapter: 7, lastRead: 7 }    // read
+]);
+check('sortFeed: unread first then read', feed.map(function (t) { return t.hid; }).join() === 'b,c,a,d');
+check('sortFeed: annotates unread flag', feed[0].unread === true && feed[0].hid === 'b' && feed[2].unread === false && feed[2].hid === 'a');
+check('sortFeed: preserves order within groups', feed[0].hid === 'b' && feed[1].hid === 'c' && feed[2].hid === 'a' && feed[3].hid === 'd');
+check('sortFeed: clones (does not mutate input)', (function () { var inp = [{ hid: 'x', latestChapter: 3, lastRead: 1 }]; var out = C.sortFeed(inp); return out[0] !== inp[0] && inp[0].unread === undefined; })());
+check('sortFeed: empty/garbage (no throw)', C.sortFeed([]).length === 0 && C.sortFeed(null).length === 0);
+check('whats-new is a feed-layout api section in the registry', (function () { var w = C.HOME_SECTIONS.filter(function (s) { return s.id === 'whats-new'; })[0]; return w && w.layout === 'feed' && w.source === 'api' && !w.defaultOn; })());
 
 // resolveSections: only ON, ordered, with order index + registry fields. Use COMPLETE lists so
 // there's no append-the-missing surprise (the settings UI always stores all known sections).

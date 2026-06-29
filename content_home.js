@@ -224,6 +224,31 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
 #${ROOT_ID} .cdl-coll-owner{font-size:var(--text-xs,.6875rem);font-weight:700;color:var(--accent,#66e8fa);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #${ROOT_ID} .cdl-coll-meta{font-size:var(--text-2xs,.625rem);color:var(--text-3,#6f7778);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
+/* "What's New" feed — unread first, two columns to fill the wide page (1 on narrow, 3 on very wide) */
+#${ROOT_ID} .cdl-feed{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;align-content:start;}
+@media (min-width:1700px){#${ROOT_ID} .cdl-feed{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media (max-width:860px){#${ROOT_ID} .cdl-feed{grid-template-columns:1fr;}}
+#${ROOT_ID}.cdl-compact .cdl-feed{grid-template-columns:repeat(3,minmax(0,1fr));}
+#${ROOT_ID} .cdl-feed-row{display:flex;align-items:center;gap:13px;padding:9px 12px;border-radius:6px;text-decoration:none;
+  background:var(--surface,#2a3134);border:1px solid transparent;transition:background .14s,border-color .14s,transform .12s;}
+#${ROOT_ID} .cdl-feed-row:hover{background:var(--surface-3,#3a4248);transform:translateX(2px);}
+#${ROOT_ID} .cdl-feed-link{flex:1;min-width:0;display:flex;align-items:center;gap:13px;text-decoration:none;color:inherit;}
+#${ROOT_ID} .cdl-feed-row.is-unread{border-color:rgba(var(--accent-rgb,102 232 250)/.32);background:rgba(var(--accent-rgb,102 232 250)/.07);}
+#${ROOT_ID} .cdl-feed-dot{flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:transparent;}
+#${ROOT_ID} .cdl-feed-row.is-unread .cdl-feed-dot{background:var(--accent,#66e8fa);box-shadow:0 0 0 3px rgba(var(--accent-rgb,102 232 250)/.18);}
+#${ROOT_ID} .cdl-feed-cover{flex:0 0 44px;width:44px;height:62px;object-fit:cover;border-radius:4px;background:var(--surface-2,#323a3e);}
+#${ROOT_ID} .cdl-feed-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+#${ROOT_ID} .cdl-feed-title{font-size:var(--text-md,.8125rem);font-weight:650;color:var(--text,#cdd5d6);line-height:1.25;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#${ROOT_ID} .cdl-feed-row.is-unread .cdl-feed-title{font-weight:850;color:var(--text-emphasis,#ecf4f5);}
+#${ROOT_ID} .cdl-feed-sub{font-size:var(--text-xs,.6875rem);color:var(--text-3,#6f7778);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#${ROOT_ID} .cdl-feed-ch{color:var(--accent,#66e8fa);font-weight:700;}
+#${ROOT_ID} .cdl-feed-new{flex:0 0 auto;font-size:var(--text-2xs,.625rem);font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--accent-ink,#082a30);background:var(--accent,#66e8fa);border-radius:3px;padding:2px 6px;}
+#${ROOT_ID} .cdl-feed-dl{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:5px;
+  color:var(--text-2,#9da4a5);background:var(--surface-2,#323a3e);transition:background .14s,color .14s;}
+#${ROOT_ID} .cdl-feed-dl:hover{background:var(--accent,#66e8fa);color:var(--accent-ink,#082a30);}
+
 /* welcome header */
 #${GREET_ID}{margin:2px 2px 20px;}
 #${GREET_ID} .cdl-greet-title{font-size:var(--text-3xl,1.5rem);font-weight:850;letter-spacing:-.02em;color:var(--text-emphasis,#ecf4f5);}
@@ -278,16 +303,23 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
   }
   function skeletonCard() { return el('div', { class: 'cdl-skel' }, [el('div', { class: 'cdl-skel-poster' })]); }
   function buildShell(s) {
-    var header = el('div', { class: 'section__header' }, [
-      el('div', { class: 'cdl-head-l section__title-wrap' }, [
-        el('h2', { class: 'section__title', text: s.title }),
-        el('div', { class: 'cdl-sub', text: s.sub || '' })
-      ]),
-      el('div', { class: 'section__controls' }, [el('div', { class: 'nav-btns' }, [navBtn('prev'), navBtn('next')])])
-    ]);
-    var rail = el('div', { class: 'cdl-rail' });
-    for (var i = 0; i < SKELETON_N; i++) rail.appendChild(skeletonCard());
-    return el('section', { class: 'section cdl-sec', id: secDomId(s) }, [header, rail]);
+    var feed = s.layout === 'feed';
+    var headKids = [el('div', { class: 'cdl-head-l section__title-wrap' }, [
+      el('h2', { class: 'section__title', text: s.title }),
+      el('div', { class: 'cdl-sub', text: s.sub || '' })
+    ])];
+    // the feed is vertical (no horizontal scroll), so it gets no prev/next arrows
+    if (!feed) headKids.push(el('div', { class: 'section__controls' }, [el('div', { class: 'nav-btns' }, [navBtn('prev'), navBtn('next')])]));
+    var header = el('div', { class: 'section__header' }, headKids);
+    var body;
+    if (feed) {
+      body = el('div', { class: 'cdl-feed' });
+      for (var f = 0; f < 6; f++) body.appendChild(el('div', { class: 'cdl-feed-row' }, [el('span', { class: 'cdl-feed-cover cdl-skel-poster' }), el('div', { class: 'cdl-feed-main' })]));
+    } else {
+      body = el('div', { class: 'cdl-rail' });
+      for (var i = 0; i < SKELETON_N; i++) body.appendChild(skeletonCard());
+    }
+    return el('section', { class: 'section cdl-sec', id: secDomId(s) }, [header, body]);
   }
   function wireArrows(sec) {
     var rail = sec.querySelector('.cdl-rail');
@@ -295,6 +327,45 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
     var by = function () { return Math.max(260, Math.round(rail.clientWidth * 0.85)); };
     if (prev && !prev._cdl) { prev._cdl = 1; prev.addEventListener('click', function () { rail.scrollBy({ left: -by(), behavior: 'smooth' }); }); }
     if (next && !next._cdl) { next._cdl = 1; next.addEventListener('click', function () { rail.scrollBy({ left: by(), behavior: 'smooth' }); }); }
+  }
+
+  // ── "What's New" feed row ──────────────────────────────────────────────────
+  function downloadGlyph() {
+    var ns = 'http://www.w3.org/2000/svg';
+    var s = document.createElementNS(ns, 'svg');
+    s.setAttribute('width', '16'); s.setAttribute('height', '16'); s.setAttribute('viewBox', '0 0 24 24');
+    s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '2');
+    s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round');
+    [['M12 3v12'], ['M7 11l5 4 5-4'], ['M5 21h14']].forEach(function (d) { var p = document.createElementNS(ns, 'path'); p.setAttribute('d', d[0]); s.appendChild(p); });
+    return s;
+  }
+  function feedRow(t) {
+    if (t.url) apiMeta[t.url] = { synopsis: t.synopsis, rating: t.rating, type: t.type, status: t.status, contentRating: t.contentRating };
+    var chTxt = (t.latestChapter != null) ? ('Ch.' + t.latestChapter) : '';
+    var time = (t.time && (t.time.chapterUpdated || t.time.updated)) || '';
+    var prog = t.unread ? (t.lastRead != null ? ('on Ch.' + t.lastRead) : 'not started') : 'caught up';
+    var tail = [time, prog].filter(Boolean).join('   ·   ');
+    var sub = el('div', { class: 'cdl-feed-sub' }, [
+      chTxt ? el('span', { class: 'cdl-feed-ch', text: chTxt }) : null,
+      el('span', { text: (chTxt && tail ? '   ·   ' : '') + tail })
+    ]);
+    var link = el('a', linkProps(t.url, 'Open ' + (t.title || '')), [
+      t.cover ? el('img', { class: 'cdl-feed-cover', loading: 'lazy', alt: '', src: t.cover }) : el('span', { class: 'cdl-feed-cover' }),
+      el('div', { class: 'cdl-feed-main' }, [el('div', { class: 'cdl-feed-title', text: t.title || '' }), sub])
+    ]);
+    link.className = 'cdl-feed-link';
+    var dl = el('a', linkProps(t.url, 'Open ' + (t.title || '') + ' to download'), [downloadGlyph()]);
+    dl.className = 'cdl-feed-dl'; dl.title = 'Open to download';
+    return el('div', { class: 'cdl-feed-row' + (t.unread ? ' is-unread' : '') }, [
+      el('span', { class: 'cdl-feed-dot' }), link,
+      t.unread ? el('span', { class: 'cdl-feed-new', text: 'New' }) : null, dl
+    ]);
+  }
+  // anchor props honoring the open-in-new-tab setting
+  function linkProps(url, label) {
+    var p = { href: url || '#', 'aria-label': label };
+    if (cfg['home.openInNewTab']) { p.target = '_blank'; p.rel = 'noopener'; }
+    return p;
   }
 
   // Normalize an API item (parseTitlesApi) or a DOM-parsed card (parseFollowedTitles) into one
@@ -415,6 +486,7 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
   // Per-section empty messages (when the custom Home is on we never revert to native — each
   // empty section says why). A logged-out account overrides them all.
   var EMPTY_MSG = {
+    'whats-new': 'You don’t have any comics followed.',
     'continue-reading': 'You don’t have any reading history.',
     'new-chapters': 'You don’t have any comics followed.',
     'recently-followed': 'You don’t have any comics followed.',
@@ -435,7 +507,7 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
   // Show a section with an empty-state message in place of its rail (never hide/revert).
   function fillEmpty(sec, s) {
     sec.style.display = '';
-    var rail = sec.querySelector('.cdl-rail'); if (rail) rail.style.display = 'none';
+    var rail = sec.querySelector('.cdl-rail, .cdl-feed'); if (rail) rail.style.display = 'none';
     var msg = sec.querySelector('.cdl-emptymsg');
     if (!msg) { msg = el('div', { class: 'cdl-emptymsg' }); sec.appendChild(msg); }
     msg.setAttribute('data-sec', s.id);
@@ -446,6 +518,15 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
 
   // Hero feeding + rail fill, shared by API and DOM sections. `s` is the registry entry.
   function fillSection(s, sec, cards) {
+    // "What's New" vertical feed — unread first, no hero/rail.
+    if (s.layout === 'feed') {
+      if (!cards.length) { fillEmpty(sec, s); return; }
+      sec.style.display = '';
+      var msgF = sec.querySelector('.cdl-emptymsg'); if (msgF) msgF.remove();
+      var feed = sec.querySelector('.cdl-feed');
+      if (feed) { feed.style.display = ''; feed.textContent = ''; Core.sortFeed(cards).forEach(function (t) { feed.appendChild(feedRow(t)); }); }
+      return;
+    }
     if (s.id === heroFeedId()) {
       // Feature the freshest titles with an UNREAD latest chapter (unless that's disabled); once
       // you've read a series' newest chapter it drops out of the hero on the next visit.

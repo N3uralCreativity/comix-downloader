@@ -315,6 +315,22 @@
   }
 
   /**
+   * Order titles for the "What's New" feed: UNREAD (you haven't read the latest chapter) first,
+   * then already-read — each group keeping the caller's order (chapter_updated_desc = newest first).
+   * Returns shallow clones annotated with `unread:boolean`. Never throws.
+   */
+  function sortFeed(cards) {
+    var list = (cards || []).filter(Boolean);
+    var fresh = [], read = [];
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i], u = !isCaughtUp(t);
+      var c = {}; for (var k in t) if (Object.prototype.hasOwnProperty.call(t, k)) c[k] = t[k];
+      c.unread = u; (u ? fresh : read).push(c);
+    }
+    return fresh.concat(read);
+  }
+
+  /**
    * Parse comix's `GET /api/v1/user` response into { loggedIn, name }.
    * Logged-in shape: { status:'ok', result:{ id, username, displayName, … } }.
    * Logged-out returns a non-ok status / no real identity (or a guest flag). Prefers displayName,
@@ -337,13 +353,18 @@
   //                   `a.card`s in our own style and hide the native original (global sections).
   // `match` (dom only): candidate heading texts (normalized, substring) used to find the
   //                   native `section.section` for that id. `id` order here == default order.
+  // `defaultOn` — whether the section is enabled in a fresh config (personal rails on; the feed,
+  // global carousels and collections off / opt-in).
+  // `layout:'feed'` — render as a vertical "what's new" feed (unread-first) instead of a rail.
   var HOME_SECTIONS = [
+    { id: 'whats-new', title: 'What’s New', sub: 'New chapters across everything you follow',
+      source: 'api', api: '/api/v1/user/following-titles?sort=chapter_updated_desc&folder_ids[]=1', layout: 'feed', timeKey: 'chapterUpdated' },
     { id: 'continue-reading', title: 'Continue Reading', sub: 'Pick up where you left off',
-      source: 'api', api: '/api/v1/user/history', progress: true, timeKey: 'read' },
+      source: 'api', api: '/api/v1/user/history', progress: true, timeKey: 'read', defaultOn: true },
     { id: 'new-chapters', title: 'New Chapters from Followed Comics', sub: 'Fresh chapters from series you follow',
-      source: 'api', api: '/api/v1/user/following-titles?sort=chapter_updated_desc&folder_ids[]=1', feedsHero: true, timeKey: 'chapterUpdated' },
+      source: 'api', api: '/api/v1/user/following-titles?sort=chapter_updated_desc&folder_ids[]=1', feedsHero: true, timeKey: 'chapterUpdated', defaultOn: true },
     { id: 'recently-followed', title: 'Recently Followed Comics', sub: 'The newest titles you added to your library',
-      source: 'api', api: '/api/v1/user/following-titles?sort=added_desc', timeKey: 'added' },
+      source: 'api', api: '/api/v1/user/following-titles?sort=added_desc', timeKey: 'added', defaultOn: true },
     { id: 'most-recent-popular', title: 'Most Recent Popular', sub: 'Trending across comix right now',
       source: 'dom', match: ['most recent popular'] },
     { id: 'most-follows-new', title: 'Most Follows · New Comics', sub: 'New series gaining followers fast',
@@ -357,9 +378,9 @@
   var _byId = Object.create(null);
   for (var _i = 0; _i < HOME_SECTIONS.length; _i++) _byId[HOME_SECTIONS[_i].id] = HOME_SECTIONS[_i];
 
-  // The default ordered selection: the three personal sections on, global sections off.
+  // The default ordered selection: the three personal rails on; feed/globals/collections off.
   function defaultHomeSections() {
-    return HOME_SECTIONS.map(function (s) { return { id: s.id, on: s.source === 'api' }; });
+    return HOME_SECTIONS.map(function (s) { return { id: s.id, on: !!s.defaultOn }; });
   }
 
   /**
@@ -381,7 +402,7 @@
     }
     for (var j = 0; j < HOME_SECTIONS.length; j++) {
       var s = HOME_SECTIONS[j];
-      if (!seen[s.id]) out.push({ id: s.id, on: s.source === 'api' });
+      if (!seen[s.id]) out.push({ id: s.id, on: !!s.defaultOn });
     }
     return out;
   }
@@ -435,6 +456,7 @@
     parseUser: parseUser,
     isCaughtUp: isCaughtUp,
     selectHero: selectHero,
+    sortFeed: sortFeed,
     defaultHomeSections: defaultHomeSections,
     normalizeSections: normalizeSections,
     resolveSections: resolveSections,

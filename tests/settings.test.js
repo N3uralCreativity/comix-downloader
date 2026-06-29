@@ -106,11 +106,12 @@ check('profile.badge is NOT a setting (mandatory feature)', !('profile.badge' in
 
 // 5c. home.sections (sectionList) normalization
 const SECT = (v) => S.validate({ 'home.sections': v })['home.sections'];
-check('home.sections default has 7 entries', SECT(undefined).length === 7);
+check('home.sections default has 8 entries', SECT(undefined).length === 8);
+check('home.sections includes the whats-new feed (off by default)', SECT(undefined).some(function (s) { return s.id === 'whats-new' && s.on === false; }));
 check('home.sections drops unknown + dedupes + keeps known set', (function () {
   var v = SECT([{ id: 'latest-updates', on: true }, { id: 'latest-updates', on: false }, { id: 'bogus', on: true }]);
   var ids = v.map(function (s) { return s.id; });
-  return v.length === 7 && ids.filter(function (i) { return i === 'latest-updates'; }).length === 1 && ids.indexOf('bogus') === -1;
+  return v.length === 8 && ids.filter(function (i) { return i === 'latest-updates'; }).length === 1 && ids.indexOf('bogus') === -1;
 })());
 check('home.sections preserves stored order, appends missing', (function () {
   var v = SECT([{ id: 'user-collections', on: true }, { id: 'new-chapters', on: false }]);
@@ -123,7 +124,7 @@ check('home.sections coerces on to boolean', (function () {
 })());
 check('home.sections garbage -> default selection', (function () {
   var v = SECT('not an array');
-  return v.length === 7 && v.filter(function (s) { return s.on; }).length === 3;
+  return v.length === 8 && v.filter(function (s) { return s.on; }).length === 3;
 })());
 
 // 6. Async API + onChange broadcast + export/import

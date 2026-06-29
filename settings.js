@@ -101,6 +101,7 @@
     // Ordered section selection. id order = display order; on = shown. Personal sections on by
     // default, comix's global carousels off (opt-in). Mirrors CDLHomeCore.defaultHomeSections().
     'home.sections': [
+      { id: 'whats-new', on: false },
       { id: 'continue-reading', on: true },
       { id: 'new-chapters', on: true },
       { id: 'recently-followed', on: true },
@@ -127,6 +128,7 @@
   // Section ids/labels for the home.sections picker (kept in sync with CDLHomeCore.HOME_SECTIONS;
   // a unit test asserts the id sets match). Defined here so the options UIs render without home-core.
   var HOME_SECTION_LABELS = [
+    { id: 'whats-new', label: 'What’s New (feed)' },
     { id: 'continue-reading', label: 'Continue Reading' },
     { id: 'new-chapters', label: 'New Chapters from Followed Comics' },
     { id: 'recently-followed', label: 'Recently Followed Comics' },
