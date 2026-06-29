@@ -187,13 +187,11 @@ let downloadAllSession = null;
 const FEATURES_NOTICE_VERSION = '2.0.2';
 const CONCURRENCY_NOTICE_VERSION = '2.1.0';
 
-function _setNewToolbarBadge() {
-  try {
-    if (chrome.action && chrome.action.setBadgeText) {
-      chrome.action.setBadgeText({ text: 'NEW' });
-      if (chrome.action.setBadgeBackgroundColor) chrome.action.setBadgeBackgroundColor({ color: '#60a5fa' });
-    }
-  } catch (_) {}
+// Toolbar "NEW" icon badge removed per user preference — intentionally a no-op so existing
+// callers stay harmless. The download-progress badge (setProgressBadge) is unaffected.
+function _setNewToolbarBadge() {}
+function _clearToolbarBadge() {
+  try { if (chrome.action && chrome.action.setBadgeText) chrome.action.setBadgeText({ text: '' }); } catch (_) {}
 }
 
 // Live Download-All progress on the toolbar icon (overrides the NEW badge while
@@ -207,17 +205,8 @@ function setProgressBadge(completed, total) {
     if (text && chrome.action.setBadgeBackgroundColor) chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
   } catch (_) {}
 }
-function restoreIdleBadge() {
-  try {
-    if (!(chrome.action && chrome.action.setBadgeText)) return;
-    chrome.storage.local.get(['cdlFeaturesNotice', 'cdlConcurrencyNotice']).then((res) => {
-      const active = (res.cdlFeaturesNotice && res.cdlFeaturesNotice.active) ||
-                     (res.cdlConcurrencyNotice && res.cdlConcurrencyNotice.active);
-      if (active) _setNewToolbarBadge();
-      else chrome.action.setBadgeText({ text: '' });
-    }).catch(() => { try { chrome.action.setBadgeText({ text: '' }); } catch (_) {} });
-  } catch (_) {}
-}
+// When a download run ends, clear the toolbar badge (no more "NEW" restore).
+function restoreIdleBadge() { _clearToolbarBadge(); }
 
 // ── Right-click context menu ──────────────────────────────────────────────────
 // setupContextMenus runs on both onInstalled and onStartup; if those race, the
@@ -266,9 +255,11 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
 
 chrome.runtime.onInstalled.addListener(setupContextMenus);
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(setupContextMenus);
+if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(_clearToolbarBadge); // clear any persisted "NEW" badge
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason !== 'install' && details.reason !== 'update') return;
+  _clearToolbarBadge(); // remove any lingering "NEW" badge from earlier versions
   chrome.storage.local.get(['cdlFeaturesNotice', 'cdlConcurrencyNotice']).then((res) => {
     const prevF = res && res.cdlFeaturesNotice;
     if (!(prevF && prevF.seenVersion === FEATURES_NOTICE_VERSION)) {
