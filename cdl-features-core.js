@@ -258,6 +258,107 @@
     return Array.from(byIndex.values()).sort(function (a, b) { return a.index - b.index; });
   }
 
+  // ── Local reading stats (pure reducers; storage/DOM stay in the content scripts) ──
+  // Shape: { days:{ 'YYYY-MM-DD':{c,s} }, series:{ slug:{c,s,ts,name} }, pace:{avg,n} }
+  // c = chapters finished, s = active seconds. pace.avg = EWMA of seconds per finished chapter.
+  var STATS_DAYS_MAX = 60, STATS_SERIES_MAX = 300;
+  var PACE_DEFAULT_SECS = 240; // 4 min/chapter until we have real samples
+
+  function statsDayKey(ms) {
+    var d = new Date(ms == null ? Date.now() : ms);
+    var m = d.getMonth() + 1, day = d.getDate();
+    return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
+  }
+
+  /**
+   * Fold one reading sample into the stats blob (returns the same object, mutated).
+   * sample: { ts, slug, name, seconds, finished (bool), paceSecs (secs for a FULL chapter read; optional) }
+   */
+  function recordReadSample(stats, sample) {
+    stats = stats || {};
+    stats.days = stats.days || {}; stats.series = stats.series || {}; stats.pace = stats.pace || { avg: null, n: 0 };
+    var secs = Math.max(0, Math.round(sample.seconds || 0));
+    var k = statsDayKey(sample.ts);
+    var day = stats.days[k] || (stats.days[k] = { c: 0, s: 0 });
+    day.s += secs;
+    if (sample.finished) day.c += 1;
+    if (sample.slug) {
+      var se = stats.series[sample.slug] || (stats.series[sample.slug] = { c: 0, s: 0, ts: 0, name: '' });
+      se.s += secs;
+      if (sample.finished) se.c += 1;
+      se.ts = sample.ts || Date.now();
+      if (sample.name) se.name = String(sample.name).slice(0, 80);
+    }
+    if (sample.paceSecs > 0) {
+      var p = stats.pace;
+      p.avg = p.avg == null ? Math.round(sample.paceSecs) : Math.round(p.avg * 0.7 + sample.paceSecs * 0.3);
+      p.n += 1;
+    }
+    // caps: days by date (oldest dropped), series by last-touched
+    var dk = Object.keys(stats.days).sort();
+    for (var i = 0; i < dk.length - STATS_DAYS_MAX; i++) delete stats.days[dk[i]];
+    var sk = Object.keys(stats.series);
+    if (sk.length > STATS_SERIES_MAX) {
+      sk.sort(function (a, b) { return (stats.series[a].ts || 0) - (stats.series[b].ts || 0); });
+      for (var j = 0; j < sk.length - STATS_SERIES_MAX; j++) delete stats.series[sk[j]];
+    }
+    return stats;
+  }
+
+  // Consecutive reading days ending today (or yesterday, so a streak isn't "broken" mid-day).
+  function computeStreak(days, todayKey) {
+    days = days || {};
+    var t = new Date(todayKey + 'T12:00:00');
+    if (isNaN(t)) return 0;
+    var cur = new Date(t);
+    var today = days[statsDayKey(cur.getTime())];
+    if (!today || !today.c) cur.setDate(cur.getDate() - 1); // today not read yet → count up to yesterday
+    var n = 0;
+    while (n <= 3660) {
+      var d = days[statsDayKey(cur.getTime())];
+      if (!d || !d.c) break;
+      n++; cur.setDate(cur.getDate() - 1);
+    }
+    return n;
+  }
+
+  // The last 7 days (oldest→today) as [{key,c,s}], for the bar chart.
+  function summarizeWeek(days, todayKey) {
+    days = days || {};
+    var t = new Date(todayKey + 'T12:00:00');
+    var out = [];
+    for (var i = 6; i >= 0; i--) {
+      var d = new Date(t); d.setDate(d.getDate() - i);
+      var k = statsDayKey(d.getTime());
+      var e = days[k] || {};
+      out.push({ key: k, c: e.c || 0, s: e.s || 0 });
+    }
+    return out;
+  }
+
+  function readingPace(stats) {
+    var p = stats && stats.pace;
+    return (p && p.avg > 0) ? p.avg : PACE_DEFAULT_SECS;
+  }
+
+  // How much is left after `lastNum` given the list's chapter numbers (deduped across groups).
+  function estimateCatchup(nums, lastNum, secsPerChapter) {
+    var uniq = {};
+    (nums || []).forEach(function (v) { if (typeof v === 'number' && isFinite(v)) uniq[v] = true; });
+    var left = Object.keys(uniq).map(Number).filter(function (v) { return lastNum == null || v > lastNum; });
+    var secs = Math.round(left.length * (secsPerChapter > 0 ? secsPerChapter : PACE_DEFAULT_SECS));
+    return { count: left.length, seconds: secs };
+  }
+
+  function fmtDuration(seconds) {
+    var s = Math.max(0, Math.round(seconds || 0));
+    if (s < 60) return '<1m';
+    var m = Math.round(s / 60);
+    if (m < 60) return m + 'm';
+    var h = Math.floor(m / 60), rm = m % 60;
+    return rm ? (h + 'h ' + rm + 'm') : (h + 'h');
+  }
+
   var CDLFeaturesCore = {
     SPECIAL_WORDS: SPECIAL_WORDS,
     CHAPTER_PATH_RE: CHAPTER_PATH_RE,
@@ -271,7 +372,15 @@
     computeAdjacentChapter: computeAdjacentChapter,
     pickCandidateUrl: pickCandidateUrl,
     extractChapterPaths: extractChapterPaths,
-    parseReaderImages: parseReaderImages
+    parseReaderImages: parseReaderImages,
+    statsDayKey: statsDayKey,
+    recordReadSample: recordReadSample,
+    computeStreak: computeStreak,
+    summarizeWeek: summarizeWeek,
+    readingPace: readingPace,
+    estimateCatchup: estimateCatchup,
+    fmtDuration: fmtDuration,
+    PACE_DEFAULT_SECS: PACE_DEFAULT_SECS
   };
 
   global.CDLFeaturesCore = CDLFeaturesCore;

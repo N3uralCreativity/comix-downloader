@@ -190,5 +190,50 @@ check('parseReaderImages: no reader imgs -> []', PRI('<img class="x" alt="Page 1
   check('fixture: last page is 125', out[out.length - 1].index === 125);
 })();
 
+// ── local reading stats (pure reducers) ──
+(() => {
+  const day = (off) => C.statsDayKey(Date.parse('2026-07-01T12:00:00') + off * 864e5);
+  check('statsDayKey formats YYYY-MM-DD', C.statsDayKey(Date.parse('2026-07-01T12:00:00')) === '2026-07-01');
+
+  let st = null;
+  st = C.recordReadSample(st, { ts: Date.parse('2026-07-01T12:00:00'), slug: 'abc', name: 'Series A', seconds: 120, finished: true, paceSecs: 120 });
+  st = C.recordReadSample(st, { ts: Date.parse('2026-07-01T13:00:00'), slug: 'abc', seconds: 60, finished: true, paceSecs: 300 });
+  check('recordReadSample aggregates a day', st.days['2026-07-01'].c === 2 && st.days['2026-07-01'].s === 180);
+  check('recordReadSample aggregates a series + keeps name', st.series.abc.c === 2 && st.series.abc.s === 180 && st.series.abc.name === 'Series A');
+  check('pace EWMA between samples', st.pace.n === 2 && st.pace.avg > 120 && st.pace.avg < 300);
+  st = C.recordReadSample(st, { ts: Date.parse('2026-07-01T14:00:00'), slug: 'xyz', seconds: 30, finished: false });
+  check('unfinished sample adds time but not a chapter', st.days['2026-07-01'].c === 2 && st.days['2026-07-01'].s === 210 && st.series.xyz.c === 0);
+
+  // streaks
+  const days = {}; days[day(0)] = { c: 1, s: 60 }; days[day(-1)] = { c: 2, s: 60 }; days[day(-2)] = { c: 1, s: 60 };
+  check('streak counts consecutive days ending today', C.computeStreak(days, day(0)) === 3);
+  const days2 = {}; days2[day(-1)] = { c: 1, s: 9 }; days2[day(-2)] = { c: 1, s: 9 };
+  check('streak survives an unread today (counts to yesterday)', C.computeStreak(days2, day(0)) === 2);
+  const days3 = {}; days3[day(-2)] = { c: 5, s: 9 };
+  check('gap yesterday breaks the streak', C.computeStreak(days3, day(0)) === 0);
+  check('empty days -> 0 streak', C.computeStreak({}, day(0)) === 0);
+
+  // week summary
+  const wk = C.summarizeWeek(days, day(0));
+  check('summarizeWeek returns 7 days oldest->today', wk.length === 7 && wk[6].key === day(0) && wk[0].key === day(-6));
+  check('summarizeWeek carries counts + zero-fills', wk[6].c === 1 && wk[4].c === 1 && wk[3].c === 0);
+
+  // pace + catch-up estimate
+  check('readingPace falls back to default', C.readingPace(null) === C.PACE_DEFAULT_SECS && C.readingPace({ pace: { avg: 0 } }) === C.PACE_DEFAULT_SECS);
+  check('readingPace uses the EWMA', C.readingPace({ pace: { avg: 111 } }) === 111);
+  const est = C.estimateCatchup([1, 2, 3, 4, 3, 2], 2, 120); // dupes across groups collapse
+  check('estimateCatchup counts unique unread chapters', est.count === 2 && est.seconds === 240);
+  const estAll = C.estimateCatchup([1, 2, 3], null, 60);
+  check('estimateCatchup with no last-read = whole list', estAll.count === 3 && estAll.seconds === 180);
+
+  // durations
+  check('fmtDuration <1m / minutes / hours', C.fmtDuration(20) === '<1m' && C.fmtDuration(300) === '5m' && C.fmtDuration(6000) === '1h 40m' && C.fmtDuration(7200) === '2h');
+
+  // caps: 65 days -> 60 kept; oldest dropped
+  let capSt = null;
+  for (let i = 0; i < 65; i++) capSt = C.recordReadSample(capSt, { ts: Date.parse('2026-01-01T12:00:00') + i * 864e5, seconds: 10, finished: true });
+  check('day cap evicts the oldest', Object.keys(capSt.days).length === 60 && !capSt.days['2026-01-01']);
+})();
+
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

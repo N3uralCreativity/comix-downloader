@@ -99,6 +99,8 @@
     'features.prefetchNext': false,        // read one chapter ahead near the end for instant page turns
     'features.resumeScroll': false,        // remember the exact scroll position in each chapter
     'features.recapOnReturn': false,       // on a series page, recap where you left off + what's next
+    'features.readingStats': false,        // track reading time/chapters locally + show a Home stats section
+    'features.catchupEstimate': false,     // on a series page, estimate time to catch up at your pace
     // Community chapter flags (v3.0.0) are a built-in, always-on feature — intentionally NOT a
     // setting (like the profile tenure badge). See content_features.js.
 
@@ -109,6 +111,7 @@
     'home.sections': [
       { id: 'whats-new', on: false },
       { id: 'continue-reading', on: true },
+      { id: 'reading-stats', on: false },
       { id: 'new-chapters', on: true },
       { id: 'recently-followed', on: true },
       { id: 'most-recent-popular', on: false },
@@ -136,6 +139,7 @@
   var HOME_SECTION_LABELS = [
     { id: 'whats-new', label: 'What’s New (feed)' },
     { id: 'continue-reading', label: 'Continue Reading' },
+    { id: 'reading-stats', label: 'Your Reading (stats)' },
     { id: 'new-chapters', label: 'New Chapters from Followed Comics' },
     { id: 'recently-followed', label: 'Recently Followed Comics' },
     { id: 'most-recent-popular', label: 'Most Recent Popular' },
@@ -290,6 +294,10 @@
       warn: 'When you reopen a chapter it scrolls to where you left off. Turn it off to always start chapters from the top.' },
     'features.recapOnReturn': { type: 'bool', risk: 'none',
       label: 'Recap where you left off', help: 'When you reopen a series page, shows a small banner reminding you which chapter you last read and how long ago, with a one-click button to jump straight to the next one. Based only on chapters you open on this device; nothing is sent anywhere.' },
+    'features.readingStats': { type: 'bool', risk: 'none',
+      label: 'Reading stats', help: 'Quietly tracks how much you actually read (active time and chapters finished, on this device only) and shows a "Your Reading" section on the custom Home page: this week’s chapters, your streak, hours read and top series. Nothing is sent anywhere; turn it off to stop tracking.' },
+    'features.catchupEstimate': { type: 'bool', risk: 'none',
+      label: 'Catch-up time estimate', help: 'On a series page, shows how many chapters you have left and roughly how long they’ll take at your measured reading pace (falls back to ~4 min per chapter until it has learned your speed). All measured and stored on this device only.' },
 
     'home.customLayout': { type: 'bool', risk: 'glitchy',
       label: 'Custom Home page', help: 'Replace comix.to’s Home with a focused, larger layout built from the sections you choose below. Everything else (announcements, banners, sidebar) is hidden.',
@@ -341,7 +349,7 @@
     { id: 'advanced', label: 'Advanced', icon: 'warn',
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
     { id: 'features', label: 'Additional Features', icon: 'sparkles',
-      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'features.prefetchNext', 'features.resumeScroll', 'features.recapOnReturn', 'reader.keyboardShortcuts'] },
+      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'features.prefetchNext', 'features.resumeScroll', 'features.recapOnReturn', 'features.readingStats', 'features.catchupEstimate', 'reader.keyboardShortcuts'] },
     { id: 'home', label: 'Home', icon: 'sparkles',
       keys: ['home.customLayout', 'home.sections', 'home.hero', 'home.heroSource', 'home.heroSkipRead',
         'home.cardStyle', 'home.rows', 'home.density', 'home.showProgress', 'home.itemsPerSection',

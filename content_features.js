@@ -65,6 +65,10 @@
   // ── Recap-on-return state ─────────────────────────────────────────────────────
   var lastRecordedUrl = null; // dedupe last-read writes per chapter open
 
+  // ── Local reading tracker + catch-up estimate state ──────────────────────────
+  var readTrack = null;   // { url, slug, id, name, active, lastAct, maxFrac, tick, onAct, onHide }
+  var catchupData = null; // { slug, lastNum|null, pace, ready } for the current series page
+
   // ── Crowd quality flags state ────────────────────────────────────────────────
   var readerFlagsState = null;   // { url, chapterId, widget }
   var flaggedLocal = null;       // Set of chapterIds this user already flagged (from storage)
@@ -196,8 +200,9 @@
       // ── crowd quality flags (⚠ N on flagged rows) — always on ──
       applyCrowdFlagsToList(rows);
 
-      // ── recap-on-return banner (re-ensured here so it heals after React re-renders) ──
+      // ── recap-on-return banner + catch-up chip (re-ensured here so they heal after React re-renders) ──
       if (cfg['features.recapOnReturn']) ensureRecap(rows);
+      if (cfg['features.catchupEstimate']) ensureCatchup(rows);
     } catch (e) { /* no-op */ } finally {
       applying = false;
     }
@@ -991,6 +996,136 @@
     recapData = null;
   }
 
+  // ════════════════════════ local reading tracker ════════════════════════
+  // Measures how much you ACTUALLY read: while a chapter is open, count 5-second ticks in
+  // which the tab is visible and there was recent input (scroll/keys/pointer). Leaving the
+  // chapter folds the sample into `cdlReadStats` via the pure Core reducers. A chapter only
+  // counts as "finished" (and only teaches your pace) if you got most of the way through.
+  // Local-only: nothing ever leaves the device. Powers reading stats + catch-up estimates.
+  var TRACK_TICK_SECS = 5;
+  var TRACK_IDLE_MS = 30000;    // no input for 30s → you stopped reading
+  var TRACK_MIN_SECS = 30;      // under this it was a peek, not a read
+  var TRACK_MAX_SECS = 2700;    // cap one chapter's credited time (45 min)
+  var TRACK_FINISH_FRAC = 0.85; // scrolled this far → the chapter counts as read
+
+  function trackingEnabled() { return !!(cfg['features.readingStats'] || cfg['features.catchupEstimate']); }
+
+  function seriesNameFromTitle() {
+    // Reader tab titles look like "Series Name · Ch.18" — take the series part.
+    var t = (document.title || '').split('·')[0].trim();
+    return t && t.length > 1 ? t : currentSlug();
+  }
+
+  function startReadTrack(url) {
+    readTrack = { url: url, slug: currentSlug(), id: chapterIdFromUrl(url), name: seriesNameFromTitle(),
+      active: 0, total: 0, credited: false, lastAct: Date.now(), maxFrac: 0, tick: null, onAct: null, onHide: null };
+    var onAct = function () { if (readTrack) readTrack.lastAct = Date.now(); };
+    readTrack.onAct = onAct;
+    ['scroll', 'keydown', 'pointerdown', 'wheel'].forEach(function (ev) { window.addEventListener(ev, onAct, { passive: true }); });
+    var onHide = function () { if (readTrack && document.visibilityState === 'hidden') flushReadTrack(); };
+    readTrack.onHide = onHide;
+    document.addEventListener('visibilitychange', onHide);
+    readTrack.tick = setInterval(function () {
+      if (!readTrack || document.hidden) return;
+      if (Date.now() - readTrack.lastAct <= TRACK_IDLE_MS) {
+        readTrack.active += TRACK_TICK_SECS;
+        var f = scrollFrac();
+        if (f > readTrack.maxFrac) readTrack.maxFrac = f;
+        // Flush every 30 active seconds: a full-page navigation kills this script without
+        // warning, so long sessions must not sit only in memory.
+        if (readTrack.active >= TRACK_MIN_SECS) flushReadTrack();
+      }
+    }, TRACK_TICK_SECS * 1000);
+  }
+
+  // Fold the accumulated slice into storage and zero it (tracking continues if still open).
+  // A chapter is credited as "finished" (and teaches the pace) at most ONCE per open.
+  function flushReadTrack() {
+    if (!readTrack) return;
+    var secs = Math.min(readTrack.active, TRACK_MAX_SECS);
+    if (secs < TRACK_TICK_SECS) return; // nothing meaningful happened
+    readTrack.active = 0;
+    readTrack.total = Math.min(readTrack.total + secs, TRACK_MAX_SECS);
+    var finished = !readTrack.credited && readTrack.total >= TRACK_MIN_SECS && readTrack.maxFrac >= TRACK_FINISH_FRAC;
+    if (finished) readTrack.credited = true;
+    var sample = { ts: Date.now(), slug: readTrack.slug, name: readTrack.name, seconds: secs,
+      finished: finished, paceSecs: finished ? readTrack.total : 0 };
+    try {
+      chrome.storage.local.get('cdlReadStats', function (r) {
+        var stats = Core.recordReadSample((r && r.cdlReadStats) || null, sample);
+        try { chrome.storage.local.set({ cdlReadStats: stats }); } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
+  function stopReadTrack() {
+    if (!readTrack) return;
+    flushReadTrack();
+    if (readTrack.tick) clearInterval(readTrack.tick);
+    var onAct = readTrack.onAct;
+    if (onAct) ['scroll', 'keydown', 'pointerdown', 'wheel'].forEach(function (ev) { try { window.removeEventListener(ev, onAct); } catch (e) {} });
+    if (readTrack.onHide) { try { document.removeEventListener('visibilitychange', readTrack.onHide); } catch (e) {} }
+    readTrack = null;
+  }
+  function syncReadTrack() {
+    if (!trackingEnabled()) { stopReadTrack(); return; }
+    if (readTrack && readTrack.url === location.href) return; // same chapter
+    stopReadTrack();
+    startReadTrack(location.href);
+  }
+
+  // ════════════════════════ catch-up estimate (series page) ════════════════════════
+  function syncCatchup() {
+    if (!cfg['features.catchupEstimate']) { stopCatchup(); return; }
+    var slug = currentSlug();
+    if (catchupData && catchupData.slug === slug) return;
+    stopCatchup();
+    catchupData = { slug: slug, lastNum: null, pace: Core.PACE_DEFAULT_SECS, ready: false };
+    try {
+      chrome.storage.local.get(['cdlLastRead', 'cdlReadStats'], function (r) {
+        if (!catchupData || catchupData.slug !== slug) return;
+        var rec = ((r && r.cdlLastRead) || {})[slug];
+        catchupData.lastNum = rec && rec.num != null ? rec.num : null;
+        catchupData.pace = Core.readingPace(r && r.cdlReadStats);
+        catchupData.ready = true;
+        applyListFeatures(); // rows may already be rendered → show now
+      });
+    } catch (e) { catchupData.ready = true; }
+  }
+
+  // Called from applyListFeatures with the collected rows (heals after React churn).
+  function ensureCatchup(rows) {
+    if (!catchupData || !catchupData.ready) return;
+    if (document.getElementById('cdl-catchup')) return;
+    if (!rows.length) return;
+    var nums = rows.map(function (rw) { return rw.parsed && rw.parsed.kind === 'num' ? rw.parsed.value : null; })
+      .filter(function (v) { return v != null; });
+    if (!nums.length) return;
+    var est = Core.estimateCatchup(nums, catchupData.lastNum, catchupData.pace);
+
+    var chip = document.createElement('div');
+    chip.id = 'cdl-catchup';
+    chip.setAttribute('style', 'display:inline-flex;align-items:center;gap:8px;margin:6px 0;padding:6px 12px;' +
+      'background:rgba(90,110,160,.12);border:1px solid rgba(90,110,160,.35);border-radius:999px;font-size:12.5px;');
+    if (est.count === 0) {
+      chip.textContent = '✓ You’re all caught up';
+    } else if (catchupData.lastNum != null) {
+      chip.textContent = '≈ ' + est.count + (est.count === 1 ? ' chapter' : ' chapters') + ' left · ~' + Core.fmtDuration(est.seconds) + ' at your pace';
+    } else {
+      chip.textContent = est.count + (est.count === 1 ? ' chapter' : ' chapters') + ' · ≈ ' + Core.fmtDuration(est.seconds) + ' at your pace';
+    }
+    chip.title = 'Estimated from your own reading speed, measured on this device only.';
+
+    var sect = rows[0].row.closest('section') || rows[0].row.parentElement;
+    if (sect && sect.parentNode) sect.parentNode.insertBefore(chip, sect);
+  }
+
+  function stopCatchup() {
+    var el = document.getElementById('cdl-catchup');
+    if (el) el.remove();
+    catchupData = null;
+  }
+
   // ════════════════════════ crowd quality flags ════════════════════════
   // Reader: a flag button injected INTO comix's own reader controls (so it matches the site and
   // never overlaps them), with a small count badge, plus a broken/missing/wrong menu.
@@ -1165,7 +1300,9 @@
         syncPrefetch();   // starts/stops read-ahead per the flag + current chapter
         syncResume();     // starts/stops exact scroll-position resume per the flag + current chapter
         if (cfg['features.recapOnReturn']) recordLastRead(); // remember this chapter for the recap banner
+        syncReadTrack();  // measure active reading time (stats + pace), when enabled
         stopRecap();      // the recap banner belongs on the list, not the reader (drop its cache too)
+        stopCatchup();
       } else if (type === 'list') {
         // Crossed into a chapter list (possibly from a reader) — drop reader features.
         stopReaderNav();
@@ -1176,10 +1313,12 @@
         stopResume();
         // Community chapter flags always run on a list, so this branch is always active
         // (dedupe/order still gate themselves inside applyListFeatures).
+        stopReadTrack(); // flush the reading sample from the chapter we just left
         ensureStyle();
         applyListFeatures();
         startListObserver();
-        syncRecap(); // "welcome back" recap banner on a series page
+        syncRecap();   // "welcome back" recap banner on a series page
+        syncCatchup(); // "N chapters · ~time at your pace" chip
       } else {
         // Some other comix page (home, search, …): nothing applies — tear it all down.
         stopReaderNav();
@@ -1189,6 +1328,8 @@
         stopPrefetch();
         stopResume();
         stopRecap();
+        stopReadTrack();
+        stopCatchup();
         stopListObserver();
         cleanupListFeatures();
         removeStyleIfUnused();

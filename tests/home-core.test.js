@@ -210,7 +210,7 @@ check('parseUser: logged-out has empty name', C.parseUser(null).name === '');
 
 // ── section registry: defaultHomeSections / normalizeSections / resolveSections ───
 const def = C.defaultHomeSections();
-check('defaultHomeSections: all 8 known sections', def.length === 8);
+check('defaultHomeSections: all 9 known sections', def.length === 9);
 check('defaultHomeSections: 3 personal rails on by default', def.filter(function (s) { return s.on; }).length === 3);
 check('defaultHomeSections: the on ones are the 3 rails (feed off by default)',
   def.filter(function (s) { return s.on; }).map(function (s) { return s.id; }).join() === 'continue-reading,new-chapters,recently-followed');
@@ -224,7 +224,7 @@ const norm = C.normalizeSections([
   { id: 'no-such-section', on: true },        // unknown → dropped
   'recently-followed'                         // bare string id → on:true
 ]);
-check('normalizeSections: full known set, no dupes/unknowns', norm.length === 8);
+check('normalizeSections: full known set, no dupes/unknowns', norm.length === 9);
 check('normalizeSections: preserves stored order first', norm[0].id === 'latest-updates' && norm[1].id === 'continue-reading' && norm[2].id === 'recently-followed');
 check('normalizeSections: coerces on (off honored)', norm[1].id === 'continue-reading' && norm[1].on === false);
 check('normalizeSections: bare string id → on', norm[2].on === true);
@@ -235,7 +235,7 @@ check('normalizeSections: appends missing sections with their default on-state',
 })());
 check('normalizeSections: garbage → all known, default on flags', (function () {
   var n = C.normalizeSections(null);
-  return n.length === 8 && n.filter(function (s) { return s.on; }).length === 3;
+  return n.length === 9 && n.filter(function (s) { return s.on; }).length === 3;
 })());
 
 // sortFeed: unread (haven't read the latest) first, then read; order within each group preserved.

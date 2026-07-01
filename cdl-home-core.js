@@ -361,6 +361,10 @@
       source: 'api', api: '/api/v1/user/following-titles?sort=chapter_updated_desc&folder_ids[]=1', layout: 'feed', timeKey: 'chapterUpdated' },
     { id: 'continue-reading', title: 'Continue Reading', sub: 'Pick up where you left off',
       source: 'api', api: '/api/v1/user/history', progress: true, timeKey: 'read', defaultOn: true },
+    // Local reading stats (no network): rendered from cdlReadStats by content_home; the data is
+    // only collected while the 'features.readingStats' setting is on.
+    { id: 'reading-stats', title: 'Your Reading', sub: 'Tracked on this device — only you can see this',
+      source: 'stats', layout: 'stats' },
     { id: 'new-chapters', title: 'New Chapters from Followed Comics', sub: 'Fresh chapters from series you follow',
       source: 'api', api: '/api/v1/user/following-titles?sort=chapter_updated_desc&folder_ids[]=1', feedsHero: true, timeKey: 'chapterUpdated', defaultOn: true },
     { id: 'recently-followed', title: 'Recently Followed Comics', sub: 'The newest titles you added to your library',

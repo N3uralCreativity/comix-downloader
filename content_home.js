@@ -249,6 +249,24 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
   color:var(--text-2,#9da4a5);background:var(--surface-2,#323a3e);transition:background .14s,color .14s;}
 #${ROOT_ID} .cdl-feed-dl:hover{background:var(--accent,#66e8fa);color:var(--accent-ink,#082a30);}
 
+/* "Your Reading" local stats panel */
+#${ROOT_ID} .cdl-stats{display:flex;gap:30px;align-items:stretch;flex-wrap:wrap;padding:16px 20px;border-radius:8px;
+  background:var(--surface,#2a3134);border:1px solid var(--surface-3,#3a4248);}
+#${ROOT_ID} .cdl-stats-bars{display:flex;gap:10px;align-items:flex-end;height:96px;}
+#${ROOT_ID} .cdl-stats-bcol{display:flex;flex-direction:column;align-items:center;gap:5px;width:26px;height:100%;justify-content:flex-end;}
+#${ROOT_ID} .cdl-stats-bar{width:100%;border-radius:4px 4px 2px 2px;background:rgba(var(--accent-rgb,102 232 250)/.75);}
+#${ROOT_ID} .cdl-stats-bar.is-zero{background:var(--surface-2,#323a3e);}
+#${ROOT_ID} .cdl-stats-blbl{font-size:var(--text-2xs,.625rem);color:var(--text-3,#6f7778);}
+#${ROOT_ID} .cdl-stats-kpis{display:flex;gap:28px;align-items:center;flex-wrap:wrap;}
+#${ROOT_ID} .cdl-stats-kpi{display:flex;flex-direction:column;gap:2px;min-width:88px;}
+#${ROOT_ID} .cdl-stats-num{font-size:var(--text-2xl,1.25rem);font-weight:850;color:var(--text-emphasis,#ecf4f5);}
+#${ROOT_ID} .cdl-stats-lbl{font-size:var(--text-xs,.6875rem);color:var(--text-3,#6f7778);}
+#${ROOT_ID} .cdl-stats-top{display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1;justify-content:center;}
+#${ROOT_ID} .cdl-stats-toprow{display:flex;justify-content:space-between;gap:14px;font-size:var(--text-sm,.75rem);color:var(--text,#cdd5d6);}
+#${ROOT_ID} .cdl-stats-toprow b{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;}
+#${ROOT_ID} .cdl-stats-topt{color:var(--text-3,#6f7778);white-space:nowrap;}
+#${ROOT_ID} .cdl-stats-hint{padding:12px 4px;font-size:var(--text-sm,.75rem);color:var(--text-3,#6f7778);}
+
 /* welcome header */
 #${GREET_ID}{margin:2px 2px 20px;}
 #${GREET_ID} .cdl-greet-title{font-size:var(--text-3xl,1.5rem);font-weight:850;letter-spacing:-.02em;color:var(--text-emphasis,#ecf4f5);}
@@ -303,16 +321,18 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
   }
   function skeletonCard() { return el('div', { class: 'cdl-skel' }, [el('div', { class: 'cdl-skel-poster' })]); }
   function buildShell(s) {
-    var feed = s.layout === 'feed';
+    var feed = s.layout === 'feed', stats = s.layout === 'stats';
     var headKids = [el('div', { class: 'cdl-head-l section__title-wrap' }, [
       el('h2', { class: 'section__title', text: s.title }),
       el('div', { class: 'cdl-sub', text: s.sub || '' })
     ])];
-    // the feed is vertical (no horizontal scroll), so it gets no prev/next arrows
-    if (!feed) headKids.push(el('div', { class: 'section__controls' }, [el('div', { class: 'nav-btns' }, [navBtn('prev'), navBtn('next')])]));
+    // the feed and the stats panel are vertical (no horizontal scroll) → no prev/next arrows
+    if (!feed && !stats) headKids.push(el('div', { class: 'section__controls' }, [el('div', { class: 'nav-btns' }, [navBtn('prev'), navBtn('next')])]));
     var header = el('div', { class: 'section__header' }, headKids);
     var body;
-    if (feed) {
+    if (stats) {
+      body = el('div', { class: 'cdl-stats' }); // filled synchronously from local storage — no skeleton
+    } else if (feed) {
       body = el('div', { class: 'cdl-feed' });
       for (var f = 0; f < 6; f++) body.appendChild(el('div', { class: 'cdl-feed-row' }, [el('span', { class: 'cdl-feed-cover cdl-skel-poster' }), el('div', { class: 'cdl-feed-main' })]));
     } else {
@@ -543,10 +563,85 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
     fillRail(sec, cards.map(function (t) { return cardEl(t, s); }));
   }
 
+  // ── "Your Reading" — local stats panel (no network; data from content_features' tracker) ──
+  function statsKpi(num, lbl) {
+    return el('div', { class: 'cdl-stats-kpi' }, [el('div', { class: 'cdl-stats-num', text: num }), el('div', { class: 'cdl-stats-lbl', text: lbl })]);
+  }
+  function renderStats(box, stats, FC) {
+    box.textContent = '';
+    var days = (stats && stats.days) || {};
+    if (!Object.keys(days).length) {
+      box.appendChild(el('div', { class: 'cdl-stats-hint', text: 'Nothing tracked yet — read a chapter or two and your stats will appear here.' }));
+      return;
+    }
+    var today = FC.statsDayKey(Date.now());
+    var week = FC.summarizeWeek(days, today);
+    var wkC = 0, wkS = 0, maxC = 0;
+    week.forEach(function (d) { wkC += d.c; wkS += d.s; if (d.c > maxC) maxC = d.c; });
+
+    var bars = el('div', { class: 'cdl-stats-bars' });
+    week.forEach(function (d) {
+      var bar = el('div', { class: 'cdl-stats-bar' + (d.c ? '' : ' is-zero') });
+      bar.style.height = (d.c && maxC ? Math.max(8, Math.round((d.c / maxC) * 100)) : 4) + '%';
+      var wd = 'SMTWTFS'[new Date(d.key + 'T12:00:00').getDay()] || '';
+      bars.appendChild(el('div', { class: 'cdl-stats-bcol', title: d.key + ' · ' + d.c + (d.c === 1 ? ' chapter · ' : ' chapters · ') + FC.fmtDuration(d.s) },
+        [bar, el('span', { class: 'cdl-stats-blbl', text: wd })]));
+    });
+
+    var streak = FC.computeStreak(days, today);
+    var pace = (stats && stats.pace && stats.pace.avg > 0) ? FC.fmtDuration(stats.pace.avg) : '—';
+    var kpis = el('div', { class: 'cdl-stats-kpis' }, [
+      statsKpi(String(wkC), 'chapters this week'),
+      statsKpi(FC.fmtDuration(wkS), 'read this week'),
+      statsKpi(streak ? streak + (streak === 1 ? ' day' : ' days') : '—', 'reading streak'),
+      statsKpi(pace, 'avg per chapter')
+    ]);
+
+    // most-read series over the last 30 days, by active time
+    var cutoff = Date.now() - 30 * 864e5;
+    var series = (stats && stats.series) || {};
+    var top = Object.keys(series)
+      .map(function (k) { var e = series[k]; return { slug: k, name: e.name || k, c: e.c || 0, s: e.s || 0, ts: e.ts || 0 }; })
+      .filter(function (e) { return e.ts >= cutoff && e.s > 0; })
+      .sort(function (a, b) { return b.s - a.s; }).slice(0, 3);
+
+    box.appendChild(bars);
+    box.appendChild(kpis);
+    if (top.length) {
+      var list = el('div', { class: 'cdl-stats-top' }, [el('div', { class: 'cdl-stats-lbl', text: 'Most read · last 30 days' })]);
+      top.forEach(function (e) {
+        list.appendChild(el('div', { class: 'cdl-stats-toprow' }, [
+          el('b', { text: e.name }),
+          el('span', { class: 'cdl-stats-topt', text: e.c + ' ch · ' + FC.fmtDuration(e.s) })
+        ]));
+      });
+      box.appendChild(list);
+    }
+  }
+  function loadStats(s, sec) {
+    sec._cdlLoaded = true;
+    sec.style.display = '';
+    var box = sec.querySelector('.cdl-stats'); if (!box) return;
+    var FC = (typeof CDLFeaturesCore !== 'undefined') ? CDLFeaturesCore : null;
+    if (!FC) { sec.style.display = 'none'; return; }
+    if (!cfg['features.readingStats']) {
+      box.textContent = '';
+      box.appendChild(el('div', { class: 'cdl-stats-hint',
+        text: 'Turn on “Reading stats” in the Comix-Downloader settings to start tracking (stored on this device only, never shared).' }));
+      return;
+    }
+    try {
+      chrome.storage.local.get('cdlReadStats', function (r) {
+        renderStats(box, (r && r.cdlReadStats) || null, FC);
+      });
+    } catch (e) { renderStats(box, null, FC); }
+  }
+
   function loadSection(s) {
     var sec = document.getElementById(secDomId(s)); if (!sec || sec._cdlLoaded) return;
     if (s.source === 'dom') { loadDomSection(s, sec); return; }
     if (s.source === 'collections') { loadCollections(s, sec); return; }
+    if (s.source === 'stats') { loadStats(s, sec); return; }
     sec._cdlLoaded = true;
     fetch(apiUrl(s), { credentials: 'include', headers: { Accept: 'application/json' } })
       .then(function (r) { return (r.ok && /json/i.test(r.headers.get('content-type') || '')) ? r.json() : null; })
