@@ -120,6 +120,50 @@ async function badgeLookup(hashId) {
   } catch (_) { return { ok: false }; }
 }
 
+// ── Crowd quality flags (same Worker + KV as the badge) ──────────────────────
+const _FLAG_TTL = 10 * 60 * 1000; // cache a chapter's flag counts ~10 min
+let _flagMem = Object.create(null); // chapterId -> { counts, at }
+// Chapter id is hashed under a 'chap:' namespace so it can't collide with user hashes.
+function flagChapterHash(chapterId) { return badgeHash('chap:' + chapterId); }
+
+// Submit one flag for a chapter (server dedups per user+chapter). Refreshes the local cache.
+async function flagSubmit(chapterId, userHashId, type) {
+  const base = await badgeApiBase();
+  if (!base || !chapterId || !userHashId || !type) return { ok: false };
+  try {
+    const chapter = await flagChapterHash(chapterId);
+    const user = await badgeHash(userHashId);
+    const resp = await fetch(base + '/v1/flag', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chapter, user, type }),
+    });
+    if (!resp.ok) return { ok: false };
+    const j = await resp.json();
+    _flagMem[chapterId] = { counts: j.counts || null, at: Date.now() };
+    return { ok: true, counts: j.counts || null };
+  } catch (_) { return { ok: false }; }
+}
+
+// Batch-look up flag counts for chapter ids; returns { chapterId: {broken,missing,wrong,total}|null }.
+async function flagLookup(chapterIds) {
+  const base = await badgeApiBase();
+  const ids = (chapterIds || []).map(String).filter(Boolean);
+  if (!base || !ids.length) return { ok: false, counts: {} };
+  const now = Date.now(), out = {}, need = [];
+  ids.forEach((id) => { const m = _flagMem[id]; if (m && (now - m.at) < _FLAG_TTL) out[id] = m.counts; else need.push(id); });
+  try {
+    for (let i = 0; i < need.length; i += 50) {
+      const chunk = need.slice(i, i + 50);
+      const hashOf = {};
+      await Promise.all(chunk.map(async (id) => { hashOf[await flagChapterHash(id)] = id; }));
+      const hashes = Object.keys(hashOf);
+      const resp = await fetch(base + '/v1/flags?ids=' + encodeURIComponent(hashes.join(',')));
+      const j = resp.ok ? await resp.json() : {};
+      hashes.forEach((h) => { const id = hashOf[h]; const c = (j && j[h]) || null; _flagMem[id] = { counts: c, at: now }; out[id] = c; });
+    }
+  } catch (_) {}
+  return { ok: true, counts: out };
+}
+
 // Firefox exposes `browser` in addition to `chrome`; Chrome does not.
 // In Firefox Android, blob: URLs created in a service worker cannot be resolved
 // by the downloads API, so we use base64 data: URLs there instead.
@@ -578,6 +622,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message.action === 'cdlBadgeLookup') {
     badgeLookup(message.hashId).then((r) => sendResponse(r)).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  // Crowd quality flags: submit a flag / batch-look up chapter flag counts.
+  if (message.action === 'cdlFlagSubmit') {
+    flagSubmit(message.chapterId, message.userHashId, message.type).then((r) => sendResponse(r)).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (message.action === 'cdlFlagLookup') {
+    flagLookup(message.chapterIds).then((r) => sendResponse(r)).catch(() => sendResponse({ ok: false, counts: {} }));
     return true;
   }
   if (message.action === 'openOptions') {

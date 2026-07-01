@@ -104,6 +104,7 @@ check('home.openInNewTab bool cast', S.validate({ 'home.openInNewTab': 1 })['hom
 // 5b-profile. The tenure badge is built-in / always-on — intentionally NOT a setting.
 check('profile.badge is NOT a setting (mandatory feature)', !('profile.badge' in S.DEFAULTS) && !S.SCHEMA['profile.badge']);
 check('features.flagBrokenPages default false + in DEFAULTS', S.validate({})['features.flagBrokenPages'] === false && ('features.flagBrokenPages' in S.DEFAULTS));
+check('features.crowdFlags default false + in DEFAULTS', S.validate({})['features.crowdFlags'] === false && ('features.crowdFlags' in S.DEFAULTS));
 
 // 5c. home.sections (sectionList) normalization
 const SECT = (v) => S.validate({ 'home.sections': v })['home.sections'];

@@ -55,6 +55,45 @@
   var pageHealthState = null; // { url, broken:{}, seen:WeakSet, observer, banner, debounce, dismissed }
   var PAGE_IMG_SEL = 'img.rpage-page__img, img[alt^="Page"]';
 
+  // ── Crowd quality flags state ────────────────────────────────────────────────
+  var readerFlagsState = null;   // { url, chapterId, widget }
+  var flaggedLocal = null;       // Set of chapterIds this user already flagged (from storage)
+  var _userHashId, _userHashPromise;
+
+  function bg(action, payload) {
+    return new Promise(function (res) {
+      try { chrome.runtime.sendMessage(Object.assign({ action: action }, payload || {}), function (r) { res(r || {}); }); }
+      catch (_) { res({}); }
+    });
+  }
+  // The current comix user's opaque id, resolved once (for submitting flags).
+  function getUserHashId() {
+    if (_userHashId !== undefined) return Promise.resolve(_userHashId);
+    if (_userHashPromise) return _userHashPromise;
+    _userHashPromise = fetch('/api/v1/user', { credentials: 'include', headers: { Accept: 'application/json' } })
+      .then(function (r) { return (r.ok && /json/i.test(r.headers.get('content-type') || '')) ? r.json() : null; })
+      .then(function (j) { var u = j && j.result; _userHashId = (u && (u.hashId || u.hid)) ? String(u.hashId || u.hid) : null; return _userHashId; })
+      .catch(function () { _userHashId = null; return null; });
+    return _userHashPromise;
+  }
+  function chapterIdFromUrl(url) { var m = String(url || '').match(/\/title\/[^/]+\/(\d+)-chapter-/i); return m ? m[1] : ''; }
+  function loadFlaggedLocal() {
+    try { chrome.storage.local.get('cdlFlaggedChapters', function (r) { flaggedLocal = new Set((r && r.cdlFlaggedChapters) || []); }); } catch (e) { flaggedLocal = new Set(); }
+  }
+  function markFlaggedLocal(id) {
+    if (!flaggedLocal) flaggedLocal = new Set();
+    flaggedLocal.add(id);
+    try { chrome.storage.local.set({ cdlFlaggedChapters: [].slice.call(flaggedLocal).slice(-500) }); } catch (e) {}
+  }
+  function flagSummary(counts) {
+    if (!counts || !counts.total) return '';
+    var parts = [];
+    if (counts.broken) parts.push(counts.broken + ' broken');
+    if (counts.missing) parts.push(counts.missing + ' missing');
+    if (counts.wrong) parts.push(counts.wrong + ' wrong');
+    return parts.join(', ');
+  }
+
   // ════════════════════════ shared helpers ════════════════════════
   function absolute(path) {
     try { return new URL(path, location.origin).href; } catch (e) { return ''; }
@@ -103,7 +142,7 @@
       var key = Core.dedupeKey(p);
       if (row.getAttribute('data-cdl-key') !== key) row.setAttribute('data-cdl-key', key);
       row.setAttribute('data-cdl-num', String(p.value));
-      out.push({ row: row, key: key, parsed: p });
+      out.push({ row: row, key: key, parsed: p, chapterId: chapterIdFromUrl(href) });
     });
     return out;
   }
@@ -114,6 +153,7 @@
       el.classList.remove(HIDDEN_CLASS);
     });
     clearOrder(null);
+    clearListFlagBadges();
   }
 
   function applyListFeatures() {
@@ -142,6 +182,9 @@
       // ── order ──
       if (cfg['features.enforceChapterOrder']) applyOrder(rows);
       else clearOrder(rows);
+
+      // ── crowd quality flags (⚠ N on flagged rows) ──
+      if (cfg['features.crowdFlags']) applyCrowdFlagsToList(rows);
     } catch (e) { /* no-op */ } finally {
       applying = false;
     }
@@ -606,6 +649,103 @@
     startPageHealth(location.href);
   }
 
+  // ════════════════════════ crowd quality flags ════════════════════════
+  // Reader: a small "⚑ Flag issue" widget + "⚠ N flagged" count for the current chapter.
+  function buildFlagWidget(chapterId, counts) {
+    var w = document.createElement('div'); w.id = 'cdl-flag-widget';
+    w.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:2147483646;display:flex;flex-direction:column;align-items:flex-end;gap:6px;font:600 12px/1.3 system-ui,sans-serif;';
+    var count = document.createElement('div'); count.className = 'cdl-flag-count';
+    count.style.cssText = 'background:var(--surface-2,#2a2118);color:var(--text-emphasis,#f5e9d6);border:1px solid rgba(234,179,8,.5);border-radius:8px;padding:6px 10px;box-shadow:0 6px 18px rgba(0,0,0,.4);display:none;';
+    var wrap = document.createElement('div'); wrap.style.cssText = 'position:relative;';
+    var btn = document.createElement('button'); btn.className = 'cdl-flag-btn'; btn.textContent = '⚑ Flag issue';
+    btn.style.cssText = 'background:var(--surface,#2a3134);color:var(--text,#cdd5d6);border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:7px 12px;cursor:pointer;font:inherit;box-shadow:0 6px 18px rgba(0,0,0,.4);';
+    var menu = document.createElement('div'); menu.className = 'cdl-flag-menu';
+    menu.style.cssText = 'position:absolute;right:0;bottom:calc(100% + 6px);display:none;flex-direction:column;min-width:170px;background:var(--bg-2,#1f2226);border:1px solid var(--surface-3,#3a4248);border-radius:8px;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.5);';
+    [['broken', 'Broken images'], ['missing', 'Missing pages'], ['wrong', 'Wrong chapter']].forEach(function (t) {
+      var mi = document.createElement('button'); mi.textContent = t[1]; mi.setAttribute('data-type', t[0]);
+      mi.style.cssText = 'background:none;border:0;color:var(--text,#cdd5d6);text-align:left;padding:9px 12px;cursor:pointer;font:inherit;';
+      mi.addEventListener('mouseenter', function () { mi.style.background = 'var(--surface-3,#3a4248)'; });
+      mi.addEventListener('mouseleave', function () { mi.style.background = 'none'; });
+      mi.addEventListener('click', function () { menu.style.display = 'none'; submitFlag(chapterId, t[0]); });
+      menu.appendChild(mi);
+    });
+    btn.addEventListener('click', function () { menu.style.display = (menu.style.display === 'none' ? 'flex' : 'none'); });
+    wrap.appendChild(btn); wrap.appendChild(menu);
+    w.appendChild(count); w.appendChild(wrap);
+    updateFlagWidget(w, counts, chapterId);
+    return w;
+  }
+  function updateFlagWidget(w, counts, chapterId) {
+    var count = w.querySelector('.cdl-flag-count');
+    var s = flagSummary(counts);
+    if (s) { count.textContent = '⚠ ' + counts.total + ' flagged (' + s + ')'; count.style.display = ''; }
+    else { count.style.display = 'none'; }
+    if (flaggedLocal && flaggedLocal.has(chapterId)) {
+      var btn = w.querySelector('.cdl-flag-btn');
+      btn.textContent = '✓ You flagged this'; btn.disabled = true; btn.style.opacity = '.7'; btn.style.cursor = 'default';
+    }
+  }
+  function submitFlag(chapterId, type) {
+    getUserHashId().then(function (uid) {
+      if (!uid) return;
+      bg('cdlFlagSubmit', { chapterId: chapterId, userHashId: uid, type: type }).then(function (r) {
+        if (r && r.ok) {
+          markFlaggedLocal(chapterId);
+          if (readerFlagsState && readerFlagsState.widget && readerFlagsState.chapterId === chapterId) updateFlagWidget(readerFlagsState.widget, r.counts, chapterId);
+        }
+      });
+    });
+  }
+  function startReaderFlags(url) {
+    var chapterId = chapterIdFromUrl(url); if (!chapterId) return;
+    readerFlagsState = { url: url, chapterId: chapterId, widget: null };
+    bg('cdlFlagLookup', { chapterIds: [chapterId] }).then(function (r) {
+      if (!readerFlagsState || readerFlagsState.chapterId !== chapterId) return;
+      var counts = (r && r.counts && r.counts[chapterId]) || null;
+      var w = buildFlagWidget(chapterId, counts);
+      (document.body || document.documentElement).appendChild(w);
+      readerFlagsState.widget = w;
+    });
+  }
+  function stopReaderFlags() {
+    if (readerFlagsState && readerFlagsState.widget) { try { readerFlagsState.widget.remove(); } catch (e) {} }
+    readerFlagsState = null;
+  }
+  function syncReaderFlags() {
+    if (!cfg['features.crowdFlags']) { stopReaderFlags(); return; }
+    if (readerFlagsState && readerFlagsState.url === location.href) return;
+    stopReaderFlags(); startReaderFlags(location.href);
+  }
+
+  // List: append a "⚠ N" marker to chapter rows other users flagged (batch lookup, cached in bg).
+  function applyCrowdFlagsToList(rows) {
+    if (!cfg['features.crowdFlags']) return;
+    var ids = []; rows.forEach(function (r) { if (r.chapterId) ids.push(r.chapterId); });
+    if (!ids.length) return;
+    bg('cdlFlagLookup', { chapterIds: ids }).then(function (res) {
+      if (!res || !res.counts) return;
+      rows.forEach(function (r) {
+        if (!r.chapterId || !r.row.isConnected) return;
+        var counts = res.counts[r.chapterId];
+        var badge = r.row.querySelector('.cdl-flag-badge');
+        if (counts && counts.total) {
+          var label = '⚠ ' + counts.total;
+          if (!badge) {
+            badge = document.createElement('span'); badge.className = 'cdl-flag-badge';
+            badge.style.cssText = 'display:inline-flex;align-items:center;margin-left:8px;padding:1px 7px;border-radius:5px;font:800 10px/1.6 system-ui,sans-serif;color:#f5c451;background:rgba(234,179,8,.14);border:1px solid rgba(234,179,8,.4);vertical-align:middle;';
+            r.row.appendChild(badge);
+          }
+          if (badge.textContent !== label) badge.textContent = label; // avoid needless mutations (observer churn)
+          var tip = flagSummary(counts) + ' — flagged by other Comix-Downloader users';
+          if (badge.title !== tip) badge.title = tip;
+        } else if (badge) { badge.remove(); }
+      });
+    });
+  }
+  function clearListFlagBadges() {
+    [].slice.call(document.querySelectorAll('.cdl-flag-badge')).forEach(function (el) { el.remove(); });
+  }
+
   // ════════════════════════ wiring ════════════════════════
   function applyForPage() {
     try {
@@ -621,12 +761,14 @@
         if (cfg['reader.keyboardShortcuts']) startReaderKb();
         else stopReaderKb();
         syncPageHealth(); // starts/stops the broken-page watcher per the flag + current chapter
+        syncReaderFlags(); // starts/stops the crowd-flag widget per the flag + current chapter
       } else if (type === 'list') {
         // Crossed into a chapter list (possibly from a reader) — drop reader features.
         stopReaderNav();
         stopReaderKb();
         stopPageHealth();
-        var anyList = cfg['features.dedupeChapters'] || cfg['features.enforceChapterOrder'];
+        stopReaderFlags();
+        var anyList = cfg['features.dedupeChapters'] || cfg['features.enforceChapterOrder'] || cfg['features.crowdFlags'];
         if (anyList) {
           ensureStyle();
           applyListFeatures();
@@ -641,6 +783,7 @@
         stopReaderNav();
         stopReaderKb();
         stopPageHealth();
+        stopReaderFlags();
         stopListObserver();
         cleanupListFeatures();
         removeStyleIfUnused();
@@ -649,6 +792,7 @@
   }
 
   function boot() {
+    loadFlaggedLocal();
     CDLSettings.getSettings().then(function (loaded) {
       cfg = loaded;
       applyForPage();
