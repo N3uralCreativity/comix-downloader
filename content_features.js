@@ -183,8 +183,8 @@
       if (cfg['features.enforceChapterOrder']) applyOrder(rows);
       else clearOrder(rows);
 
-      // ── crowd quality flags (⚠ N on flagged rows) ──
-      if (cfg['features.crowdFlags']) applyCrowdFlagsToList(rows);
+      // ── crowd quality flags (⚠ N on flagged rows) — always on ──
+      applyCrowdFlagsToList(rows);
     } catch (e) { /* no-op */ } finally {
       applying = false;
     }
@@ -771,14 +771,13 @@
     readerFlagsState = null;
   }
   function syncReaderFlags() {
-    if (!cfg['features.crowdFlags']) { stopReaderFlags(); return; }
+    // Community chapter flags are always on (not a setting).
     if (readerFlagsState && readerFlagsState.url === location.href) { ensureFlagButton(); return; }
     stopReaderFlags(); startReaderFlags(location.href);
   }
 
   // List: append a "⚠ N" marker to chapter rows other users flagged (batch lookup, cached in bg).
   function applyCrowdFlagsToList(rows) {
-    if (!cfg['features.crowdFlags']) return;
     var ids = []; rows.forEach(function (r) { if (r.chapterId) ids.push(r.chapterId); });
     if (!ids.length) return;
     bg('cdlFlagLookup', { chapterIds: ids }).then(function (res) {
@@ -827,16 +826,11 @@
         stopReaderKb();
         stopPageHealth();
         stopReaderFlags();
-        var anyList = cfg['features.dedupeChapters'] || cfg['features.enforceChapterOrder'] || cfg['features.crowdFlags'];
-        if (anyList) {
-          ensureStyle();
-          applyListFeatures();
-          startListObserver();
-        } else {
-          stopListObserver();
-          cleanupListFeatures(); // flags off → unhide + clear order, no row tagging
-          removeStyleIfUnused();
-        }
+        // Community chapter flags always run on a list, so this branch is always active
+        // (dedupe/order still gate themselves inside applyListFeatures).
+        ensureStyle();
+        applyListFeatures();
+        startListObserver();
       } else {
         // Some other comix page (home, search, …): nothing applies — tear it all down.
         stopReaderNav();
