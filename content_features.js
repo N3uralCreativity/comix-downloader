@@ -650,70 +650,129 @@
   }
 
   // ════════════════════════ crowd quality flags ════════════════════════
-  // Reader: a small "⚑ Flag issue" widget + "⚠ N flagged" count for the current chapter.
-  function buildFlagWidget(chapterId, counts) {
-    var w = document.createElement('div'); w.id = 'cdl-flag-widget';
-    w.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:2147483646;display:flex;flex-direction:column;align-items:flex-end;gap:6px;font:600 12px/1.3 system-ui,sans-serif;';
-    var count = document.createElement('div'); count.className = 'cdl-flag-count';
-    count.style.cssText = 'background:var(--surface-2,#2a2118);color:var(--text-emphasis,#f5e9d6);border:1px solid rgba(234,179,8,.5);border-radius:8px;padding:6px 10px;box-shadow:0 6px 18px rgba(0,0,0,.4);display:none;';
-    var wrap = document.createElement('div'); wrap.style.cssText = 'position:relative;';
-    var btn = document.createElement('button'); btn.className = 'cdl-flag-btn'; btn.textContent = '⚑ Flag issue';
-    btn.style.cssText = 'background:var(--surface,#2a3134);color:var(--text,#cdd5d6);border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:7px 12px;cursor:pointer;font:inherit;box-shadow:0 6px 18px rgba(0,0,0,.4);';
-    var menu = document.createElement('div'); menu.className = 'cdl-flag-menu';
-    menu.style.cssText = 'position:absolute;right:0;bottom:calc(100% + 6px);display:none;flex-direction:column;min-width:170px;background:var(--bg-2,#1f2226);border:1px solid var(--surface-3,#3a4248);border-radius:8px;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.5);';
-    [['broken', 'Broken images'], ['missing', 'Missing pages'], ['wrong', 'Wrong chapter']].forEach(function (t) {
-      var mi = document.createElement('button'); mi.textContent = t[1]; mi.setAttribute('data-type', t[0]);
-      mi.style.cssText = 'background:none;border:0;color:var(--text,#cdd5d6);text-align:left;padding:9px 12px;cursor:pointer;font:inherit;';
+  // Reader: a flag button injected INTO comix's own reader controls (so it matches the site and
+  // never overlaps them), with a small count badge, plus a broken/missing/wrong menu.
+  var FLAG_BTN_ID = 'cdl-flag-btn';
+  var FLAG_TYPES = [['broken', 'Broken images'], ['missing', 'Missing pages'], ['wrong', 'Wrong chapter']];
+  function flagSvg() {
+    var ns = 'http://www.w3.org/2000/svg', s = document.createElementNS(ns, 'svg');
+    s.setAttribute('width', '16'); s.setAttribute('height', '16'); s.setAttribute('viewBox', '0 0 24 24');
+    s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8');
+    s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round');
+    [['path', 'M5 21V4'], ['path', 'M5 4c4-2 8 2 12 0v9c-4 2-8-2-12 0']].forEach(function (p) { var e = document.createElementNS(ns, p[0]); e.setAttribute('d', p[1]); s.appendChild(e); });
+    return s;
+  }
+  // Host = comix's floating reader controls (preferred) or the bottom-bar actions; native classes
+  // make our button look identical to the site's own.
+  function flagHost() {
+    var col = document.querySelector('.rpage-floatctl__col') || document.querySelector('.rpage-floatctl');
+    if (col) return { el: col, cls: 'rpage-floatctl__btn', row: true };
+    var ba = document.querySelector('.rpage-bottombar__actions') || document.querySelector('.rpage-bottombar__controls');
+    if (ba) return { el: ba, cls: 'rpage-iconbtn', row: false };
+    return null;
+  }
+  function ensureFlagButton() {
+    if (!readerFlagsState) return;
+    var existing = document.getElementById(FLAG_BTN_ID);
+    if (existing) { updateFlagButton(existing); return; }
+    var host = flagHost(); if (!host) return; // reader controls not mounted yet — observer retries
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.id = FLAG_BTN_ID; btn.className = host.cls;
+    btn.setAttribute('aria-label', 'Flag a problem with this chapter'); btn.title = 'Flag a problem with this chapter';
+    btn.style.position = 'relative';
+    btn.appendChild(flagSvg());
+    var badge = document.createElement('span'); badge.className = 'cdl-flag-badge-n';
+    badge.style.cssText = 'position:absolute;top:-4px;right:-4px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:#eab308;color:#1a1204;font:800 9px/15px system-ui,sans-serif;text-align:center;display:none;';
+    btn.appendChild(badge);
+    btn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); toggleFlagMenu(btn); });
+    if (host.row) { var row = document.createElement('div'); row.className = 'rpage-floatctl__row'; row.appendChild(btn); host.el.appendChild(row); }
+    else host.el.appendChild(btn);
+    updateFlagButton(btn);
+  }
+  function updateFlagButton(btn) {
+    var st = readerFlagsState; if (!st) return;
+    var badge = btn.querySelector('.cdl-flag-badge-n');
+    var total = st.counts && st.counts.total;
+    if (badge) { if (total) { badge.textContent = total > 99 ? '99+' : String(total); badge.style.display = ''; } else { badge.style.display = 'none'; } }
+    var s = flagSummary(st.counts);
+    var mine = flaggedLocal && flaggedLocal.has(st.chapterId);
+    btn.title = (total ? ('⚠ ' + total + ' flagged (' + s + ')') : 'Flag a problem with this chapter') + (mine ? ' · you flagged this' : '');
+    btn.style.color = (total || mine) ? '#eab308' : '';
+  }
+  function toggleFlagMenu(btn) {
+    var open = document.getElementById('cdl-flag-menu');
+    if (open) { open.remove(); return; }
+    var st = readerFlagsState; if (!st) return;
+    var menu = document.createElement('div'); menu.id = 'cdl-flag-menu';
+    var r = btn.getBoundingClientRect();
+    menu.style.cssText = 'position:fixed;z-index:2147483647;min-width:180px;background:var(--bg-2,#1f2226);color:var(--text,#cdd5d6);' +
+      'border:1px solid var(--surface-3,#3a4248);border-radius:8px;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.5);font:600 13px/1.3 system-ui,sans-serif;';
+    var head = document.createElement('div'); head.textContent = 'Flag this chapter as…';
+    head.style.cssText = 'padding:8px 12px;color:var(--text-3,#8a8a8a);font-weight:700;border-bottom:1px solid var(--surface-3,#3a4248);';
+    menu.appendChild(head);
+    FLAG_TYPES.forEach(function (t) {
+      var mi = document.createElement('button'); mi.type = 'button'; mi.textContent = t[1];
+      mi.style.cssText = 'display:block;width:100%;background:none;border:0;color:inherit;text-align:left;padding:9px 12px;cursor:pointer;font:inherit;';
       mi.addEventListener('mouseenter', function () { mi.style.background = 'var(--surface-3,#3a4248)'; });
       mi.addEventListener('mouseleave', function () { mi.style.background = 'none'; });
-      mi.addEventListener('click', function () { menu.style.display = 'none'; submitFlag(chapterId, t[0]); });
+      mi.addEventListener('click', function () { menu.remove(); submitFlag(st.chapterId, t[0]); });
       menu.appendChild(mi);
     });
-    btn.addEventListener('click', function () { menu.style.display = (menu.style.display === 'none' ? 'flex' : 'none'); });
-    wrap.appendChild(btn); wrap.appendChild(menu);
-    w.appendChild(count); w.appendChild(wrap);
-    updateFlagWidget(w, counts, chapterId);
-    return w;
-  }
-  function updateFlagWidget(w, counts, chapterId) {
-    var count = w.querySelector('.cdl-flag-count');
-    var s = flagSummary(counts);
-    if (s) { count.textContent = '⚠ ' + counts.total + ' flagged (' + s + ')'; count.style.display = ''; }
-    else { count.style.display = 'none'; }
-    if (flaggedLocal && flaggedLocal.has(chapterId)) {
-      var btn = w.querySelector('.cdl-flag-btn');
-      btn.textContent = '✓ You flagged this'; btn.disabled = true; btn.style.opacity = '.7'; btn.style.cursor = 'default';
-    }
+    document.body.appendChild(menu);
+    var mr = menu.getBoundingClientRect();
+    var left = Math.max(8, Math.min(r.left, window.innerWidth - mr.width - 8));
+    var top = r.top - mr.height - 8; if (top < 8) top = r.bottom + 8; // above the button, or below if no room
+    menu.style.left = left + 'px'; menu.style.top = top + 'px';
+    var closer = function (ev) { if (!menu.contains(ev.target) && ev.target !== btn) { menu.remove(); document.removeEventListener('mousedown', closer, true); } };
+    setTimeout(function () { document.addEventListener('mousedown', closer, true); }, 0);
   }
   function submitFlag(chapterId, type) {
     getUserHashId().then(function (uid) {
       if (!uid) return;
       bg('cdlFlagSubmit', { chapterId: chapterId, userHashId: uid, type: type }).then(function (r) {
-        if (r && r.ok) {
-          markFlaggedLocal(chapterId);
-          if (readerFlagsState && readerFlagsState.widget && readerFlagsState.chapterId === chapterId) updateFlagWidget(readerFlagsState.widget, r.counts, chapterId);
+        if (!r || !r.ok) return;
+        markFlaggedLocal(chapterId);
+        if (readerFlagsState && readerFlagsState.chapterId === chapterId) {
+          readerFlagsState.counts = r.counts;
+          var btn = document.getElementById(FLAG_BTN_ID); if (btn) updateFlagButton(btn);
         }
       });
     });
   }
+  function removeFlagUI() {
+    var b = document.getElementById(FLAG_BTN_ID);
+    if (b) { var row = b.closest('.rpage-floatctl__row'); (row && row.children.length === 1 ? row : b).remove(); }
+    var m = document.getElementById('cdl-flag-menu'); if (m) m.remove();
+  }
   function startReaderFlags(url) {
     var chapterId = chapterIdFromUrl(url); if (!chapterId) return;
-    readerFlagsState = { url: url, chapterId: chapterId, widget: null };
+    readerFlagsState = { url: url, chapterId: chapterId, counts: null, observer: null, debounce: null };
+    ensureFlagButton(); // may no-op until controls mount; the observer re-tries
     bg('cdlFlagLookup', { chapterIds: [chapterId] }).then(function (r) {
       if (!readerFlagsState || readerFlagsState.chapterId !== chapterId) return;
-      var counts = (r && r.counts && r.counts[chapterId]) || null;
-      var w = buildFlagWidget(chapterId, counts);
-      (document.body || document.documentElement).appendChild(w);
-      readerFlagsState.widget = w;
+      readerFlagsState.counts = (r && r.counts && r.counts[chapterId]) || null;
+      ensureFlagButton();
     });
+    try {
+      var obs = new MutationObserver(function () {
+        if (!readerFlagsState || readerFlagsState.debounce) return;
+        readerFlagsState.debounce = setTimeout(function () { if (readerFlagsState) { readerFlagsState.debounce = null; ensureFlagButton(); } }, 200);
+      });
+      obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+      readerFlagsState.observer = obs;
+    } catch (e) {}
   }
   function stopReaderFlags() {
-    if (readerFlagsState && readerFlagsState.widget) { try { readerFlagsState.widget.remove(); } catch (e) {} }
+    if (readerFlagsState) {
+      if (readerFlagsState.observer) { try { readerFlagsState.observer.disconnect(); } catch (e) {} }
+      if (readerFlagsState.debounce) clearTimeout(readerFlagsState.debounce);
+    }
+    removeFlagUI();
     readerFlagsState = null;
   }
   function syncReaderFlags() {
     if (!cfg['features.crowdFlags']) { stopReaderFlags(); return; }
-    if (readerFlagsState && readerFlagsState.url === location.href) return;
+    if (readerFlagsState && readerFlagsState.url === location.href) { ensureFlagButton(); return; }
     stopReaderFlags(); startReaderFlags(location.href);
   }
 
