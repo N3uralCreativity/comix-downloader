@@ -59,6 +59,9 @@
   var prefetchState = null;        // { url, done, scrollTimer, onScroll, warmed:[] } for the current chapter
   var prefetchEntriesCache = null; // { slug, entries } — chapter list, reused across a series' chapters
 
+  // ── Resume scroll-position state ──────────────────────────────────────────────
+  var resumeState = null; // { url, chapterId, onScroll, saveTimer, restored, restoring, userMoved, restoreTimer, tries }
+
   // ── Crowd quality flags state ────────────────────────────────────────────────
   var readerFlagsState = null;   // { url, chapterId, widget }
   var flaggedLocal = null;       // Set of chapterIds this user already flagged (from storage)
@@ -749,6 +752,115 @@
     return null;
   }
 
+  // ════════════════════════ resume scroll position ════════════════════════
+  // Remember exactly where you stopped in each chapter (page + offset within it, plus a
+  // whole-chapter fraction as a fallback) and jump back there when you reopen it. Opt-in;
+  // stored only in this device's extension storage — nothing leaves the machine.
+  var RESUME_KEY = 'cdlReaderScroll';
+  var RESUME_MAX = 300;        // cap stored chapters (evict oldest by timestamp)
+  var RESUME_MIN_FRAC = 0.02;  // ignore trivially-near-top positions (and clear on scroll-to-top)
+
+  function scrollMax() { return Math.max(1, (document.documentElement.scrollHeight || 0) - window.innerHeight); }
+  function scrollFrac() { return Math.min(1, Math.max(0, window.scrollY / scrollMax())); }
+  // The page currently at the top of the viewport + how far into it we've scrolled (0..1).
+  function currentPageInfo() {
+    var els = document.querySelectorAll('[data-page]');
+    for (var i = 0; i < els.length; i++) {
+      var r = els[i].getBoundingClientRect();
+      if (r.bottom > 0) {
+        var p = parseInt(els[i].getAttribute('data-page'), 10);
+        var intra = r.height > 0 ? Math.min(1, Math.max(0, (-r.top) / r.height)) : 0;
+        return { page: isNaN(p) ? null : p, intra: intra };
+      }
+    }
+    return { page: null, intra: 0 };
+  }
+
+  function startResume(url) {
+    var id = chapterIdFromUrl(url);
+    resumeState = { url: url, chapterId: id, onScroll: null, saveTimer: null, restored: false, restoring: false, userMoved: false, restoreTimer: null, tries: 0 };
+    var onScroll = function () {
+      if (!resumeState || resumeState.restoring) return;   // ignore our own restore scrolls
+      if (!resumeState.restored) { resumeState.userMoved = true; return; } // user took over first
+      if (resumeState.saveTimer) return;
+      resumeState.saveTimer = setTimeout(function () { if (resumeState) { resumeState.saveTimer = null; saveResume(); } }, 400);
+    };
+    resumeState.onScroll = onScroll;
+    window.addEventListener('scroll', onScroll, { passive: true });
+    if (!id) { resumeState.restored = true; return; }
+    try {
+      chrome.storage.local.get(RESUME_KEY, function (r) {
+        if (!resumeState || resumeState.chapterId !== id) return;
+        var saved = ((r && r[RESUME_KEY]) || {})[id];
+        if (saved && saved.frac > RESUME_MIN_FRAC && !resumeState.userMoved) tryRestore(saved);
+        else resumeState.restored = true;
+      });
+    } catch (e) { resumeState.restored = true; }
+  }
+
+  function scrollToSaved(saved) {
+    var target = null;
+    if (saved.page != null) {
+      var el = document.querySelector('[data-page="' + saved.page + '"]');
+      if (el) { var r = el.getBoundingClientRect(); target = window.scrollY + r.top + (saved.intra || 0) * r.height; }
+    }
+    if (target == null) target = (saved.frac || 0) * scrollMax();
+    window.scrollTo(0, Math.max(0, Math.round(target)));
+  }
+
+  function tryRestore(saved) {
+    if (!resumeState || resumeState.userMoved) { if (resumeState) resumeState.restored = true; return; }
+    if (scrollMax() > 40) { // content tall enough that the saved spot is reachable
+      resumeState.restoring = true;
+      scrollToSaved(saved);
+      resumeState.restoreTimer = setTimeout(function () {
+        if (!resumeState) return;
+        scrollToSaved(saved); // settle again after late layout shifts (images loading in)
+        resumeState.restoring = false;
+        resumeState.restored = true;
+      }, 350);
+      return;
+    }
+    if (++resumeState.tries < 25) resumeState.restoreTimer = setTimeout(function () { tryRestore(saved); }, 150);
+    else resumeState.restored = true; // give up cleanly after ~3.75s
+  }
+
+  function saveResume() {
+    if (!resumeState || !resumeState.chapterId) return;
+    var id = resumeState.chapterId;
+    var frac = scrollFrac();
+    var info = currentPageInfo();
+    try {
+      chrome.storage.local.get(RESUME_KEY, function (r) {
+        if (!resumeState || resumeState.chapterId !== id) return;
+        var map = (r && r[RESUME_KEY]) || {};
+        if (frac <= RESUME_MIN_FRAC) { if (map[id]) { delete map[id]; persistResume(map); } return; } // back at top → forget
+        map[id] = { frac: frac, page: info.page, intra: info.intra, ts: Date.now() };
+        var keys = Object.keys(map);
+        if (keys.length > RESUME_MAX) {
+          keys.sort(function (a, b) { return (map[a].ts || 0) - (map[b].ts || 0); });
+          for (var i = 0; i < keys.length - RESUME_MAX; i++) delete map[keys[i]];
+        }
+        persistResume(map);
+      });
+    } catch (e) {}
+  }
+  function persistResume(map) { try { var o = {}; o[RESUME_KEY] = map; chrome.storage.local.set(o); } catch (e) {} }
+
+  function stopResume() {
+    if (!resumeState) return;
+    if (resumeState.onScroll) { try { window.removeEventListener('scroll', resumeState.onScroll); } catch (e) {} }
+    if (resumeState.saveTimer) clearTimeout(resumeState.saveTimer);
+    if (resumeState.restoreTimer) clearTimeout(resumeState.restoreTimer);
+    resumeState = null;
+  }
+  function syncResume() {
+    if (!cfg['features.resumeScroll']) { stopResume(); return; }
+    if (resumeState && resumeState.url === location.href) return; // same chapter
+    stopResume();
+    startResume(location.href);
+  }
+
   // ════════════════════════ crowd quality flags ════════════════════════
   // Reader: a flag button injected INTO comix's own reader controls (so it matches the site and
   // never overlaps them), with a small count badge, plus a broken/missing/wrong menu.
@@ -921,6 +1033,7 @@
         syncPageHealth(); // starts/stops the broken-page watcher per the flag + current chapter
         syncReaderFlags(); // starts/stops the crowd-flag widget per the flag + current chapter
         syncPrefetch();   // starts/stops read-ahead per the flag + current chapter
+        syncResume();     // starts/stops exact scroll-position resume per the flag + current chapter
       } else if (type === 'list') {
         // Crossed into a chapter list (possibly from a reader) — drop reader features.
         stopReaderNav();
@@ -928,6 +1041,7 @@
         stopPageHealth();
         stopReaderFlags();
         stopPrefetch();
+        stopResume();
         // Community chapter flags always run on a list, so this branch is always active
         // (dedupe/order still gate themselves inside applyListFeatures).
         ensureStyle();
@@ -940,6 +1054,7 @@
         stopPageHealth();
         stopReaderFlags();
         stopPrefetch();
+        stopResume();
         stopListObserver();
         cleanupListFeatures();
         removeStyleIfUnused();
