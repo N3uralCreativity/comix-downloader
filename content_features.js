@@ -1,13 +1,21 @@
 /**
- * content_features.js — Comix Downloader "Additional Features" (V2.0.2)
+ * content_features.js — Comix Downloader "Additional Features" (v3.0.0)
  *
- * Runs on *://comix.to/title/* alongside content_title.js (loaded after it). IIFE-wrapped
+ * Runs on *://comix.to/* alongside content_title.js (loaded after it). IIFE-wrapped
  * so its top-level declarations can never collide with content_title.js's global `const`s.
  *
- * Three independently-toggled, OFF-by-default site enhancements:
+ * Independently-toggled, OFF-by-default site enhancements:
  *   - features.dedupeChapters      : hide duplicate chapters in the title list (list page)
  *   - features.enforceChapterOrder : force ascending numeric order in the list (list page)
  *   - features.fixReaderNav        : accurate next/prev with source switching (reader page)
+ *   - features.flagBrokenPages     : warn when a chapter's page images fail to load (reader)
+ *   - features.prefetchNext        : warm the next chapter near the end of the current one (reader)
+ *   - features.resumeScroll        : reopen a chapter at the exact spot you stopped (reader)
+ *   - features.recapOnReturn       : "welcome back" banner + jump-to-next on a series page (list)
+ *   - features.readingStats        : local reading tracker feeding the Home "Your Reading" panel
+ *   - features.catchupEstimate     : "N chapters left · ~time at your pace" chip (list)
+ * Always-on (not settings): community chapter flags — reader flag button + "⚠ N" list markers,
+ * shared through the same tiny Worker as the profile tenure badge (opaque salted hashes only).
  *
  * Design rules:
  *   - Pure correctness lives in CDLFeaturesCore (DOM-free, unit-tested).
@@ -677,6 +685,10 @@
 
   function nearChapterEnd() {
     try {
+      // A freshly opened, not-yet-laid-out reader has scrollHeight ≈ viewport, which makes the
+      // ratio (and the end marker) lie. Only trust either signal once you've actually scrolled
+      // at least a viewport into the chapter.
+      if (window.scrollY < window.innerHeight) return false;
       var h = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
       if (h > 0 && (window.scrollY + window.innerHeight) / h >= PREFETCH_TRIGGER) return true;
       // Robust fallback for the virtualized reader: its end marker is on/near screen.
@@ -753,7 +765,7 @@
     // Preload the first few page images so the top of the next chapter paints instantly.
     if (html) {
       Core.parseReaderImages(html, url).slice(0, PREFETCH_IMAGES).forEach(function (it) {
-        try { var im = new Image(); im.decoding = 'async'; im.src = it.src; prefetchState.warmed.push(im); } catch (e) {}
+        try { var im = new Image(); im.decoding = 'async'; im.src = it.src; if (prefetchState) prefetchState.warmed.push(im); } catch (e) {}
       });
     }
   }
@@ -976,8 +988,9 @@
     x.title = 'Dismiss';
     x.setAttribute('style', 'flex:none;width:24px;height:24px;border:0;border-radius:6px;background:transparent;' +
       'color:inherit;opacity:.6;cursor:pointer;font-size:16px;line-height:1;');
+    var dismissSlug = recapData.slug; // capture now — recapData may be gone by click time
     x.addEventListener('click', function () {
-      recapDismissed[recapData ? recapData.slug : ''] = true;
+      recapDismissed[dismissSlug] = true;
       box.remove();
     });
     box.appendChild(x);
@@ -1010,6 +1023,17 @@
 
   function trackingEnabled() { return !!(cfg['features.readingStats'] || cfg['features.catchupEstimate']); }
 
+  // How far through the chapter you are, but robust to the reader not having laid out yet
+  // (a short scrollHeight makes the plain ratio read ~1 at the top of a fresh page).
+  function chapterFrac() {
+    var mx = scrollMax();
+    if (mx > window.innerHeight) return scrollFrac(); // long strip: the ratio is meaningful
+    // Short (or not-yet-grown) documents: only trust "finished" when truly at the bottom
+    // of real, rendered chapter content.
+    if (mx > 40 && window.scrollY >= mx - 20 && document.querySelector(PAGE_IMG_SEL)) return 1;
+    return 0;
+  }
+
   function seriesNameFromTitle() {
     // Reader tab titles look like "Series Name · Ch.18" — take the series part.
     var t = (document.title || '').split('·')[0].trim();
@@ -1029,7 +1053,7 @@
       if (!readTrack || document.hidden) return;
       if (Date.now() - readTrack.lastAct <= TRACK_IDLE_MS) {
         readTrack.active += TRACK_TICK_SECS;
-        var f = scrollFrac();
+        var f = chapterFrac();
         if (f > readTrack.maxFrac) readTrack.maxFrac = f;
         // Flush every 30 active seconds: a full-page navigation kills this script without
         // warning, so long sessions must not sit only in memory.

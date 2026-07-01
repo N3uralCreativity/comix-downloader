@@ -46,12 +46,13 @@ async function loadCfg() {
 // ── Comix-Downloader "tenure badge" service (v3.0.0) ─────────────────────────
 // Records when the badge service first saw a user, and looks up other users'
 // first-seen dates, so content_profile.js can show "Comix-Downloader user · N months"
-// on comix profiles. Only an OPAQUE salted hash of the comix user id + a coarse date
-// ever leave the device, and only when the user enabled `profile.badge`.
+// on comix profiles. The badge (and the community chapter flags that share this
+// Worker) is a built-in, always-on feature; only an OPAQUE salted hash of the comix
+// user id + a coarse date / coarse flag counts ever leave the device.
 //
-// CDL_BADGE_API is empty until the free Cloudflare Worker is deployed (see worker/),
-// which keeps the feature inert (no network) by default. A `cdlBadgeApi` storage key
-// overrides it (used by the E2E harness; could also let advanced users self-host).
+// CDL_BADGE_API points at the deployed free Cloudflare Worker (see worker/). A
+// `cdlBadgeApi` storage key overrides it (used by the E2E harness; could also let
+// advanced users self-host).
 const CDL_BADGE_API = 'https://comix-downloader-badge.comixdl.workers.dev';
 const CDL_BADGE_SALT = 'cdl-badge-v1'; // not secret; keeps raw comix ids out of the KV store
 const _BADGE_LOOKUP_TTL = 7 * 24 * 60 * 60 * 1000; // cache a found date ~7 days
