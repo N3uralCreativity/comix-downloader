@@ -55,6 +55,10 @@
   var pageHealthState = null; // { url, broken:{}, seen:WeakSet, observer, banner, debounce, dismissed }
   var PAGE_IMG_SEL = 'img.rpage-page__img, img[alt^="Page"]';
 
+  // ── Seamless prefetch state ───────────────────────────────────────────────────
+  var prefetchState = null;        // { url, done, scrollTimer, onScroll, warmed:[] } for the current chapter
+  var prefetchEntriesCache = null; // { slug, entries } — chapter list, reused across a series' chapters
+
   // ── Crowd quality flags state ────────────────────────────────────────────────
   var readerFlagsState = null;   // { url, chapterId, widget }
   var flaggedLocal = null;       // Set of chapterIds this user already flagged (from storage)
@@ -649,6 +653,102 @@
     startPageHealth(location.href);
   }
 
+  // ════════════════════════ seamless prefetch ════════════════════════
+  // As the reader nears the end of a chapter, quietly warm the NEXT chapter so opening it
+  // feels instant: fetch its server HTML once (which also primes the browser cache), warm
+  // the SPA data endpoint comix's own "next" uses, and preload the first few page images.
+  // Deliberately gentle — one chapter ahead only, only past ~60%, at most once per chapter.
+  var PREFETCH_TRIGGER = 0.6; // fraction of the chapter scrolled before we read ahead
+  var PREFETCH_IMAGES = 6;    // how many leading page images of the next chapter to warm
+
+  function nearChapterEnd() {
+    try {
+      var h = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
+      if (h > 0 && (window.scrollY + window.innerHeight) / h >= PREFETCH_TRIGGER) return true;
+      // Robust fallback for the virtualized reader: its end marker is on/near screen.
+      var end = document.querySelector('.rpage-chap-ending, [class*="chap-ending"]');
+      if (end) { var r = end.getBoundingClientRect(); if (r.top < window.innerHeight * 1.5) return true; }
+      return false;
+    } catch (e) { return false; }
+  }
+
+  function startPrefetch(url) {
+    prefetchState = { url: url, done: false, scrollTimer: null, onScroll: null, warmed: [] };
+    var onScroll = function () {
+      if (!prefetchState || prefetchState.done || prefetchState.scrollTimer) return;
+      prefetchState.scrollTimer = setTimeout(function () {
+        if (!prefetchState) return;
+        prefetchState.scrollTimer = null;
+        if (nearChapterEnd()) doPrefetch();
+      }, 250);
+    };
+    prefetchState.onScroll = onScroll;
+    window.addEventListener('scroll', onScroll, { passive: true });
+    if (nearChapterEnd()) doPrefetch(); // short chapter / already scrolled down
+  }
+  function stopPrefetch() {
+    if (!prefetchState) return;
+    if (prefetchState.onScroll) { try { window.removeEventListener('scroll', prefetchState.onScroll); } catch (e) {} }
+    if (prefetchState.scrollTimer) clearTimeout(prefetchState.scrollTimer);
+    prefetchState = null;
+  }
+  function syncPrefetch() {
+    if (!cfg['features.prefetchNext']) { stopPrefetch(); return; }
+    if (prefetchState && prefetchState.url === location.href) return; // same chapter
+    stopPrefetch();
+    startPrefetch(location.href);
+  }
+
+  async function doPrefetch() {
+    if (!prefetchState || prefetchState.done) return;
+    prefetchState.done = true; // once per chapter, whether or not we find a next url
+    try {
+      var nextUrl = await resolveNextChapterUrl();
+      if (!nextUrl || !prefetchState) return;
+      await warmNextChapter(nextUrl);
+    } catch (e) { /* best-effort; never disturb reading */ }
+  }
+
+  async function resolveNextChapterUrl() {
+    // Reuse fixReaderNav's already-computed next url when present (avoids extra list fetches).
+    if (readerState && readerState.entriesSlug === currentSlug() && readerState.nextUrl) return readerState.nextUrl;
+    var slug = currentSlug();
+    if (!slug) return null;
+    if (!prefetchEntriesCache || prefetchEntriesCache.slug !== slug) {
+      prefetchEntriesCache = { slug: slug, entries: await fetchAllChapterEntries(slug) };
+    }
+    var node = Core.computeAdjacentChapter(prefetchEntriesCache.entries || [], location.href, 1);
+    return node ? Core.pickCandidateUrl(node, location.href) : null;
+  }
+
+  async function warmNextChapter(url) {
+    var html = '';
+    try {
+      var r = await fetch(url, { credentials: 'same-origin' }); // warms the document + yields page urls
+      if (r && r.ok) html = await r.text();
+    } catch (e) {}
+    if (!prefetchState) return;
+    // Warm the SPA data endpoint too — comix's native next button navigates via _next/data.
+    try {
+      var buildId = readBuildId();
+      if (buildId) {
+        var p = new URL(url, location.origin).pathname;
+        fetch('/_next/data/' + buildId + p + '.json', { credentials: 'same-origin' }).catch(function () {});
+      }
+    } catch (e) {}
+    // Preload the first few page images so the top of the next chapter paints instantly.
+    if (html) {
+      Core.parseReaderImages(html, url).slice(0, PREFETCH_IMAGES).forEach(function (it) {
+        try { var im = new Image(); im.decoding = 'async'; im.src = it.src; prefetchState.warmed.push(im); } catch (e) {}
+      });
+    }
+  }
+
+  function readBuildId() {
+    try { var el = document.getElementById('__NEXT_DATA__'); if (el) return JSON.parse(el.textContent || '{}').buildId || null; } catch (e) {}
+    return null;
+  }
+
   // ════════════════════════ crowd quality flags ════════════════════════
   // Reader: a flag button injected INTO comix's own reader controls (so it matches the site and
   // never overlaps them), with a small count badge, plus a broken/missing/wrong menu.
@@ -820,12 +920,14 @@
         else stopReaderKb();
         syncPageHealth(); // starts/stops the broken-page watcher per the flag + current chapter
         syncReaderFlags(); // starts/stops the crowd-flag widget per the flag + current chapter
+        syncPrefetch();   // starts/stops read-ahead per the flag + current chapter
       } else if (type === 'list') {
         // Crossed into a chapter list (possibly from a reader) — drop reader features.
         stopReaderNav();
         stopReaderKb();
         stopPageHealth();
         stopReaderFlags();
+        stopPrefetch();
         // Community chapter flags always run on a list, so this branch is always active
         // (dedupe/order still gate themselves inside applyListFeatures).
         ensureStyle();
@@ -837,6 +939,7 @@
         stopReaderKb();
         stopPageHealth();
         stopReaderFlags();
+        stopPrefetch();
         stopListObserver();
         cleanupListFeatures();
         removeStyleIfUnused();
