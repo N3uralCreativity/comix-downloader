@@ -95,7 +95,6 @@
     'features.dedupeChapters': false,      // hide duplicate chapters in the title list
     'features.enforceChapterOrder': false, // force ascending numeric order in the list
     'features.fixReaderNav': false,        // accurate reader next/prev w/ source switching
-    'features.pinScanlator': false,        // filter the title chapter list to a pinned scanlation group (per series)
 
     // Home (v3.0.0 custom Home redesign — OFF by default)
     'home.customLayout': false,            // replace comix's Home with the focused custom layout
@@ -275,8 +274,6 @@
     'features.fixReaderNav': { type: 'bool', risk: 'glitchy',
       label: 'Accurate next/prev in reader', help: 'Make the reader’s next / previous go to the true neighbouring chapter number, switching source if the current one skips it.',
       warn: 'Overrides the site’s built-in next / previous buttons and arrow keys in the reader. Turn it off to restore the native behaviour.' },
-    'features.pinScanlator': { type: 'bool', risk: 'none',
-      label: 'Pin a scanlation group', help: 'On a title page with more than one scanlation group, adds a “Group” picker above the chapter list. Pin a group and the list is filtered to just that group’s chapters (remembered per series). Choose “All groups” to clear it. Affects only what you see — your downloads are unchanged.' },
 
     'home.customLayout': { type: 'bool', risk: 'glitchy',
       label: 'Custom Home page', help: 'Replace comix.to’s Home with a focused, larger layout built from the sections you choose below. Everything else (announcements, banners, sidebar) is hidden.',
@@ -328,7 +325,7 @@
     { id: 'advanced', label: 'Advanced', icon: 'warn',
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
     { id: 'features', label: 'Additional Features', icon: 'sparkles',
-      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.pinScanlator', 'features.fixReaderNav', 'reader.keyboardShortcuts'] },
+      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'reader.keyboardShortcuts'] },
     { id: 'home', label: 'Home', icon: 'sparkles',
       keys: ['home.customLayout', 'home.sections', 'home.hero', 'home.heroSource', 'home.heroSkipRead',
         'home.cardStyle', 'home.rows', 'home.density', 'home.showProgress', 'home.itemsPerSection',
