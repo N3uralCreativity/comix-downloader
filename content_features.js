@@ -52,6 +52,8 @@
   // ── Reader-page state ────────────────────────────────────────────────────────
   var readerState = null;
   var routeDebounce = null;
+  var pageHealthState = null; // { url, broken:{}, seen:WeakSet, observer, banner, debounce, dismissed }
+  var PAGE_IMG_SEL = 'img.rpage-page__img, img[alt^="Page"]';
 
   // ════════════════════════ shared helpers ════════════════════════
   function absolute(path) {
@@ -518,6 +520,92 @@
     kbState = null;
   }
 
+  // ════════════════════════ reader page: broken/missing-page warning ════════════════════════
+  // Passive: watches the chapter's page images (same selectors the extractor uses) and flags any
+  // that fail to load — so a broken/missing page reads as a bad upload, not your connection.
+  function pageNumOf(img) {
+    var m = (img.getAttribute('alt') || '').match(/(\d+)/);
+    if (m) return m[1];
+    var dp = img.closest && img.closest('[data-page]');
+    if (dp && dp.getAttribute('data-page')) return dp.getAttribute('data-page');
+    return img.currentSrc || img.src || '';
+  }
+  function markBroken(img) {
+    if (!pageHealthState) return;
+    var key = pageNumOf(img);
+    if (!key || pageHealthState.broken[key]) return;
+    pageHealthState.broken[key] = true;
+    scheduleHealthBanner();
+  }
+  function watchPageImg(img) {
+    if (!pageHealthState || pageHealthState.seen.has(img)) return;
+    pageHealthState.seen.add(img);
+    if (img.complete) { if (img.naturalWidth === 0) markBroken(img); return; } // already failed
+    img.addEventListener('error', function () { markBroken(img); }, { once: true });
+    img.addEventListener('load', function () { if (img.naturalWidth === 0) markBroken(img); }, { once: true });
+  }
+  function scanPageImgs() {
+    if (!pageHealthState) return;
+    [].slice.call(document.querySelectorAll(PAGE_IMG_SEL)).forEach(watchPageImg);
+  }
+  function scheduleHealthBanner() {
+    if (!pageHealthState || pageHealthState.bannerTimer) return;
+    pageHealthState.bannerTimer = setTimeout(function () { if (pageHealthState) { pageHealthState.bannerTimer = null; updateHealthBanner(); } }, 200);
+  }
+  function updateHealthBanner() {
+    if (!pageHealthState) return;
+    var nums = Object.keys(pageHealthState.broken);
+    if (!nums.length || pageHealthState.dismissed) {
+      if (pageHealthState.banner) { pageHealthState.banner.remove(); pageHealthState.banner = null; }
+      return;
+    }
+    var b = pageHealthState.banner;
+    if (!b) {
+      b = document.createElement('div'); b.id = 'cdl-pagehealth';
+      b.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:2147483647;' +
+        'display:flex;align-items:center;gap:10px;max-width:92vw;padding:9px 12px 9px 14px;border-radius:10px;' +
+        'background:var(--surface-2,#2a2118);color:var(--text-emphasis,#f5e9d6);border:1px solid rgba(234,179,8,.55);' +
+        'box-shadow:0 8px 24px rgba(0,0,0,.45);font:600 13px/1.35 system-ui,sans-serif;';
+      var msg = document.createElement('span'); msg.id = 'cdl-pagehealth-msg';
+      var x = document.createElement('button'); x.textContent = '✕'; x.title = 'Dismiss';
+      x.style.cssText = 'background:none;border:0;color:inherit;cursor:pointer;font-size:15px;line-height:1;opacity:.7;padding:2px 4px;';
+      x.addEventListener('click', function () { if (pageHealthState) pageHealthState.dismissed = true; b.remove(); if (pageHealthState) pageHealthState.banner = null; });
+      b.appendChild(msg); b.appendChild(x);
+      (document.body || document.documentElement).appendChild(b);
+      pageHealthState.banner = b;
+    }
+    var n = nums.length;
+    var list = nums.filter(function (k) { return /^\d+$/.test(k); }).sort(function (a, c) { return a - c; });
+    var where = list.length ? (' (page' + (list.length > 1 ? 's ' : ' ') + list.slice(0, 6).join(', ') + (list.length > 6 ? '…' : '') + ')') : '';
+    b.querySelector('#cdl-pagehealth-msg').textContent = '⚠ ' + n + ' page' + (n > 1 ? 's' : '') + ' failed to load in this chapter' + where + ' — the upload may be broken.';
+  }
+  function startPageHealth(url) {
+    pageHealthState = { url: url, broken: Object.create(null), seen: new WeakSet(), observer: null, banner: null, bannerTimer: null, scanTimer: null, dismissed: false };
+    scanPageImgs();
+    try {
+      var obs = new MutationObserver(function () {
+        if (!pageHealthState || pageHealthState.scanTimer) return;
+        pageHealthState.scanTimer = setTimeout(function () { if (pageHealthState) { pageHealthState.scanTimer = null; scanPageImgs(); } }, 150);
+      });
+      obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+      pageHealthState.observer = obs;
+    } catch (e) {}
+  }
+  function stopPageHealth() {
+    if (!pageHealthState) return;
+    if (pageHealthState.observer) { try { pageHealthState.observer.disconnect(); } catch (e) {} }
+    if (pageHealthState.bannerTimer) clearTimeout(pageHealthState.bannerTimer);
+    if (pageHealthState.scanTimer) clearTimeout(pageHealthState.scanTimer);
+    if (pageHealthState.banner) { try { pageHealthState.banner.remove(); } catch (e) {} }
+    pageHealthState = null;
+  }
+  function syncPageHealth() {
+    if (!cfg['features.flagBrokenPages']) { stopPageHealth(); return; }
+    if (pageHealthState && pageHealthState.url === location.href) { scanPageImgs(); return; } // same chapter
+    stopPageHealth();
+    startPageHealth(location.href);
+  }
+
   // ════════════════════════ wiring ════════════════════════
   function applyForPage() {
     try {
@@ -532,10 +620,12 @@
         else stopReaderNav();
         if (cfg['reader.keyboardShortcuts']) startReaderKb();
         else stopReaderKb();
+        syncPageHealth(); // starts/stops the broken-page watcher per the flag + current chapter
       } else if (type === 'list') {
         // Crossed into a chapter list (possibly from a reader) — drop reader features.
         stopReaderNav();
         stopReaderKb();
+        stopPageHealth();
         var anyList = cfg['features.dedupeChapters'] || cfg['features.enforceChapterOrder'];
         if (anyList) {
           ensureStyle();
@@ -550,6 +640,7 @@
         // Some other comix page (home, search, …): nothing applies — tear it all down.
         stopReaderNav();
         stopReaderKb();
+        stopPageHealth();
         stopListObserver();
         cleanupListFeatures();
         removeStyleIfUnused();

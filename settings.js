@@ -95,6 +95,7 @@
     'features.dedupeChapters': false,      // hide duplicate chapters in the title list
     'features.enforceChapterOrder': false, // force ascending numeric order in the list
     'features.fixReaderNav': false,        // accurate reader next/prev w/ source switching
+    'features.flagBrokenPages': false,     // warn in the reader when a chapter's pages fail to load
 
     // Home (v3.0.0 custom Home redesign — OFF by default)
     'home.customLayout': false,            // replace comix's Home with the focused custom layout
@@ -274,6 +275,8 @@
     'features.fixReaderNav': { type: 'bool', risk: 'glitchy',
       label: 'Accurate next/prev in reader', help: 'Make the reader’s next / previous go to the true neighbouring chapter number, switching source if the current one skips it.',
       warn: 'Overrides the site’s built-in next / previous buttons and arrow keys in the reader. Turn it off to restore the native behaviour.' },
+    'features.flagBrokenPages': { type: 'bool', risk: 'none',
+      label: 'Warn about broken pages', help: 'While you read, quietly checks the chapter’s page images and shows a small warning if any fail to load — so you know a page is broken/missing (often a bad scanlation upload) rather than assuming it’s your connection. Purely informational; nothing is sent anywhere.' },
 
     'home.customLayout': { type: 'bool', risk: 'glitchy',
       label: 'Custom Home page', help: 'Replace comix.to’s Home with a focused, larger layout built from the sections you choose below. Everything else (announcements, banners, sidebar) is hidden.',
@@ -325,7 +328,7 @@
     { id: 'advanced', label: 'Advanced', icon: 'warn',
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
     { id: 'features', label: 'Additional Features', icon: 'sparkles',
-      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'reader.keyboardShortcuts'] },
+      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'reader.keyboardShortcuts'] },
     { id: 'home', label: 'Home', icon: 'sparkles',
       keys: ['home.customLayout', 'home.sections', 'home.hero', 'home.heroSource', 'home.heroSkipRead',
         'home.cardStyle', 'home.rows', 'home.density', 'home.showProgress', 'home.itemsPerSection',
