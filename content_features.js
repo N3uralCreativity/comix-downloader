@@ -62,6 +62,9 @@
   // ── Resume scroll-position state ──────────────────────────────────────────────
   var resumeState = null; // { url, chapterId, onScroll, saveTimer, restored, restoring, userMoved, restoreTimer, tries }
 
+  // ── Recap-on-return state ─────────────────────────────────────────────────────
+  var lastRecordedUrl = null; // dedupe last-read writes per chapter open
+
   // ── Crowd quality flags state ────────────────────────────────────────────────
   var readerFlagsState = null;   // { url, chapterId, widget }
   var flaggedLocal = null;       // Set of chapterIds this user already flagged (from storage)
@@ -149,7 +152,7 @@
       var key = Core.dedupeKey(p);
       if (row.getAttribute('data-cdl-key') !== key) row.setAttribute('data-cdl-key', key);
       row.setAttribute('data-cdl-num', String(p.value));
-      out.push({ row: row, key: key, parsed: p, chapterId: chapterIdFromUrl(href) });
+      out.push({ row: row, key: key, parsed: p, chapterId: chapterIdFromUrl(href), url: absolute(href), label: (link.textContent || '').trim() });
     });
     return out;
   }
@@ -192,6 +195,9 @@
 
       // ── crowd quality flags (⚠ N on flagged rows) — always on ──
       applyCrowdFlagsToList(rows);
+
+      // ── recap-on-return banner (re-ensured here so it heals after React re-renders) ──
+      if (cfg['features.recapOnReturn']) ensureRecap(rows);
     } catch (e) { /* no-op */ } finally {
       applying = false;
     }
@@ -861,6 +867,130 @@
     startResume(location.href);
   }
 
+  // ════════════════════════ recap on return ════════════════════════
+  // Opening a chapter records "last read" for its series (locally). Reopening the series
+  // page after a while shows a small banner: which chapter you left off at, how long ago,
+  // and a one-click jump to the next one. Nothing leaves the device.
+  var LASTREAD_KEY = 'cdlLastRead';
+  var LASTREAD_MAX = 200;                  // cap stored series (evict oldest)
+  var RECAP_MIN_AGE = 12 * 3600 * 1000;    // only recap after a real break, not a bathroom one
+
+  var recapData = null;      // { slug, rec|null } — storage read for the current series page
+  var recapDismissed = {};   // slug -> true, this SPA session only
+
+  function fmtAgo(ms) {
+    var m = Math.floor(ms / 60000);
+    if (m < 2) return 'just now';
+    if (m < 60) return m + ' minutes ago';
+    var h = Math.floor(m / 60);
+    if (h < 48) return h + (h === 1 ? ' hour ago' : ' hours ago');
+    var d = Math.floor(h / 24);
+    if (d < 14) return d + ' days ago';
+    var w = Math.floor(d / 7);
+    if (w < 9) return w + ' weeks ago';
+    var mo = Math.floor(d / 30);
+    if (mo < 12) return mo + (mo === 1 ? ' month ago' : ' months ago');
+    var y = Math.floor(d / 365);
+    return y + (y === 1 ? ' year ago' : ' years ago');
+  }
+
+  function recordLastRead() {
+    var url = location.href.split('#')[0];
+    if (lastRecordedUrl === url) return;
+    lastRecordedUrl = url;
+    var slug = currentSlug();
+    var id = chapterIdFromUrl(url);
+    if (!slug || !id) return;
+    var p = Core.parseChapterNumber(url);
+    try {
+      chrome.storage.local.get(LASTREAD_KEY, function (r) {
+        var map = (r && r[LASTREAD_KEY]) || {};
+        map[slug] = { url: url, id: id, num: (p && p.kind === 'num') ? p.value : null, ts: Date.now() };
+        var keys = Object.keys(map);
+        if (keys.length > LASTREAD_MAX) {
+          keys.sort(function (a, b) { return (map[a].ts || 0) - (map[b].ts || 0); });
+          for (var i = 0; i < keys.length - LASTREAD_MAX; i++) delete map[keys[i]];
+        }
+        var o = {}; o[LASTREAD_KEY] = map;
+        chrome.storage.local.set(o);
+      });
+    } catch (e) {}
+  }
+
+  function syncRecap() {
+    if (!cfg['features.recapOnReturn']) { stopRecap(); return; }
+    var slug = currentSlug();
+    if (recapData && recapData.slug === slug) return; // already loaded for this series
+    stopRecap();
+    recapData = { slug: slug, rec: null };
+    try {
+      chrome.storage.local.get(LASTREAD_KEY, function (r) {
+        if (!recapData || recapData.slug !== slug) return;
+        recapData.rec = ((r && r[LASTREAD_KEY]) || {})[slug] || null;
+        if (recapData.rec) applyListFeatures(); // rows may already be rendered → show now
+      });
+    } catch (e) {}
+  }
+
+  // Called from applyListFeatures with the collected rows (so it also heals after React churn).
+  function ensureRecap(rows) {
+    if (!recapData || !recapData.rec || recapDismissed[recapData.slug]) return;
+    if (document.getElementById('cdl-recap')) return;
+    if (!rows.length) return;
+    var rec = recapData.rec;
+    if (Date.now() - (rec.ts || 0) < RECAP_MIN_AGE) return;
+
+    // The next chapter strictly after the one we left off at (smallest such number in the list).
+    var next = null;
+    if (rec.num != null) {
+      rows.forEach(function (rw) {
+        if (!rw.parsed || rw.parsed.kind !== 'num' || rw.parsed.value <= rec.num) return;
+        if (!next || rw.parsed.value < next.parsed.value) next = rw;
+      });
+    }
+
+    var box = document.createElement('div');
+    box.id = 'cdl-recap';
+    box.setAttribute('style', 'display:flex;align-items:center;gap:12px;margin:10px 0;padding:10px 14px;' +
+      'background:rgba(60,130,110,.12);border:1px solid rgba(60,130,110,.35);border-radius:10px;font-size:13.5px;line-height:1.4;');
+    var txt = document.createElement('span');
+    txt.style.flex = '1';
+    var chLabel = rec.num != null ? ('Chapter ' + rec.num) : 'a chapter';
+    txt.textContent = 'Welcome back — you left off at ' + chLabel + ', ' + fmtAgo(Date.now() - (rec.ts || 0)) + '.';
+    box.appendChild(txt);
+
+    var go = document.createElement('a');
+    go.href = next ? next.url : rec.url;
+    go.textContent = next ? ('Continue · Chapter ' + next.parsed.value + ' →') : ('Reopen ' + chLabel);
+    go.setAttribute('style', 'flex:none;padding:6px 12px;border-radius:8px;background:rgba(60,130,110,.85);' +
+      'color:#fff;text-decoration:none;font-weight:600;white-space:nowrap;');
+    box.appendChild(go);
+
+    var x = document.createElement('button');
+    x.textContent = '×';
+    x.title = 'Dismiss';
+    x.setAttribute('style', 'flex:none;width:24px;height:24px;border:0;border-radius:6px;background:transparent;' +
+      'color:inherit;opacity:.6;cursor:pointer;font-size:16px;line-height:1;');
+    x.addEventListener('click', function () {
+      recapDismissed[recapData ? recapData.slug : ''] = true;
+      box.remove();
+    });
+    box.appendChild(x);
+
+    // Sit just above the chapters block (its section when there is one).
+    var sect = rows[0].row.closest('section') || rows[0].row.parentElement;
+    if (sect && sect.parentNode) sect.parentNode.insertBefore(box, sect);
+  }
+
+  function removeRecap() {
+    var el = document.getElementById('cdl-recap');
+    if (el) el.remove();
+  }
+  function stopRecap() {
+    removeRecap();
+    recapData = null;
+  }
+
   // ════════════════════════ crowd quality flags ════════════════════════
   // Reader: a flag button injected INTO comix's own reader controls (so it matches the site and
   // never overlaps them), with a small count badge, plus a broken/missing/wrong menu.
@@ -1034,6 +1164,8 @@
         syncReaderFlags(); // starts/stops the crowd-flag widget per the flag + current chapter
         syncPrefetch();   // starts/stops read-ahead per the flag + current chapter
         syncResume();     // starts/stops exact scroll-position resume per the flag + current chapter
+        if (cfg['features.recapOnReturn']) recordLastRead(); // remember this chapter for the recap banner
+        stopRecap();      // the recap banner belongs on the list, not the reader (drop its cache too)
       } else if (type === 'list') {
         // Crossed into a chapter list (possibly from a reader) — drop reader features.
         stopReaderNav();
@@ -1047,6 +1179,7 @@
         ensureStyle();
         applyListFeatures();
         startListObserver();
+        syncRecap(); // "welcome back" recap banner on a series page
       } else {
         // Some other comix page (home, search, …): nothing applies — tear it all down.
         stopReaderNav();
@@ -1055,6 +1188,7 @@
         stopReaderFlags();
         stopPrefetch();
         stopResume();
+        stopRecap();
         stopListObserver();
         cleanupListFeatures();
         removeStyleIfUnused();

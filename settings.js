@@ -98,6 +98,7 @@
     'features.flagBrokenPages': false,     // warn in the reader when a chapter's pages fail to load
     'features.prefetchNext': false,        // read one chapter ahead near the end for instant page turns
     'features.resumeScroll': false,        // remember the exact scroll position in each chapter
+    'features.recapOnReturn': false,       // on a series page, recap where you left off + what's next
     // Community chapter flags (v3.0.0) are a built-in, always-on feature — intentionally NOT a
     // setting (like the profile tenure badge). See content_features.js.
 
@@ -287,6 +288,8 @@
     'features.resumeScroll': { type: 'bool', risk: 'none',
       label: 'Resume exact scroll position', help: 'Remembers exactly where you stopped in each chapter — not just which chapter — and jumps back to that spot when you reopen it. Handy for long webtoon chapters. Stored only on this device; nothing is sent anywhere.',
       warn: 'When you reopen a chapter it scrolls to where you left off. Turn it off to always start chapters from the top.' },
+    'features.recapOnReturn': { type: 'bool', risk: 'none',
+      label: 'Recap where you left off', help: 'When you reopen a series page, shows a small banner reminding you which chapter you last read and how long ago, with a one-click button to jump straight to the next one. Based only on chapters you open on this device; nothing is sent anywhere.' },
 
     'home.customLayout': { type: 'bool', risk: 'glitchy',
       label: 'Custom Home page', help: 'Replace comix.to’s Home with a focused, larger layout built from the sections you choose below. Everything else (announcements, banners, sidebar) is hidden.',
@@ -338,7 +341,7 @@
     { id: 'advanced', label: 'Advanced', icon: 'warn',
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
     { id: 'features', label: 'Additional Features', icon: 'sparkles',
-      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'features.prefetchNext', 'features.resumeScroll', 'reader.keyboardShortcuts'] },
+      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'features.prefetchNext', 'features.resumeScroll', 'features.recapOnReturn', 'reader.keyboardShortcuts'] },
     { id: 'home', label: 'Home', icon: 'sparkles',
       keys: ['home.customLayout', 'home.sections', 'home.hero', 'home.heroSource', 'home.heroSkipRead',
         'home.cardStyle', 'home.rows', 'home.density', 'home.showProgress', 'home.itemsPerSection',
