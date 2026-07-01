@@ -48,6 +48,23 @@
   var listDebounce = null;
   var domReorderedContainers = new Set();
   var originalOrderMap = new WeakMap();
+  // Scanlator pinning: preferred group per series, keyed by title slug → groupId.
+  var SCANL_BAR_ID = 'cdl-scanlator-bar';
+  var scanlatorPins = {};
+  function loadScanlatorPins() {
+    try {
+      chrome.storage.local.get('cdlScanlatorPins', function (r) {
+        scanlatorPins = (r && r.cdlScanlatorPins) || {};
+        if (currentPageType() === 'list') applyForPage();
+      });
+    } catch (e) {}
+  }
+  function setScanlatorPin(slug, groupId) {
+    if (!slug) return;
+    if (groupId) scanlatorPins[slug] = groupId; else delete scanlatorPins[slug];
+    try { chrome.storage.local.set({ cdlScanlatorPins: scanlatorPins }); } catch (e) {}
+    applyListFeatures();
+  }
 
   // ── Reader-page state ────────────────────────────────────────────────────────
   var readerState = null;
@@ -62,11 +79,18 @@
     if (document.getElementById(STYLE_ID)) return;
     var style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = '.' + HIDDEN_CLASS + '{display:none !important;}';
+    style.textContent = '.' + HIDDEN_CLASS + '{display:none !important;}' +
+      '#' + SCANL_BAR_ID + '{display:flex;align-items:center;gap:9px;margin:10px 0 12px;padding:9px 12px;border-radius:8px;' +
+        'background:var(--surface,rgba(255,255,255,.05));border:1px solid var(--surface-3,rgba(255,255,255,.1));font-size:13px;}' +
+      '#' + SCANL_BAR_ID + ' .cdl-scanl-label{font-weight:700;color:var(--text-2,#9da4a5);display:inline-flex;align-items:center;gap:7px;}' +
+      '#' + SCANL_BAR_ID + ' select{background:var(--surface-2,#282c30);color:var(--text,#d4d4d4);border:1px solid var(--surface-3,rgba(255,255,255,.14));' +
+        'border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit;cursor:pointer;max-width:320px;}' +
+      '#' + SCANL_BAR_ID + ' .cdl-scanl-clear{margin-left:auto;color:var(--accent,#66e8fa);cursor:pointer;font-weight:600;font-size:12px;background:none;border:0;padding:4px 6px;}' +
+      '#' + SCANL_BAR_ID + '[hidden]{display:none;}';
     (document.head || document.documentElement).appendChild(style);
   }
   function removeStyleIfUnused() {
-    if (!cfg['features.dedupeChapters'] && !cfg['features.enforceChapterOrder']) {
+    if (!cfg['features.dedupeChapters'] && !cfg['features.enforceChapterOrder'] && !cfg['features.pinScanlator']) {
       var s = document.getElementById(STYLE_ID);
       if (s) s.remove();
     }
@@ -84,9 +108,13 @@
       .filter(function (a) { return CHAPTER_HREF_RE.test(a.getAttribute('href') || a.href || ''); });
   }
 
-  // The row element representing a chapter (mirrors content_title.js injectButtonForRow).
+  // The row element representing a chapter. Prefer the outer `.mchap-row` container — the primary
+  // link's own class contains "mchap", so a generic [class*="mchap"] closest() would return the
+  // link itself and miss the group tag / hide only part of the row.
   function rowOf(link) {
-    return link.closest('li, tr, [class*="mchap"], [class*="chapter"]') || link.parentElement || link;
+    return link.closest('.mchap-row') ||
+      link.closest('li, tr, [class*="mchap"], [class*="chapter"]') ||
+      link.parentElement || link;
   }
 
   function collectRows(root) {
@@ -101,9 +129,21 @@
       var key = Core.dedupeKey(p);
       if (row.getAttribute('data-cdl-key') !== key) row.setAttribute('data-cdl-key', key);
       row.setAttribute('data-cdl-num', String(p.value));
-      out.push({ row: row, key: key, parsed: p });
+      var g = groupOfRow(row);
+      out.push({ row: row, key: key, parsed: p, group: g.group, groupId: g.groupId });
     });
     return out;
+  }
+
+  // The scanlation group for a chapter row: name in `.mchap-row__group span`, id in its
+  // `/groups/{id}` href. Returns {group:'', groupId:''} when the row has no group element.
+  function groupOfRow(row) {
+    var container = (row.closest && row.closest('.mchap-row')) || row;
+    var gEl = container.querySelector && container.querySelector('.mchap-row__group');
+    if (!gEl) return { group: '', groupId: '' };
+    var name = ((gEl.querySelector('span') || gEl).textContent || '').trim();
+    var id = ((gEl.getAttribute && gEl.getAttribute('href')) || '').match(/\/groups\/(\d+)/);
+    return { group: name, groupId: (id && id[1]) || (name ? 'name:' + name.toLowerCase() : '') };
   }
 
   // Lightweight undo used when both list features are off — never tags rows.
@@ -112,6 +152,41 @@
       el.classList.remove(HIDDEN_CLASS);
     });
     clearOrder(null);
+    var bar = document.getElementById(SCANL_BAR_ID); if (bar) bar.remove();
+  }
+
+  // Inject/refresh the "Group" picker above the chapter list (only when 2+ groups exist).
+  function findChaptersHeading(root) {
+    return [].slice.call(root.querySelectorAll('h1, h2, h3')).find(function (h) { return /^chapters$/i.test((h.textContent || '').trim()); });
+  }
+  function ensureScanlatorBar(root, rows) {
+    var groups = [], seenG = Object.create(null);
+    rows.forEach(function (r) { if (r.groupId && !seenG[r.groupId]) { seenG[r.groupId] = true; groups.push({ id: r.groupId, name: r.group || r.groupId }); } });
+    var bar = document.getElementById(SCANL_BAR_ID);
+    if (groups.length < 2) { if (bar) bar.remove(); return; } // a filter only makes sense with 2+ groups
+
+    var pin = scanlatorPins[currentSlug()] || '';
+    if (!bar) {
+      bar = document.createElement('div'); bar.id = SCANL_BAR_ID;
+      var label = document.createElement('span'); label.className = 'cdl-scanl-label'; label.textContent = 'Group';
+      var sel = document.createElement('select');
+      sel.addEventListener('change', function () { setScanlatorPin(currentSlug(), sel.value); });
+      var clr = document.createElement('button'); clr.type = 'button'; clr.className = 'cdl-scanl-clear'; clr.textContent = 'Show all';
+      clr.addEventListener('click', function () { setScanlatorPin(currentSlug(), ''); });
+      bar.appendChild(label); bar.appendChild(sel); bar.appendChild(clr);
+      var h = findChaptersHeading(root);
+      if (h && h.parentNode) h.parentNode.insertBefore(bar, h.nextSibling); else root.insertBefore(bar, root.firstChild);
+    }
+    // (re)build options + selection only when the group set or pin changed (avoid observer churn)
+    var sig = groups.map(function (g) { return g.id; }).join('|') + '::' + pin;
+    if (bar.getAttribute('data-cdl-sig') !== sig) {
+      bar.setAttribute('data-cdl-sig', sig);
+      var s = bar.querySelector('select'); s.textContent = '';
+      var all = document.createElement('option'); all.value = ''; all.textContent = 'All groups'; s.appendChild(all);
+      groups.forEach(function (g) { var o = document.createElement('option'); o.value = g.id; o.textContent = g.name; s.appendChild(o); });
+      s.value = pin;
+      var c = bar.querySelector('.cdl-scanl-clear'); if (c) c.style.display = pin ? '' : 'none';
+    }
   }
 
   function applyListFeatures() {
@@ -121,21 +196,22 @@
       var root = getChaptersRoot();
       var rows = collectRows(root);
 
-      // ── dedup (diff-before-write to avoid observer churn) ──
-      if (cfg['features.dedupeChapters']) {
-        var seen = Object.create(null);
-        rows.forEach(function (r) {
-          var dup = !!seen[r.key];
-          seen[r.key] = true;
-          var hidden = r.row.classList.contains(HIDDEN_CLASS);
-          if (dup && !hidden) r.row.classList.add(HIDDEN_CLASS);
-          else if (!dup && hidden) r.row.classList.remove(HIDDEN_CLASS);
-        });
-      } else {
-        rows.forEach(function (r) {
-          if (r.row.classList.contains(HIDDEN_CLASS)) r.row.classList.remove(HIDDEN_CLASS);
-        });
-      }
+      // ── scanlator pinning: filter the list to one group (per series) ──
+      var pin = '';
+      if (cfg['features.pinScanlator']) { ensureScanlatorBar(root, rows); pin = scanlatorPins[currentSlug()] || ''; }
+      else { var oldBar = document.getElementById(SCANL_BAR_ID); if (oldBar) oldBar.remove(); }
+
+      // ── hide rows: filtered-out group first, then duplicates among what's kept ──
+      var doDedupe = !!cfg['features.dedupeChapters'];
+      var seen = Object.create(null);
+      rows.forEach(function (r) {
+        var hide = false;
+        if (pin && r.groupId && r.groupId !== pin) hide = true;         // not the pinned group
+        if (!hide && doDedupe) { if (seen[r.key]) hide = true; else seen[r.key] = true; }
+        var hidden = r.row.classList.contains(HIDDEN_CLASS);
+        if (hide && !hidden) r.row.classList.add(HIDDEN_CLASS);
+        else if (!hide && hidden) r.row.classList.remove(HIDDEN_CLASS);
+      });
 
       // ── order ──
       if (cfg['features.enforceChapterOrder']) applyOrder(rows);
@@ -536,7 +612,7 @@
         // Crossed into a chapter list (possibly from a reader) — drop reader features.
         stopReaderNav();
         stopReaderKb();
-        var anyList = cfg['features.dedupeChapters'] || cfg['features.enforceChapterOrder'];
+        var anyList = cfg['features.dedupeChapters'] || cfg['features.enforceChapterOrder'] || cfg['features.pinScanlator'];
         if (anyList) {
           ensureStyle();
           applyListFeatures();
@@ -558,6 +634,7 @@
   }
 
   function boot() {
+    loadScanlatorPins();
     CDLSettings.getSettings().then(function (loaded) {
       cfg = loaded;
       applyForPage();
