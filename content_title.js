@@ -808,63 +808,81 @@ function findChapterPagerButtonByLabel(label) {
 }
 
 function getCurrentRenderedChapterPage() {
+  // The "Showing X to Y of Z items" range gives the page exactly (Y / per-page); prefer it.
+  const range = getChapterListRange(getChaptersSection());
+  if (range) return Math.max(1, Math.ceil(range.to / CHAPTERS_PER_PAGE));
+
   const current = getChaptersSection().querySelector('[aria-current="page"], .npager__num.is-active');
   const page = parseInt(current?.textContent?.trim() || '', 10);
-  if (Number.isFinite(page) && page > 0) return page;
-
-  const range = getChapterListRange(getChaptersSection());
-  if (!range) return 1;
-  return Math.max(1, Math.ceil(range.to / CHAPTERS_PER_PAGE));
+  return Number.isFinite(page) && page > 0 ? page : 1;
 }
 
-async function clickChapterPagerButton(label) {
-  const btn = findChapterPagerButtonByLabel(label);
-  if (!btn) return false;
+// Enabled, numbered page buttons currently rendered in the chapter pager.
+function chapterPagerNumberButtons() {
+  return [...getChaptersSection().querySelectorAll('button')]
+    .filter(b => /^\d+$/.test((b.textContent || '').trim()) && !b.disabled)
+    .map(b => ({ n: parseInt(b.textContent.trim(), 10), btn: b }));
+}
 
-  const before = getChapterListSignature();
-  btn.click();
-  return waitForChapterListChange(before);
+// comix's chapter pager is WINDOWED and centered on the current page: on page 1 it shows
+// [1..5] + "Next"/"Last"; but on e.g. page 5 of 7 it shows [First]/[Prev] + [3..7] with NO
+// "Next page" button — the later pages are only reachable as numbered buttons. So paging
+// forward with "Next page" alone stalls partway (dropping the OLDEST chapters, since the list
+// is newest-first). Navigate by the numbered buttons (which always include current±2 around
+// the current page), falling back to the chevrons/window edges. Converges on `target`.
+async function goToChapterPage(target) {
+  for (let guard = 0; guard < MAX_CHAPTER_LIST_PAGES; guard++) {
+    const cur = getCurrentRenderedChapterPage();
+    if (cur === target) return true;
+    const before = getChapterListSignature();
+    const nums = chapterPagerNumberButtons();
+    let btn = (nums.find(x => x.n === target) || {}).btn;
+    if (!btn) {
+      if (target > cur) {
+        const fwd = nums.filter(x => x.n > cur && x.n <= target).sort((a, b) => b.n - a.n)[0]
+                 || nums.filter(x => x.n > cur).sort((a, b) => b.n - a.n)[0];
+        btn = (fwd && fwd.btn) || findChapterPagerButtonByLabel('Next page') || findChapterPagerButtonByLabel('Last page');
+      } else {
+        const bwd = nums.filter(x => x.n < cur && x.n >= target).sort((a, b) => a.n - b.n)[0]
+                 || nums.filter(x => x.n < cur).sort((a, b) => a.n - b.n)[0];
+        btn = (bwd && bwd.btn) || findChapterPagerButtonByLabel('Previous page') || findChapterPagerButtonByLabel('First page');
+      }
+    }
+    if (!btn) return false;
+    btn.click();
+    if (!await waitForChapterListChange(before)) return false;
+  }
+  return false;
 }
 
 async function restoreRenderedChapterPage(page) {
   if (!page || page <= 0) return;
+  await goToChapterPage(page);
+}
 
-  const current = getCurrentRenderedChapterPage();
-  if (current === page) return;
-
-  if (current !== 1) {
-    await clickChapterPagerButton('First page');
+// Walk every chapter-list page (1 → last), invoking collect() on each rendered page. Robust to
+// the windowed pager; restores the page + scroll the user was on afterward.
+async function walkChapterListPages(collect) {
+  const originalPage = getCurrentRenderedChapterPage();
+  const originalScrollY = window.scrollY;
+  await goToChapterPage(1);
+  for (let i = 0; i < MAX_CHAPTER_LIST_PAGES; i++) {
+    collect();
+    const range = getChapterListRange(getChaptersSection());
+    if (!range || range.to >= range.total) break;
+    if (!await goToChapterPage(getCurrentRenderedChapterPage() + 1)) break;
   }
-
-  for (let p = 1; p < page; p++) {
-    const moved = await clickChapterPagerButton('Next page');
-    if (!moved) break;
-  }
+  await restoreRenderedChapterPage(originalPage);
+  window.scrollTo(0, originalScrollY);
 }
 
 async function collectChaptersFromRenderedPagination() {
-  let allUrls = extractChapterUrlsFromDom();
+  const firstPageUrls = extractChapterUrlsFromDom();
   const initialRange = getChapterListRange(getChaptersSection());
-  if (!initialRange || initialRange.total <= allUrls.length) return allUrls;
+  if (!initialRange || initialRange.total <= firstPageUrls.length) return firstPageUrls;
 
-  const originalPage = getCurrentRenderedChapterPage();
-  const originalScrollY = window.scrollY;
-  if (originalPage !== 1) {
-    await clickChapterPagerButton('First page');
-  }
-
-  for (let i = 0; i < MAX_CHAPTER_LIST_PAGES; i++) {
-    allUrls.push(...extractChapterUrlsFromDom());
-
-    const range = getChapterListRange(getChaptersSection());
-    if (!range || range.to >= range.total) break;
-
-    const moved = await clickChapterPagerButton('Next page');
-    if (!moved) break;
-  }
-
-  await restoreRenderedChapterPage(originalPage);
-  window.scrollTo(0, originalScrollY);
+  const allUrls = [];
+  await walkChapterListPages(() => allUrls.push(...extractChapterUrlsFromDom()));
   return unique(allUrls);
 }
 
@@ -897,18 +915,7 @@ async function collectChapterRowsWithGroups() {
 
   const initialRange = getChapterListRange(getChaptersSection());
   if (initialRange && initialRange.to < initialRange.total) {
-    const originalPage = getCurrentRenderedChapterPage();
-    const originalScrollY = window.scrollY;
-    if (originalPage !== 1) await clickChapterPagerButton('First page');
-    for (let i = 0; i < MAX_CHAPTER_LIST_PAGES; i++) {
-      add(extractChapterRowsFromDom());
-      const range = getChapterListRange(getChaptersSection());
-      if (!range || range.to >= range.total) break;
-      const moved = await clickChapterPagerButton('Next page');
-      if (!moved) break;
-    }
-    await restoreRenderedChapterPage(originalPage);
-    window.scrollTo(0, originalScrollY);
+    await walkChapterListPages(() => add(extractChapterRowsFromDom()));
   }
   return rows;
 }
