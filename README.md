@@ -27,7 +27,16 @@ If the download buttons aren't showing up, just refresh the page. Your browser t
 
 ## What it does
 
-Adds download buttons directly to every comix.to title page — grab a single chapter or the entire series, all neatly zipped and organized.
+Adds download buttons directly to every comix.to title page. grab a single chapter or the entire series, all neatly zipped and organized.
+
+---
+
+# Update Todos for next version release : 
+
+- [x] Root-cause chapter discovery missing chapters (14/18, starts at ch5) (issues 3,5,6) - Fixed, now proprely fetch chapters for download all.
+- [x] Investigate Download-All button not rebuilding on refresh (issue 1) - Fixed.
+- [ ] Investigate Retry button 'Connection to the extension failed' (issue 4) - Underway
+- [ ] Investigate lag-out on crash/bug (issue 2) - Underway
 
 ---
 
