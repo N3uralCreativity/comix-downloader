@@ -116,7 +116,19 @@
   ul.plain li svg { position: absolute; left: 0; top: 2px; width: 18px; height: 18px; color: var(--accent); }
 
   /* platform tabs as cards */
-  .anchor-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 4px 0 8px; }
+  .anchor-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 4px 0 8px; }
+
+  /* Linux distro command selector */
+  .distro-pick { margin: 8px 0 14px; }
+  .distro-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .distro-tab {
+    font: 600 13px/1 var(--font); padding: 7px 12px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
+    cursor: pointer; transition: background .14s, color .14s, border-color .14s;
+  }
+  .distro-tab:hover { border-color: var(--accent-line); color: var(--ink); }
+  .distro-tab.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .distro-pick pre { margin: 0; }
   .anchor-cards a {
     border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 16px; background: var(--surface);
@@ -204,6 +216,7 @@
       <a href="#install">Install</a>
       <a href="#firefox" class="sub">— Firefox</a>
       <a href="#chrome" class="sub">— Chrome</a>
+      <a href="#linux" class="sub">— Linux</a>
       <a href="#android" class="sub">— Android</a>
       <a href="#ios" class="sub">— iOS &amp; iPadOS</a>
       <a href="#usage">How to use</a>
@@ -233,6 +246,7 @@
       <div class="anchor-cards">
         <a href="#firefox"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/firefox.svg" alt="" onerror="this.parentElement.style.display='none'"></span>Desktop</div><div class="pt">Firefox →</div></a>
         <a href="#chrome"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/chrome.svg" alt="" onerror="this.parentElement.style.display='none'"></span>Desktop</div><div class="pt">Chrome →</div></a>
+        <a href="#linux"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/linux-tux.svg" alt="" onerror="this.parentElement.style.display='none'"></span>Desktop</div><div class="pt">Linux →</div></a>
         <a href="#android"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/android-icon.svg" alt="" onerror="this.parentElement.style.display='none'"></span>Mobile</div><div class="pt">Android →</div></a>
         <a href="#ios"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><svg viewBox="0 0 24 24" fill="#111" aria-hidden="true" style="width:100%;height:100%"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg></span>Mobile</div><div class="pt">iOS →</div></a>
       </div>
@@ -267,6 +281,29 @@
         <li>Click <strong>Load unpacked</strong> and select the unzipped folder.</li>
         <li>Head to any comix.to title page — buttons appear automatically.</li>
       </ol>
+
+      <h3 id="linux">Linux</h3>
+      <p>On Linux the extension installs through your browser exactly like on Windows or macOS — one click from the store (the Firefox add-on, or the Chrome Web Store in any Chromium browser). If you still need to install a browser first, pick your distribution for the command:</p>
+      <div class="distro-pick" id="distro-pick">
+        <div class="distro-tabs" role="tablist" aria-label="Linux distribution">
+          <button type="button" class="distro-tab is-active" data-distro="debian" role="tab" aria-selected="true">Ubuntu / Debian</button>
+          <button type="button" class="distro-tab" data-distro="fedora" role="tab" aria-selected="false">Fedora / RHEL</button>
+          <button type="button" class="distro-tab" data-distro="arch" role="tab" aria-selected="false">Arch / Manjaro</button>
+          <button type="button" class="distro-tab" data-distro="suse" role="tab" aria-selected="false">openSUSE</button>
+          <button type="button" class="distro-tab" data-distro="flatpak" role="tab" aria-selected="false">Flatpak (any distro)</button>
+          <button type="button" class="distro-tab" data-distro="gentoo" role="tab" aria-selected="false">Gentoo</button>
+          <button type="button" class="distro-tab" data-distro="void" role="tab" aria-selected="false">Void</button>
+          <button type="button" class="distro-tab" data-distro="alpine" role="tab" aria-selected="false">Alpine</button>
+          <button type="button" class="distro-tab" data-distro="nixos" role="tab" aria-selected="false">NixOS</button>
+        </div>
+        <pre><code id="distro-cmd">sudo apt update &amp;&amp; sudo apt install firefox</code></pre>
+      </div>
+      <ol class="steps">
+        <li>Run the command above to install <strong>Firefox</strong> (or a Chromium browser — see the note below).</li>
+        <li>Open the <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">Firefox add-on</a> and click <strong>Add to Firefox</strong> — or, in a Chromium browser, the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome Web Store listing</a> and <strong>Add to Chrome</strong>.</li>
+        <li>Visit any comix.to title page — the buttons appear automatically.</li>
+      </ol>
+      <p style="font-size:13.5px;color:var(--muted);">Prefer Chromium? Replace <code>firefox</code> with <code>chromium</code> (Fedora, Arch, openSUSE, Void, Alpine), <code>chromium-browser</code> (older Ubuntu/Debian), or <code>org.chromium.Chromium</code> from Flathub. Any Chromium-based browser (Brave, Vivaldi, Edge) works too.</p>
 
       <h3 id="android">Android</h3>
       <p>There are three ways to read on Android, depending on what you want.</p>

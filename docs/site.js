@@ -41,3 +41,36 @@
     }
   });
 })();
+
+/* Documentation — Linux distro install-command selector */
+(function () {
+  "use strict";
+  var pick = document.getElementById("distro-pick");
+  if (!pick) return;
+  var out = document.getElementById("distro-cmd");
+  var cmds = {
+    debian: "sudo apt update && sudo apt install firefox",
+    fedora: "sudo dnf install firefox",
+    arch: "sudo pacman -S firefox",
+    suse: "sudo zypper install MozillaFirefox",
+    flatpak: "flatpak install flathub org.mozilla.firefox",
+    gentoo: "sudo emerge --ask www-client/firefox",
+    void: "sudo xbps-install -Sy firefox",
+    alpine: "sudo apk add firefox",
+    nixos: "nix-env -iA nixpkgs.firefox   # or add pkgs.firefox to configuration.nix"
+  };
+  var tabs = pick.querySelectorAll(".distro-tab");
+  function select(tab) {
+    for (var i = 0; i < tabs.length; i++) {
+      var active = tabs[i] === tab;
+      tabs[i].classList.toggle("is-active", active);
+      tabs[i].setAttribute("aria-selected", active ? "true" : "false");
+    }
+    var key = tab.getAttribute("data-distro");
+    if (out && cmds[key]) out.textContent = cmds[key];
+  }
+  pick.addEventListener("click", function (e) {
+    var tab = e.target.closest(".distro-tab");
+    if (tab) select(tab);
+  });
+})();
