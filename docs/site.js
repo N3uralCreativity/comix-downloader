@@ -42,57 +42,120 @@
   });
 })();
 
-/* Documentation — Linux distro install-command selector (icon dropdown) */
+/* Documentation — Linux browser + distro install-command selectors (icon dropdowns) */
 (function () {
   "use strict";
   var pick = document.getElementById("distro-pick");
   if (!pick) return;
-  var trigger = document.getElementById("distro-trigger");
-  var menu = document.getElementById("distro-menu");
   var out = document.getElementById("distro-cmd");
-  var tName = document.getElementById("distro-trigger-name");
-  var tIco = document.getElementById("distro-trigger-ico");
-  if (!trigger || !menu) return;
-  var opts = menu.querySelectorAll(".distro-opt");
-  var cmds = {
-    debian: "sudo apt update && sudo apt install firefox",
-    fedora: "sudo dnf install firefox",
-    arch: "sudo pacman -S firefox",
-    suse: "sudo zypper install MozillaFirefox",
-    flatpak: "flatpak install flathub org.mozilla.firefox",
-    gentoo: "sudo emerge --ask www-client/firefox",
-    void: "sudo xbps-install -Sy firefox",
-    alpine: "sudo apk add firefox",
-    nixos: "nix-env -iA nixpkgs.firefox   # or add pkgs.firefox to configuration.nix"
-  };
-  function setOpen(open) {
-    menu.hidden = !open;
-    trigger.setAttribute("aria-expanded", open ? "true" : "false");
-  }
-  function select(opt) {
-    for (var i = 0; i < opts.length; i++) {
-      var active = opts[i] === opt;
-      opts[i].classList.toggle("is-active", active);
-      opts[i].setAttribute("aria-selected", active ? "true" : "false");
+
+  // command = CMDS[browser][distro]
+  var CMDS = {
+    firefox: {
+      debian: "sudo apt update && sudo apt install firefox",
+      fedora: "sudo dnf install firefox",
+      arch: "sudo pacman -S firefox",
+      suse: "sudo zypper install MozillaFirefox",
+      flatpak: "flatpak install flathub org.mozilla.firefox",
+      gentoo: "sudo emerge --ask www-client/firefox",
+      void: "sudo xbps-install -Sy firefox",
+      alpine: "sudo apk add firefox",
+      nixos: "nix-env -iA nixpkgs.firefox   # or add pkgs.firefox to configuration.nix"
+    },
+    chrome: {
+      debian: "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && sudo apt install ./google-chrome-stable_current_amd64.deb",
+      fedora: "sudo dnf install https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm",
+      arch: "yay -S google-chrome   # from the AUR (needs an AUR helper)",
+      suse: "sudo zypper install https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm",
+      flatpak: "flatpak install flathub com.google.Chrome",
+      gentoo: "sudo emerge --ask www-client/google-chrome",
+      void: "flatpak install flathub com.google.Chrome   # not in Void's repos — install via Flatpak",
+      alpine: "sudo apk add chromium   # Google Chrome needs glibc; Alpine is musl, so use Chromium",
+      nixos: "nix-env -iA nixpkgs.google-chrome   # unfree package: needs allowUnfree"
     }
-    var key = opt.getAttribute("data-distro");
-    if (tName) tName.textContent = opt.textContent.trim();
-    var img = opt.querySelector("img");
-    if (img && tIco) tIco.src = img.src;
-    if (out && cmds[key]) out.textContent = cmds[key];
+  };
+  var state = { browser: "firefox", distro: "debian" };
+  function render() {
+    var b = CMDS[state.browser] || {};
+    if (out && b[state.distro]) out.textContent = b[state.distro];
   }
-  trigger.addEventListener("click", function (e) {
-    e.stopPropagation();
-    setOpen(menu.hidden);
-  });
-  menu.addEventListener("click", function (e) {
-    var opt = e.target.closest(".distro-opt");
-    if (opt) { select(opt); setOpen(false); trigger.focus(); }
-  });
-  document.addEventListener("click", function (e) {
-    if (!pick.contains(e.target)) setOpen(false);
-  });
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && !menu.hidden) { setOpen(false); trigger.focus(); }
-  });
+
+  var dropdowns = [];
+  function closeAll(except) {
+    for (var i = 0; i < dropdowns.length; i++) if (dropdowns[i].menu !== except) dropdowns[i].close();
+  }
+  function wire(triggerId, menuId, key) {
+    var trigger = document.getElementById(triggerId);
+    var menu = document.getElementById(menuId);
+    if (!trigger || !menu) return;
+    var opts = menu.querySelectorAll(".distro-opt");
+    var name = trigger.querySelector(".distro-name");
+    var ico = trigger.querySelector(".distro-ico");
+    function setOpen(open) {
+      menu.hidden = !open;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    function select(opt) {
+      for (var i = 0; i < opts.length; i++) {
+        var active = opts[i] === opt;
+        opts[i].classList.toggle("is-active", active);
+        opts[i].setAttribute("aria-selected", active ? "true" : "false");
+      }
+      state[key] = opt.getAttribute("data-" + key);
+      if (name) name.textContent = opt.textContent.trim();
+      var img = opt.querySelector("img");
+      if (img && ico) ico.src = img.src;
+      render();
+    }
+    trigger.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var willOpen = menu.hidden;
+      closeAll(menu);
+      setOpen(willOpen);
+    });
+    menu.addEventListener("click", function (e) {
+      var opt = e.target.closest(".distro-opt");
+      if (opt) { select(opt); setOpen(false); trigger.focus(); }
+    });
+    dropdowns.push({ menu: menu, close: function () { setOpen(false); } });
+  }
+
+  wire("browser-trigger", "browser-menu", "browser");
+  wire("distro-trigger", "distro-menu", "distro");
+  document.addEventListener("click", function (e) { if (!pick.contains(e.target)) closeAll(null); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeAll(null); });
+  render();
+
+  // click-to-copy the current command
+  var copyBtn = document.getElementById("distro-copy");
+  if (copyBtn && out) {
+    var resetTimer;
+    function flash() {
+      copyBtn.classList.add("copied");
+      copyBtn.title = "Copied!";
+      clearTimeout(resetTimer);
+      resetTimer = setTimeout(function () {
+        copyBtn.classList.remove("copied");
+        copyBtn.title = "Copy command";
+      }, 1600);
+    }
+    function legacyCopy(text) {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", "");
+        ta.style.position = "fixed"; ta.style.top = "-1000px"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); document.body.removeChild(ta);
+        flash();
+      } catch (e) { /* no-op */ }
+    }
+    copyBtn.addEventListener("click", function () {
+      var text = out.textContent;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(flash, function () { legacyCopy(text); });
+      } else {
+        legacyCopy(text);
+      }
+    });
+  }
 })();

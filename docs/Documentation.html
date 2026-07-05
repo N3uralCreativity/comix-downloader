@@ -118,9 +118,13 @@
   /* platform tabs as cards */
   .anchor-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 4px 0 8px; }
 
-  /* Linux distro selector (dropdown) */
+  /* Linux browser + distro selectors (dropdowns) */
   .distro-select { margin: 10px 0 14px; }
+  .distro-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .distro-group { flex: 1 1 240px; min-width: 0; }
+  .distro-label { display: block; font: 600 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 7px 2px; }
   .distro-field { position: relative; }
+  .distro-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .distro-trigger {
     width: 100%; display: flex; align-items: center; gap: 11px;
     padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
@@ -148,7 +152,25 @@
   }
   .distro-opt:hover { background: var(--surface-2); color: var(--ink); }
   .distro-opt.is-active { background: var(--accent-wash); color: var(--accent); font-weight: 600; }
-  .distro-select pre { margin: 12px 0 0; }
+
+  /* command box + click-to-copy (revealed on hover, unobtrusive) */
+  .cmd-box { position: relative; margin: 12px 0 0; }
+  .cmd-box pre { margin: 0; }
+  .cmd-copy {
+    position: absolute; top: 7px; right: 7px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 7px;
+    background: rgba(255, 255, 255, .10); color: #d5d8ec;
+    border: 1px solid rgba(255, 255, 255, .16); cursor: pointer;
+    opacity: 0; transition: opacity .15s, background .14s, color .14s, border-color .14s;
+  }
+  .cmd-box:hover .cmd-copy, .cmd-copy:focus-visible { opacity: 1; }
+  .cmd-copy:hover { background: rgba(255, 255, 255, .2); color: #fff; }
+  .cmd-copy.copied { opacity: 1; background: rgba(74, 222, 128, .2); border-color: rgba(74, 222, 128, .5); color: #b9f6cd; }
+  .cmd-copy svg { width: 15px; height: 15px; flex: none; }
+  .cmd-copy .ico-check { display: none; }
+  .cmd-copy.copied .ico-copy { display: none; }
+  .cmd-copy.copied .ico-check { display: inline; }
   .anchor-cards a {
     border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 16px; background: var(--surface);
@@ -303,34 +325,59 @@
       </ol>
 
       <h3 id="linux">Linux</h3>
-      <p>On Linux the extension installs through your browser exactly like on Windows or macOS — one click from the store (the Firefox add-on, or the Chrome Web Store in any Chromium browser). If you still need to install a browser first, pick your distribution for the command:</p>
+      <p>On Linux the extension installs through your browser exactly like on Windows or macOS — one click from the store (the Firefox add-on, or the Chrome Web Store in any Chromium browser). If you still need to install a browser first, pick your browser and distribution for the command:</p>
       <div class="distro-select" id="distro-pick">
-        <div class="distro-field">
-        <button type="button" class="distro-trigger" id="distro-trigger" aria-haspopup="listbox" aria-expanded="false">
-          <img class="distro-ico" id="distro-trigger-ico" src="https://cdn.simpleicons.org/ubuntu" alt="" width="20" height="20">
-          <span id="distro-trigger-name">Ubuntu / Debian</span>
-          <svg class="distro-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
-        <ul class="distro-menu" id="distro-menu" role="listbox" aria-label="Choose your Linux distribution" hidden>
-          <li class="distro-opt is-active" role="option" aria-selected="true" data-distro="debian"><img src="https://cdn.simpleicons.org/ubuntu" alt="" width="20" height="20">Ubuntu / Debian</li>
-          <li class="distro-opt" role="option" aria-selected="false" data-distro="fedora"><img src="https://cdn.simpleicons.org/fedora" alt="" width="20" height="20">Fedora / RHEL</li>
-          <li class="distro-opt" role="option" aria-selected="false" data-distro="arch"><img src="https://cdn.simpleicons.org/archlinux" alt="" width="20" height="20">Arch / Manjaro</li>
-          <li class="distro-opt" role="option" aria-selected="false" data-distro="suse"><img src="https://cdn.simpleicons.org/opensuse" alt="" width="20" height="20">openSUSE</li>
-          <li class="distro-opt" role="option" aria-selected="false" data-distro="flatpak"><img src="https://cdn.simpleicons.org/flatpak" alt="" width="20" height="20">Flatpak (any distro)</li>
-          <li class="distro-opt" role="option" aria-selected="false" data-distro="gentoo"><img src="https://cdn.simpleicons.org/gentoo" alt="" width="20" height="20">Gentoo</li>
-          <li class="distro-opt" role="option" aria-selected="false" data-distro="void"><img src="https://cdn.simpleicons.org/voidlinux" alt="" width="20" height="20">Void</li>
-          <li class="distro-opt" role="option" aria-selected="false" data-distro="alpine"><img src="https://cdn.simpleicons.org/alpinelinux" alt="" width="20" height="20">Alpine</li>
-          <li class="distro-opt" role="option" aria-selected="false" data-distro="nixos"><img src="https://cdn.simpleicons.org/nixos" alt="" width="20" height="20">NixOS</li>
-        </ul>
+        <div class="distro-row">
+          <div class="distro-group">
+            <span class="distro-label">Browser</span>
+            <div class="distro-field">
+              <button type="button" class="distro-trigger" id="browser-trigger" aria-haspopup="listbox" aria-expanded="false">
+                <img class="distro-ico" src="https://cdn.simpleicons.org/firefoxbrowser" alt="" width="20" height="20">
+                <span class="distro-name">Firefox</span>
+                <svg class="distro-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <ul class="distro-menu" id="browser-menu" role="listbox" aria-label="Choose your browser" hidden>
+                <li class="distro-opt is-active" role="option" aria-selected="true" data-browser="firefox"><img src="https://cdn.simpleicons.org/firefoxbrowser" alt="" width="20" height="20">Firefox</li>
+                <li class="distro-opt" role="option" aria-selected="false" data-browser="chrome"><img src="https://cdn.simpleicons.org/googlechrome" alt="" width="20" height="20">Google Chrome</li>
+              </ul>
+            </div>
+          </div>
+          <div class="distro-group">
+            <span class="distro-label">Distribution</span>
+            <div class="distro-field">
+              <button type="button" class="distro-trigger" id="distro-trigger" aria-haspopup="listbox" aria-expanded="false">
+                <img class="distro-ico" src="https://cdn.simpleicons.org/ubuntu" alt="" width="20" height="20">
+                <span class="distro-name">Ubuntu / Debian</span>
+                <svg class="distro-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <ul class="distro-menu" id="distro-menu" role="listbox" aria-label="Choose your Linux distribution" hidden>
+                <li class="distro-opt is-active" role="option" aria-selected="true" data-distro="debian"><img src="https://cdn.simpleicons.org/ubuntu" alt="" width="20" height="20">Ubuntu / Debian</li>
+                <li class="distro-opt" role="option" aria-selected="false" data-distro="fedora"><img src="https://cdn.simpleicons.org/fedora" alt="" width="20" height="20">Fedora / RHEL</li>
+                <li class="distro-opt" role="option" aria-selected="false" data-distro="arch"><img src="https://cdn.simpleicons.org/archlinux" alt="" width="20" height="20">Arch / Manjaro</li>
+                <li class="distro-opt" role="option" aria-selected="false" data-distro="suse"><img src="https://cdn.simpleicons.org/opensuse" alt="" width="20" height="20">openSUSE</li>
+                <li class="distro-opt" role="option" aria-selected="false" data-distro="flatpak"><img src="https://cdn.simpleicons.org/flatpak" alt="" width="20" height="20">Flatpak (any distro)</li>
+                <li class="distro-opt" role="option" aria-selected="false" data-distro="gentoo"><img src="https://cdn.simpleicons.org/gentoo" alt="" width="20" height="20">Gentoo</li>
+                <li class="distro-opt" role="option" aria-selected="false" data-distro="void"><img src="https://cdn.simpleicons.org/voidlinux" alt="" width="20" height="20">Void</li>
+                <li class="distro-opt" role="option" aria-selected="false" data-distro="alpine"><img src="https://cdn.simpleicons.org/alpinelinux" alt="" width="20" height="20">Alpine</li>
+                <li class="distro-opt" role="option" aria-selected="false" data-distro="nixos"><img src="https://cdn.simpleicons.org/nixos" alt="" width="20" height="20">NixOS</li>
+              </ul>
+            </div>
+          </div>
         </div>
-        <pre><code id="distro-cmd">sudo apt update &amp;&amp; sudo apt install firefox</code></pre>
+        <div class="cmd-box">
+          <pre><code id="distro-cmd">sudo apt update &amp;&amp; sudo apt install firefox</code></pre>
+          <button type="button" class="cmd-copy" id="distro-copy" title="Copy command" aria-label="Copy command">
+            <svg class="ico-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            <svg class="ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          </button>
+        </div>
       </div>
       <ol class="steps">
-        <li>Run the command above to install <strong>Firefox</strong> (or a Chromium browser — see the note below).</li>
-        <li>Open the <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">Firefox add-on</a> and click <strong>Add to Firefox</strong> — or, in a Chromium browser, the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome Web Store listing</a> and <strong>Add to Chrome</strong>.</li>
+        <li>Run the command above to install your chosen browser.</li>
+        <li>Open the <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">Firefox add-on</a> and click <strong>Add to Firefox</strong> — or, in Chrome / any Chromium browser, the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome Web Store listing</a> and <strong>Add to Chrome</strong>.</li>
         <li>Visit any comix.to title page — the buttons appear automatically.</li>
       </ol>
-      <p style="font-size:13.5px;color:var(--muted);">Prefer Chromium? Replace <code>firefox</code> with <code>chromium</code> (Fedora, Arch, openSUSE, Void, Alpine), <code>chromium-browser</code> (older Ubuntu/Debian), or <code>org.chromium.Chromium</code> from Flathub. Any Chromium-based browser (Brave, Vivaldi, Edge) works too.</p>
+      <p style="font-size:13.5px;color:var(--muted);">Prefer the open-source <strong>Chromium</strong> instead of Google Chrome? Install <code>chromium</code> (Fedora, Arch, openSUSE, Void, Alpine), <code>chromium-browser</code> (older Ubuntu/Debian), or <code>org.chromium.Chromium</code> from Flathub. Any Chromium-based browser (Brave, Vivaldi, Edge) works too — add the extension from the Chrome Web Store.</p>
 
       <h3 id="android">Android</h3>
       <p>There are three ways to read on Android, depending on what you want.</p>
