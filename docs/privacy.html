@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Privacy Policy &amp; Legal Notice — Comix Downloader</title>
-<meta name="description" content="Privacy Policy and Legal Notice for the Comix Downloader browser extension. The extension collects no personal data and stores everything locally on your device.">
+<meta name="description" content="Privacy Policy and Legal Notice for the Comix Downloader browser extension. No personal data is collected; everything personal stays on your device, and the community features share only anonymous one-way hashes.">
 <meta name="theme-color" content="#774fd0">
 <link rel="canonical" href="https://n3uralcreativity.github.io/comix-downloader/privacy.html">
 
@@ -12,7 +12,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Comix Downloader">
 <meta property="og:title" content="Privacy Policy &amp; Legal Notice — Comix Downloader">
-<meta property="og:description" content="Comix Downloader collects no personal data and stores everything locally on your device. Read the full privacy policy and legal notice.">
+<meta property="og:description" content="Comix Downloader collects no personal data; everything personal stays on your device. Read the full privacy policy and legal notice.">
 <meta property="og:url" content="https://n3uralcreativity.github.io/comix-downloader/privacy.html">
 <meta property="og:image" content="https://n3uralcreativity.github.io/comix-downloader/assets/screenshot-title.jpg">
 <meta property="og:image:width" content="1125">
@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="Comix Downloader on a comix.to title page">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Privacy Policy &amp; Legal Notice — Comix Downloader">
-<meta name="twitter:description" content="Comix Downloader collects no personal data and stores everything locally on your device. Read the full privacy policy and legal notice.">
+<meta name="twitter:description" content="Comix Downloader collects no personal data; everything personal stays on your device. Read the full privacy policy and legal notice.">
 <meta name="twitter:image" content="https://n3uralcreativity.github.io/comix-downloader/assets/screenshot-title.jpg">
 <meta name="twitter:image:alt" content="Comix Downloader on a comix.to title page">
 <link rel="icon" href="assets/icon128.png">
@@ -119,13 +119,13 @@
   <section class="legal-hero">
     <span class="eyebrow">Legal</span>
     <h1>Privacy Policy &amp; Legal Notice</h1>
-    <div class="updated">Last updated: 7 June 2026 · Effective: 7 June 2026</div>
+    <div class="updated">Last updated: 5 July 2026 · Effective: 5 July 2026</div>
     <p class="lede">This document explains how the Comix Downloader browser extension handles information, the browser permissions it uses, and the legal terms that apply to its use. Please read it carefully.</p>
 
     <div class="summary">
       <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
       <div>
-        <p><strong>In short:</strong> Comix Downloader does not collect, transmit, sell, or share any personal information. It has no servers of its own, no analytics, and no tracking. Almost everything it does happens locally inside your own browser, and the data it stores stays on your device. The <strong>one exception</strong> is the optional <strong>Push-to-library</strong> feature (off by default): if <em>you</em> turn it on and enter <em>your own</em> server's address, the extension uploads the comic files it builds to that server — at your request, to a destination you choose, never to the Developer.</p>
+        <p><strong>In short:</strong> Comix Downloader does not collect, transmit, sell, or share any personal information. It has no analytics and no tracking. Almost everything it does happens locally inside your own browser, and the data it stores (settings, download history, reading stats, resume positions) stays on your device. There are <strong>two exceptions</strong>: <strong>(1)</strong> the optional <strong>Push-to-library</strong> feature (off by default) uploads the comic files it builds to a server <em>you</em> configure — at your request, to a destination you choose, never to the Developer; and <strong>(2)</strong> the built-in <strong>community features</strong> (the profile tenure badge and community chapter flags) talk to a tiny open-source service that only ever receives <em>anonymous, one-way hashed identifiers and coarse counters</em> — no names, no readable ids, no titles, no reading history. Neither the Developer nor anyone else can identify you from it.</p>
         <p><strong>Also important:</strong> The extension is a general-purpose tool. You are solely responsible for using it lawfully and in accordance with the terms of any website you access. See the Legal Disclaimer and Acceptable Use sections below.</p>
       </div>
     </div>
@@ -193,6 +193,10 @@
           <li><strong>Download history</strong> (<code>cdlManifest</code>) — which chapters of which series you have already downloaded, so the extension can offer to fetch only new ones. Stored as series/chapter identifiers; no personal data.</li>
           <li><strong>Per-series preferences</strong> (<code>cdlSeriesPrefs</code>) — optional output choices you ask the extension to remember for a given series.</li>
           <li><strong>Subscriptions</strong> (<code>cdlSubscriptions</code>) — the series you chose to watch for new chapters, and the last chapter list seen for each. No personal data.</li>
+          <li><strong>Reading stats</strong> (<code>cdlReadStats</code>) — if you enable the optional reading-stats / catch-up features: per-day chapter counts, active reading time, and your average reading pace. Computed and kept entirely on your device; never transmitted.</li>
+          <li><strong>Resume positions &amp; last-read</strong> (<code>cdlReaderScroll</code>, <code>cdlLastRead</code>) — if you enable the optional resume / recap features: the scroll position where you stopped in a chapter and the last chapter you opened per series. Local only.</li>
+          <li><strong>Your own flags</strong> (<code>cdlFlaggedChapters</code>) — chapter identifiers you have flagged through the community-flags feature, kept locally so the extension doesn't let you flag the same chapter twice.</li>
+          <li><strong>Download-session snapshot</strong> (<code>cdlDownloadAllSession</code>) — the progress of a running “Download All” (counts and chapter labels), kept so the progress panel can be restored after a page refresh or browser restart. Local only.</li>
           <li><strong>Library connection</strong> (<code>cdlLibrary</code>) — only if you set up Push-to-library: the server address, method, and any username/password or token <em>you</em> enter. These credentials are stored locally for the sole purpose of uploading to <em>your</em> server, are never sent to the Developer, and are deliberately excluded from the settings export file.</li>
         </ul>
 
@@ -208,7 +212,18 @@
         <p>These are <strong>off by default</strong> and only act after you explicitly enable and configure them:</p>
         <ul>
           <li><strong>Watch for new chapters (Subscriptions).</strong> When enabled, the Extension periodically makes background requests <em>to comix.to itself</em> (the same site you download from) to check your subscribed series for new chapters, and may show you a desktop notification. These requests go only to comix.to; no data is sent to the Developer or any third party.</li>
-          <li><strong>Push-to-library.</strong> When enabled, after building a CBZ the Extension uploads that file to the server <em>you</em> specify (e.g. a WebDAV or HTTP folder watched by your own Komga/Kavita install), using the address and credentials you entered. The files and credentials go only to your chosen server. The Developer operates no server and receives nothing. This feature requires you to grant access to that specific server when you save its address.</li>
+          <li><strong>Push-to-library.</strong> When enabled, after building a CBZ the Extension uploads that file to the server <em>you</em> specify (e.g. a WebDAV or HTTP folder watched by your own Komga/Kavita install), using the address and credentials you entered. The files and credentials go only to your chosen server. The Developer receives nothing. This feature requires you to grant access to that specific server when you save its address.</li>
+          <li><strong>Custom Home, read-ahead and similar reading enhancements.</strong> When enabled, these make requests <em>only to comix.to</em> (its pages and its own API, using the session your browser already has there) — for example to list the series you follow, or to pre-load the next chapter as you near the end of the current one. Nothing about this leaves comix.to and your device.</li>
+        </ul>
+
+        <h3>d) Built-in community features (tenure badge &amp; chapter flags)</h3>
+        <p>Version 2.4 added two small community features that are part of the Extension: a <strong>profile tenure badge</strong> (other extension users can see roughly how long you've used the Extension) and <strong>community chapter flags</strong> (see how many other users flagged a chapter as broken / missing / wrong, and flag chapters yourself). They are powered by a tiny, open-source Cloudflare Worker operated for this project (its source is in the public repository). This is the <strong>only</strong> server component associated with the Extension, and it is deliberately designed to know as little as possible:</p>
+        <ul>
+          <li><strong>What it receives:</strong> an opaque, salted, one-way SHA-256 hash of your comix.to user id (for the badge), an equally opaque hash of a chapter id plus a flag category (broken / missing / wrong) when you flag a chapter, and lookup requests for such hashes. One-way means the original ids cannot be recovered from what is sent.</li>
+          <li><strong>What it stores:</strong> hash → a coarse first-seen date (for the badge), and hash → aggregate flag counts. Nothing else.</li>
+          <li><strong>What it never receives:</strong> your name, email, comix.to username, readable user or chapter ids, series titles, reading history, settings, or downloads. There are no cookies, no sessions, and no advertising or analytics identifiers.</li>
+          <li><strong>Network metadata:</strong> like any web request, these calls technically expose your IP address to the receiving infrastructure (Cloudflare). The Worker does not log, store, or use IP addresses; transport-level handling by Cloudflare is governed by Cloudflare's own policies.</li>
+          <li><strong>Control:</strong> these features stop entirely when you uninstall the Extension. Because the stored entries are irreversible hashes, they cannot be linked back to you by the Developer or anyone else; if you nonetheless want your entries removed, contact us (Section 21) and we will help.</li>
         </ul>
       </section>
 
@@ -224,20 +239,21 @@
           <div><dt><code>alarms</code></dt><dd>Only used by the optional “Watch for new chapters” feature, to schedule the periodic background check at the interval you choose.</dd></div>
           <div><dt><code>notifications</code></dt><dd>Only used by the optional “Watch for new chapters” feature, to show a desktop notification when a subscribed series has new chapters.</dd></div>
           <div><dt>Host access<br><span style="font-weight:400;color:var(--muted)">comix.to &amp; its image hosts</span></dt><dd>To fetch chapter pages, page images, and series covers (e.g. from <code>static.comix.to</code>). The Extension runs only on comix.to title pages and only contacts comix.to and the image hosts it uses.</dd></div>
+          <div><dt>Host access<br><span style="font-weight:400;color:var(--muted)">community service (workers.dev)</span></dt><dd>To reach the small open-source Worker behind the tenure badge and community chapter flags described in Section 3(d). Only anonymous one-way hashes and coarse counters are ever exchanged with it.</dd></div>
           <div><dt>Optional host access<br><span style="font-weight:400;color:var(--muted)">your library server only</span></dt><dd>Requested on demand <em>only</em> if you enable Push-to-library, and granted only for the exact server address you enter — so the Extension can upload CBZ files there. It is never requested otherwise.</dd></div>
         </dl>
-        <p>The Extension does not request access to your browsing history, bookmarks, microphone, camera, or location. Apart from comix.to and its image hosts, it contacts no other site unless you explicitly configure Push-to-library to your own server.</p>
+        <p>The Extension does not request access to your browsing history, bookmarks, microphone, camera, or location. Apart from comix.to, its image hosts, and the community service above, it contacts no other site unless you explicitly configure Push-to-library to your own server.</p>
       </section>
 
       <section id="not-collected">
         <h2><span class="num">05</span> What we do not collect or do</h2>
         <ul>
           <li>We do <strong>not</strong> collect, store, or transmit any personal data.</li>
-          <li>We do <strong>not</strong> operate any server that receives data from the Extension; there is no backend.</li>
+          <li>We operate <strong>no</strong> backend except the single, minimal community Worker described in Section 3(d) — which receives only anonymous one-way hashes and coarse counters, and could not identify you even if we wanted it to.</li>
           <li>We use <strong>no</strong> analytics, telemetry, crash reporting, advertising, fingerprinting, or tracking of any kind.</li>
           <li>We do <strong>not</strong> create user accounts or profiles, and we do not require sign-in.</li>
           <li>We do <strong>not</strong> sell, rent, share, or monetize any information. There is nothing to sell.</li>
-          <li>We do <strong>not</strong> read pages other than comix.to title pages, and we do not modify the content you download.</li>
+          <li>We do <strong>not</strong> read any website other than comix.to (the Extension runs only on comix.to pages), and we do not modify the content you download.</li>
         </ul>
       </section>
 
@@ -245,6 +261,7 @@
         <h2><span class="num">06</span> comix.to &amp; third parties</h2>
         <p>The Extension interacts with the third-party website <strong>comix.to</strong> and its content-delivery networks in order to fetch the pages and images you ask it to download. The Developer does not own, operate, or control comix.to, and is not affiliated with, endorsed by, or sponsored by it.</p>
         <p>Your use of comix.to is governed by comix.to's own terms of service and privacy policy, not by this Policy. Any data that comix.to or your network provider may collect about your visits (for example, server logs or your IP address when your browser requests a page or image) is outside the Developer's control and responsibility. We encourage you to review the policies of any third-party site you use.</p>
+        <p>The community features in Section 3(d) run on <strong>Cloudflare Workers</strong>, an infrastructure provider. Cloudflare processes the network traffic needed to deliver those requests (as any host would) under its own privacy policy; the Worker application itself stores only the anonymous hashes and counters described above.</p>
       </section>
 
       <section id="storage">
@@ -253,21 +270,22 @@
         <ul>
           <li><strong>Settings</strong> persist until you change them, reset them to defaults, or remove the Extension.</li>
           <li><strong>Activity log</strong> is a small rolling buffer; older entries are dropped automatically, and you can clear it at any time from the popup.</li>
+          <li><strong>Reading data</strong> (stats, resume positions, last-read, your own flags) is capped in size, stays on your device, and disappears with the rest when you uninstall. Turning the corresponding features off stops new data from being recorded.</li>
           <li><strong>Reset:</strong> the settings page includes a “Reset to defaults” action (with confirmation) that restores all preferences.</li>
           <li><strong>Removal:</strong> uninstalling the Extension deletes all of its locally stored data from your browser.</li>
         </ul>
-        <p>Because nothing is ever transmitted to us, there is no server-side copy of any of your information to request, export, or delete.</p>
+        <p>The only server-side records that exist anywhere are the anonymous hash → date and hash → count entries of the community service (Section 3(d)). They contain no personal data, cannot be traced back to you, and become permanently orphaned the moment you uninstall. If you would like them removed anyway, contact us (Section 21).</p>
       </section>
 
       <section id="sharing">
         <h2><span class="num">08</span> Data sharing &amp; disclosure</h2>
-        <p>We do not share data with anyone, because we do not collect or receive any. The only “transfer” that occurs is the ZIP file the Extension hands to your browser's download manager to save on your own device, at your request.</p>
-        <p>We have no data that could be disclosed in response to a legal request, sold in a corporate transaction, or exposed in a breach of our systems, because we hold none.</p>
+        <p>We do not share data with anyone, because we do not collect or receive any personal data. The only “transfers” that occur are (a) the ZIP/CBZ file the Extension hands to your browser's download manager — or, if you configured it, to your own library server — at your request, and (b) the anonymous hashes and counters of the community service (Section 3(d)).</p>
+        <p>We hold no personal data that could be disclosed in response to a legal request, sold in a corporate transaction, or exposed in a breach of our systems. The community service's records are anonymous aggregates that identify no one.</p>
       </section>
 
       <section id="security">
         <h2><span class="num">09</span> Security</h2>
-        <p>Because the Extension stores data only in your browser's local storage and transmits nothing externally, the principal safeguard for that data is the security of your own device and browser profile. The Extension's source code is publicly available for inspection on GitHub. Network requests to fetch comic images are made over the connections provided by comix.to and its image hosts.</p>
+        <p>Because the Extension keeps your data in your browser's local storage, the principal safeguard for it is the security of your own device and browser profile. The Extension's source code — including the community Worker's — is publicly available for inspection on GitHub. Network requests to fetch comic images use the connections provided by comix.to and its image hosts; requests to the community service are made over HTTPS and carry only the anonymous hashes described in Section 3(d).</p>
         <p>No method of electronic storage or transmission is ever completely secure, and we cannot guarantee absolute security.</p>
       </section>
 
@@ -279,7 +297,7 @@
 
       <section id="gdpr">
         <h2><span class="num">11</span> International users &amp; GDPR / UK GDPR</h2>
-        <p>The Extension can be used worldwide. Because it performs all processing locally on your device and does not transmit any personal data to the Developer, the Developer does not act as a “data controller” or “data processor” of your personal data within the meaning of the EU General Data Protection Regulation (GDPR), the UK GDPR, or similar laws — there is no personal data processing by us to which those obligations attach.</p>
+        <p>The Extension can be used worldwide. It performs its processing locally on your device and does not transmit personal data to the Developer. The community service (Section 3(d)) handles only irreversibly hashed, unlinkable identifiers and coarse counters; to the extent any of that were nonetheless considered personal data under the EU General Data Protection Regulation (GDPR) or UK GDPR, it is processed on the basis of the Developer's legitimate interest in providing the community features, with data minimisation applied by design (one-way hashing, no readable ids, no IP retention, coarse aggregates only).</p>
         <p>For transparency, the data-subject rights such laws provide (access, rectification, erasure, restriction, portability, and objection) would, in practice, be satisfied entirely by the local controls described in Section 7 (changing settings, clearing the log, or uninstalling), since you alone hold any data the Extension uses. If you believe you have a privacy concern, you may contact us using the details in Section 21.</p>
       </section>
 
@@ -291,9 +309,9 @@
       <section id="stores">
         <h2><span class="num">13</span> Browser-store disclosures</h2>
         <h3>Google Chrome Web Store — Limited Use</h3>
-        <p>The Extension's use of information obtained through it complies with the Chrome Web Store User Data Policy, including the Limited Use requirements. The Extension does not collect or transmit user data to the Developer or to any third party, and does not use or transfer data for advertising, creditworthiness, or any purpose unrelated to its function of letting you download comic chapters. The optional Push-to-library feature uploads the files you download only to a server <em>you</em> configure, never to the Developer.</p>
+        <p>The Extension's use of information obtained through it complies with the Chrome Web Store User Data Policy, including the Limited Use requirements. The Extension does not collect or transmit personal user data to the Developer or to any third party, and does not use or transfer data for advertising, creditworthiness, or any purpose unrelated to its function. The optional Push-to-library feature uploads the files you download only to a server <em>you</em> configure; the community features exchange only the anonymous hashes described in Section 3(d), used solely to display the badge and flag counts.</p>
         <h3>Mozilla Add-ons (AMO)</h3>
-        <p>Consistent with the data-collection declaration in the Extension's Firefox package, the Extension collects <strong>no</strong> user data for the Developer. All settings, logs, history and credentials remain in local browser storage on your device; the optional Push-to-library feature sends downloaded files only to your own configured server.</p>
+        <p>The Extension collects <strong>no personal data</strong> for the Developer. All settings, logs, history, reading data and credentials remain in local browser storage on your device; the optional Push-to-library feature sends downloaded files only to your own configured server; and the community features transmit only anonymous, one-way-hashed identifiers and coarse counters as described in Section 3(d).</p>
       </section>
 
       <section id="cookies">
