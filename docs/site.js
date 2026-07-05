@@ -42,12 +42,18 @@
   });
 })();
 
-/* Documentation — Linux distro install-command selector */
+/* Documentation — Linux distro install-command selector (icon dropdown) */
 (function () {
   "use strict";
   var pick = document.getElementById("distro-pick");
   if (!pick) return;
+  var trigger = document.getElementById("distro-trigger");
+  var menu = document.getElementById("distro-menu");
   var out = document.getElementById("distro-cmd");
+  var tName = document.getElementById("distro-trigger-name");
+  var tIco = document.getElementById("distro-trigger-ico");
+  if (!trigger || !menu) return;
+  var opts = menu.querySelectorAll(".distro-opt");
   var cmds = {
     debian: "sudo apt update && sudo apt install firefox",
     fedora: "sudo dnf install firefox",
@@ -59,18 +65,34 @@
     alpine: "sudo apk add firefox",
     nixos: "nix-env -iA nixpkgs.firefox   # or add pkgs.firefox to configuration.nix"
   };
-  var tabs = pick.querySelectorAll(".distro-tab");
-  function select(tab) {
-    for (var i = 0; i < tabs.length; i++) {
-      var active = tabs[i] === tab;
-      tabs[i].classList.toggle("is-active", active);
-      tabs[i].setAttribute("aria-selected", active ? "true" : "false");
+  function setOpen(open) {
+    menu.hidden = !open;
+    trigger.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  function select(opt) {
+    for (var i = 0; i < opts.length; i++) {
+      var active = opts[i] === opt;
+      opts[i].classList.toggle("is-active", active);
+      opts[i].setAttribute("aria-selected", active ? "true" : "false");
     }
-    var key = tab.getAttribute("data-distro");
+    var key = opt.getAttribute("data-distro");
+    if (tName) tName.textContent = opt.textContent.trim();
+    var img = opt.querySelector("img");
+    if (img && tIco) tIco.src = img.src;
     if (out && cmds[key]) out.textContent = cmds[key];
   }
-  pick.addEventListener("click", function (e) {
-    var tab = e.target.closest(".distro-tab");
-    if (tab) select(tab);
+  trigger.addEventListener("click", function (e) {
+    e.stopPropagation();
+    setOpen(menu.hidden);
+  });
+  menu.addEventListener("click", function (e) {
+    var opt = e.target.closest(".distro-opt");
+    if (opt) { select(opt); setOpen(false); trigger.focus(); }
+  });
+  document.addEventListener("click", function (e) {
+    if (!pick.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !menu.hidden) { setOpen(false); trigger.focus(); }
   });
 })();

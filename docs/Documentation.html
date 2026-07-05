@@ -118,17 +118,37 @@
   /* platform tabs as cards */
   .anchor-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 4px 0 8px; }
 
-  /* Linux distro command selector */
-  .distro-pick { margin: 8px 0 14px; }
-  .distro-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  .distro-tab {
-    font: 600 13px/1 var(--font); padding: 7px 12px; border-radius: 999px;
-    border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
-    cursor: pointer; transition: background .14s, color .14s, border-color .14s;
+  /* Linux distro selector (dropdown) */
+  .distro-select { margin: 10px 0 14px; }
+  .distro-field { position: relative; }
+  .distro-trigger {
+    width: 100%; display: flex; align-items: center; gap: 11px;
+    padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: var(--surface); color: var(--ink); font: 600 15px/1.2 var(--font); cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
   }
-  .distro-tab:hover { border-color: var(--accent-line); color: var(--ink); }
-  .distro-tab.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .distro-pick pre { margin: 0; }
+  .distro-trigger:hover { border-color: var(--accent-line); }
+  .distro-trigger[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+  .distro-caret { width: 18px; height: 18px; margin-left: auto; color: var(--muted); transition: transform .18s; flex: none; }
+  .distro-trigger[aria-expanded="true"] .distro-caret { transform: rotate(180deg); }
+  .distro-ico, .distro-opt img { width: 20px; height: 20px; flex: none; object-fit: contain; }
+
+  .distro-menu {
+    position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 6px);
+    margin: 0; padding: 6px; list-style: none;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    box-shadow: 0 14px 34px rgba(20, 16, 40, .16);
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 2px;
+  }
+  .distro-menu[hidden] { display: none; }
+  .distro-opt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 9px; cursor: pointer; font-size: 14.5px; color: var(--ink-soft);
+    transition: background .12s, color .12s;
+  }
+  .distro-opt:hover { background: var(--surface-2); color: var(--ink); }
+  .distro-opt.is-active { background: var(--accent-wash); color: var(--accent); font-weight: 600; }
+  .distro-select pre { margin: 12px 0 0; }
   .anchor-cards a {
     border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 16px; background: var(--surface);
@@ -284,17 +304,24 @@
 
       <h3 id="linux">Linux</h3>
       <p>On Linux the extension installs through your browser exactly like on Windows or macOS — one click from the store (the Firefox add-on, or the Chrome Web Store in any Chromium browser). If you still need to install a browser first, pick your distribution for the command:</p>
-      <div class="distro-pick" id="distro-pick">
-        <div class="distro-tabs" role="tablist" aria-label="Linux distribution">
-          <button type="button" class="distro-tab is-active" data-distro="debian" role="tab" aria-selected="true">Ubuntu / Debian</button>
-          <button type="button" class="distro-tab" data-distro="fedora" role="tab" aria-selected="false">Fedora / RHEL</button>
-          <button type="button" class="distro-tab" data-distro="arch" role="tab" aria-selected="false">Arch / Manjaro</button>
-          <button type="button" class="distro-tab" data-distro="suse" role="tab" aria-selected="false">openSUSE</button>
-          <button type="button" class="distro-tab" data-distro="flatpak" role="tab" aria-selected="false">Flatpak (any distro)</button>
-          <button type="button" class="distro-tab" data-distro="gentoo" role="tab" aria-selected="false">Gentoo</button>
-          <button type="button" class="distro-tab" data-distro="void" role="tab" aria-selected="false">Void</button>
-          <button type="button" class="distro-tab" data-distro="alpine" role="tab" aria-selected="false">Alpine</button>
-          <button type="button" class="distro-tab" data-distro="nixos" role="tab" aria-selected="false">NixOS</button>
+      <div class="distro-select" id="distro-pick">
+        <div class="distro-field">
+        <button type="button" class="distro-trigger" id="distro-trigger" aria-haspopup="listbox" aria-expanded="false">
+          <img class="distro-ico" id="distro-trigger-ico" src="https://cdn.simpleicons.org/ubuntu" alt="" width="20" height="20">
+          <span id="distro-trigger-name">Ubuntu / Debian</span>
+          <svg class="distro-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <ul class="distro-menu" id="distro-menu" role="listbox" aria-label="Choose your Linux distribution" hidden>
+          <li class="distro-opt is-active" role="option" aria-selected="true" data-distro="debian"><img src="https://cdn.simpleicons.org/ubuntu" alt="" width="20" height="20">Ubuntu / Debian</li>
+          <li class="distro-opt" role="option" aria-selected="false" data-distro="fedora"><img src="https://cdn.simpleicons.org/fedora" alt="" width="20" height="20">Fedora / RHEL</li>
+          <li class="distro-opt" role="option" aria-selected="false" data-distro="arch"><img src="https://cdn.simpleicons.org/archlinux" alt="" width="20" height="20">Arch / Manjaro</li>
+          <li class="distro-opt" role="option" aria-selected="false" data-distro="suse"><img src="https://cdn.simpleicons.org/opensuse" alt="" width="20" height="20">openSUSE</li>
+          <li class="distro-opt" role="option" aria-selected="false" data-distro="flatpak"><img src="https://cdn.simpleicons.org/flatpak" alt="" width="20" height="20">Flatpak (any distro)</li>
+          <li class="distro-opt" role="option" aria-selected="false" data-distro="gentoo"><img src="https://cdn.simpleicons.org/gentoo" alt="" width="20" height="20">Gentoo</li>
+          <li class="distro-opt" role="option" aria-selected="false" data-distro="void"><img src="https://cdn.simpleicons.org/voidlinux" alt="" width="20" height="20">Void</li>
+          <li class="distro-opt" role="option" aria-selected="false" data-distro="alpine"><img src="https://cdn.simpleicons.org/alpinelinux" alt="" width="20" height="20">Alpine</li>
+          <li class="distro-opt" role="option" aria-selected="false" data-distro="nixos"><img src="https://cdn.simpleicons.org/nixos" alt="" width="20" height="20">NixOS</li>
+        </ul>
         </div>
         <pre><code id="distro-cmd">sudo apt update &amp;&amp; sudo apt install firefox</code></pre>
       </div>
