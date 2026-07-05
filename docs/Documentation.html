@@ -116,7 +116,7 @@
   ul.plain li svg { position: absolute; left: 0; top: 2px; width: 18px; height: 18px; color: var(--accent); }
 
   /* platform tabs as cards */
-  .anchor-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 4px 0 8px; }
+  .anchor-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 4px 0 8px; }
   .anchor-cards a {
     border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 16px; background: var(--surface);
@@ -205,6 +205,7 @@
       <a href="#firefox" class="sub">— Firefox</a>
       <a href="#chrome" class="sub">— Chrome</a>
       <a href="#android" class="sub">— Android</a>
+      <a href="#ios" class="sub">— iOS &amp; iPadOS</a>
       <a href="#usage">How to use</a>
       <a href="#whats-new">What&rsquo;s new in v2.4</a>
       <a href="#whats-new-home" class="sub">— Custom Home</a>
@@ -233,13 +234,14 @@
         <a href="#firefox"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/firefox.svg" alt="" onerror="this.parentElement.style.display='none'"></span>Desktop</div><div class="pt">Firefox →</div></a>
         <a href="#chrome"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/chrome.svg" alt="" onerror="this.parentElement.style.display='none'"></span>Desktop</div><div class="pt">Chrome →</div></a>
         <a href="#android"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/android-icon.svg" alt="" onerror="this.parentElement.style.display='none'"></span>Mobile</div><div class="pt">Android →</div></a>
+        <a href="#ios"><div class="pf"><span class="plogo" style="width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:7px;"><svg viewBox="0 0 24 24" fill="#111" aria-hidden="true" style="width:100%;height:100%"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg></span>Mobile</div><div class="pt">iOS →</div></a>
       </div>
     </section>
 
     <!-- install -->
     <section class="doc-sec" id="install">
       <h2>Install</h2>
-      <p>The fastest paths are the signed Firefox add-on and the Chrome Web Store listing — both one click. Android takes a couple of extra steps, covered below.</p>
+      <p>The fastest paths are the signed Firefox add-on and the Chrome Web Store listing — both one click. Android and iOS take a couple of extra steps, covered below.</p>
 
       <h3 id="firefox">Firefox (desktop)</h3>
       <p>The extension is published and signed on Mozilla Add-ons — one click to install.</p>
@@ -296,7 +298,16 @@
         <li>Visit any comix.to title page — buttons appear automatically.</li>
       </ol>
 
-      <p style="font-size:13.5px;color:var(--muted);">Note: iOS isn't supported — Safari doesn't allow extension-based downloads.</p>
+      <h3 id="ios">iOS &amp; iPadOS (Orion browser)</h3>
+      <p>iOS Safari can't run download extensions, but <a href="https://orionbrowser.com/" target="_blank" rel="noopener"><strong>Orion</strong></a> — a free WebKit browser by Kagi — installs Chrome and Firefox extensions on iPhone and iPad. Orion's extension support is still in beta, so treat this as experimental: the in-page buttons work, but some advanced download behaviour may be limited by Apple's platform restrictions.</p>
+      <ol class="steps">
+        <li>Install <a href="https://orionbrowser.com/" target="_blank" rel="noopener"><strong>Orion Browser</strong></a> (by Kagi) from the App Store.</li>
+        <li>In Orion, open the <strong>•••</strong> menu → <strong>Settings</strong> → the <strong>Extensions</strong> group, and turn on <strong>Chrome extensions</strong> (and/or Firefox extensions).</li>
+        <li>Open the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome Web Store listing</a> (or the <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">Firefox add-on</a>) in Orion and tap <strong>Add to Chrome</strong> / <strong>Add to Firefox</strong>.</li>
+        <li>Open the <strong>•••</strong> menu → <strong>Extensions</strong> and toggle <strong>Comix Downloader</strong> on.</li>
+        <li>Visit any comix.to title page — the buttons appear automatically.</li>
+      </ol>
+      <p style="font-size:13.5px;color:var(--muted);">Tip: if a download doesn't start, re-check Orion's <strong>Extensions</strong> screen to confirm Comix Downloader is enabled. Because Orion's extension support is still maturing, a few options may behave differently than on desktop — the Mihon route (Option A above) remains the most reliable for fully offline reading on mobile.</p>
     </section>
 
     <!-- usage -->
@@ -566,7 +577,7 @@
       <details>
         <summary>Is there an iOS version?</summary>
         <div class="ans">
-          <p>No. Safari doesn't allow extension-based downloads, so an iOS build isn't possible. Use a desktop browser or an Android device instead.</p>
+          <p>Yes — through the <a href="https://orionbrowser.com/" target="_blank" rel="noopener">Orion</a> browser (by Kagi), which can install Chrome and Firefox extensions on iPhone and iPad. Safari itself still can't run download extensions, so install Comix Downloader in Orion instead — see the <a href="#ios">iOS &amp; iPadOS</a> steps above. Orion's extension support is in beta, so it's a bit more experimental than desktop; for fully offline reading on mobile, Mihon is still the most reliable option.</p>
         </div>
       </details>
 

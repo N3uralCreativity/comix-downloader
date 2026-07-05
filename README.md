@@ -55,7 +55,7 @@ Each chapter gets its own download button right in the list.
 
 ---
 
-## Mobile support (Android)
+## Mobile support (Android & iOS)
 
 ### Option A — Mihon (recommended for offline reading)
 
@@ -103,7 +103,17 @@ Or load it unpacked:
 ### Option C — Firefox Android add-on
 [![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
 
-> iOS is not supported (Safari doesn't allow extension-based downloads) - sorry its essentially impossible.. at least i can't :c
+### iOS & iPadOS — via Orion browser
+
+Safari can't run download extensions, but [Orion](https://orionbrowser.com/) (a free WebKit browser by Kagi) can install Chrome and Firefox extensions on iPhone and iPad. Orion's extension support is still in beta, so it's a bit more experimental than desktop.
+
+1. Install [Orion Browser](https://orionbrowser.com/) (by Kagi) from the App Store.
+2. In Orion: **•••** menu → **Settings** → the **Extensions** group → turn on **Chrome extensions** (and/or Firefox extensions).
+3. Open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp) (or the [Firefox add-on](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)) in Orion and tap **Add to Chrome** / **Add to Firefox**.
+4. **•••** menu → **Extensions** → toggle **Comix Downloader** on.
+5. Open any [comix.to](https://comix.to) title page — buttons appear automatically.
+
+For fully offline reading on mobile, Mihon (Option A) is still the most reliable.
 
 ---
 ## PC support
