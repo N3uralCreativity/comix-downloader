@@ -31,15 +31,6 @@ Adds download buttons directly to every comix.to title page. grab a single chapt
 
 ---
 
-# Update Todos for next version release : 
-
-- [x] Root-cause chapter discovery missing chapters (14/18, starts at ch5) (issues 3,5,6) - Fixed, now proprely fetch chapters for download all.
-- [x] Investigate Download-All button not rebuilding on refresh (issue 1) - Fixed.
-- [ ] Investigate Retry button 'Connection to the extension failed' (issue 4) - Underway
-- [ ] Investigate lag-out on crash/bug (issue 2) - Underway
-
----
-
 ## Download an entire series in one click
 
 Hit **Download All** on any title page. Every chapter is downloaded, packaged into its own folder, and bundled into a single ZIP — named, padded, and sorted.
