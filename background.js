@@ -420,6 +420,7 @@ function recordDownloadAllProgress(progress) {
     updatedAt: Date.now(),
   });
   updateDownloadAllSessionLog(progress);
+  persistDownloadAllSession();
 }
 
 function recordDownloadAllCancelling() {
@@ -440,6 +441,7 @@ function recordDownloadAllCancelling() {
     lastProgress: progress,
     updatedAt: Date.now(),
   });
+  persistDownloadAllSession(true);
 }
 
 function recordDownloadAllTerminal(status, patch = {}) {
@@ -461,6 +463,60 @@ function recordDownloadAllTerminal(status, patch = {}) {
     ...patch,
     updatedAt: Date.now(),
   });
+  persistDownloadAllSession(true);
+}
+
+// ── Durable session (survives MV3 service-worker eviction/crash) ──────────────
+// downloadAllSession lives in the worker's memory, which Chrome discards when the
+// worker is evicted (idle) or crashes. Persisting a serializable snapshot lets a page
+// refresh rebuild the progress popup even after the worker was torn down mid-download.
+const DL_SESSION_KEY = 'cdlDownloadAllSession';
+let _dlPersistTimer = null;
+function _serializeSession(s) {
+  if (!s) return null;
+  const keys = ['active', 'status', 'originTabId', 'mangaName', 'zipName', 'totalChapters',
+    'chapterIndex', 'completed', 'concurrency', 'imagesDone', 'imagesTotal', 'phase', 'zipPart',
+    'startedAt', 'updatedAt', 'lastProgress', 'lastError', 'lastDone', 'lastCancelled',
+    'doneZipName', 'error', 'canRetryZip'];
+  const out = {};
+  for (const k of keys) if (s[k] !== undefined) out[k] = s[k];
+  out.logItems = Array.isArray(s.logItems) ? s.logItems.slice(-60) : []; // cap so storage stays small
+  return out;
+}
+function persistDownloadAllSession(force = false) {
+  const write = () => { _dlPersistTimer = null; try { chrome.storage.local.set({ [DL_SESSION_KEY]: _serializeSession(downloadAllSession) }); } catch (_) {} };
+  if (force) { if (_dlPersistTimer) { clearTimeout(_dlPersistTimer); _dlPersistTimer = null; } write(); return; }
+  if (_dlPersistTimer) return; // throttle live progress writes to ~1/sec
+  _dlPersistTimer = setTimeout(write, 1000);
+}
+function clearPersistedSession() {
+  if (_dlPersistTimer) { clearTimeout(_dlPersistTimer); _dlPersistTimer = null; }
+  try { chrome.storage.local.remove(DL_SESSION_KEY); } catch (_) {}
+}
+async function loadPersistedSession() {
+  try { const r = await chrome.storage.local.get(DL_SESSION_KEY); return (r && r[DL_SESSION_KEY]) || null; } catch (_) { return null; }
+}
+
+// Async session lookup used by the getDownloadAllSession message. When there is no in-memory
+// session (fresh worker after eviction/crash), fall back to the persisted one — and if it was
+// still marked "running", the worker that was running it is gone, so present it as interrupted
+// (so the popup restores with a Retry instead of a forever-spinning bar).
+async function getDownloadAllSessionForTabAsync(tabId) {
+  if (!downloadAllSession) {
+    const stored = await loadPersistedSession();
+    if (stored) {
+      if (stored.active || stored.status === 'running' || stored.status === 'cancelling') {
+        stored.active = false;
+        stored.status = 'error';
+        stored.error = 'Download interrupted — the browser or extension restarted. Click “Download All” again to restart it.';
+        stored.canRetryZip = false;
+        stored.lastError = { action: 'downloadAllError', error: stored.error, canRetryZip: false };
+      }
+      downloadAllSession = stored;
+      persistDownloadAllSession(true);
+    }
+  }
+  return getDownloadAllSessionForTab(tabId);
 }
 
 function getDownloadAllSessionForTab(tabId) {
@@ -490,7 +546,7 @@ function dismissDownloadAllSessionForTab(tabId) {
   ) {
     return;
   }
-  if (!downloadAllSession.active) downloadAllSession = null;
+  if (!downloadAllSession.active) { downloadAllSession = null; clearPersistedSession(); }
 }
 
 function notifyDownloadAllProgress(originTabId, progress) {
@@ -539,16 +595,24 @@ function notifyDownloadAllCancelled(originTabId) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'downloadChapter') {
     const originTabId = sender.tab?.id ?? null;
-    handleDownloadRequest(message.chapterUrl, message.zipName, originTabId, message.options);
-    sendResponse({ ok: true });
+    sendResponse({ ok: true }); // ack first so a fault in setup never reads as "connection failed"
+    Promise.resolve()
+      .then(() => handleDownloadRequest(message.chapterUrl, message.zipName, originTabId, message.options))
+      .catch((e) => { try { cdlLog('error', 'Download failed: ' + (e?.message || e)); } catch (_) {}
+        notifyDownloadAllError(originTabId, 'Download failed: ' + (e?.message || 'unexpected error')); });
     return true;
   }
 
   if (message.action === 'downloadAllChapters') {
     const originTabId = sender.tab?.id ?? null;
+    sendResponse({ ok: true }); // ack synchronously so a slow/faulty start never surfaces as "connection failed"
     _resetDownloadAllAbort();
-    handleDownloadAllRequest(message.chapters, message.mangaName, message.zipName, originTabId, message.options);
-    sendResponse({ ok: true });
+    // Fire-and-forget, but ALWAYS catch: an unhandled rejection here can take down the MV3
+    // service worker (and make the next Retry fail with "connection failed").
+    Promise.resolve()
+      .then(() => handleDownloadAllRequest(message.chapters, message.mangaName, message.zipName, originTabId, message.options))
+      .catch((e) => { try { cdlLog('error', 'Download All failed: ' + (e?.message || e)); } catch (_) {}
+        notifyDownloadAllError(originTabId, 'Download failed: ' + (e?.message || 'unexpected error')); });
     return true;
   }
 
@@ -561,18 +625,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === 'retryZip') {
     const originTabId = sender.tab?.id ?? null;
+    sendResponse({ ok: true });
     if (_pendingZip) {
-      _doZipAndSave(_pendingZip);
+      Promise.resolve().then(() => _doZipAndSave(_pendingZip))
+        .catch((e) => notifyDownloadAllError(originTabId, 'ZIP retry failed: ' + (e?.message || 'unexpected error')));
     } else {
       notifyDownloadAllError(originTabId, 'Session expired - please restart Download All');
     }
-    sendResponse({ ok: true });
     return true;
   }
 
   if (message.action === 'getDownloadAllSession') {
     const originTabId = sender.tab?.id ?? null;
-    sendResponse({ ok: true, session: getDownloadAllSessionForTab(originTabId) });
+    // Async: may need to read the persisted session when the worker was restarted.
+    getDownloadAllSessionForTabAsync(originTabId)
+      .then((session) => sendResponse({ ok: true, session }))
+      .catch(() => sendResponse({ ok: true, session: null }));
     return true;
   }
 
@@ -2020,6 +2088,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   const maxBytes = splitMode === 'single' ? Infinity : (cfg['download.mbPerPart'] || 300) * 1024 * 1024;
 
   startDownloadAllSession({ originTabId, mangaName, zipName, totalChapters: chapters.length });
+  persistDownloadAllSession(true);
   cdlLog('info', `Download All started: "${mangaName}" — ${chapters.length} chapters${concurrency > 1 ? ` (${concurrency} at a time)` : ''}`);
 
   let zip = new JSZip();

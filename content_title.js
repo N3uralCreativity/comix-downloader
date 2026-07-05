@@ -1000,16 +1000,33 @@ async function getAllChapters() {
 }
 
 /** Lance (ou relance) la session Download All avec les params en cache. */
-function _launchDownloadAll() {
+function _launchDownloadAll(attempt) {
+  attempt = attempt || 0;
   if (!_lastDlAllParams) return;
   const { chapters, mangaName, zipName, options } = _lastDlAllParams;
+  // The MV3 service worker sleeps when idle; the first message after a crash/idle can come back
+  // with a transient lastError ("message port closed" / "Receiving end does not exist") while it
+  // spins back up. The background acks BEFORE doing any work, so a transient error means the
+  // request wasn't started \u2014 safe to retry a few times before surfacing a failure to the user.
+  const retry = () => { if (attempt < 3) { setTimeout(() => _launchDownloadAll(attempt + 1), 500); return true; } return false; };
   try {
     chrome.runtime.sendMessage(
       { action: 'downloadAllChapters', chapters, mangaName, zipName, options },
-      (res) => { if (chrome.runtime.lastError) updateDownloadAllPopupError('Connection to the extension failed'); }
+      () => {
+        const err = chrome.runtime.lastError;
+        if (!err) return; // acked \u2014 the download is starting
+        if (/context invalidated/i.test(err.message || '')) {
+          updateDownloadAllPopupError('Extension was updated \u2014 refresh the page and try again');
+        } else if (!retry()) {
+          updateDownloadAllPopupError('Connection to the extension failed');
+        }
+      }
     );
-  } catch (_) {
-    updateDownloadAllPopupError('Extension reloaded \u2014 refresh the page');
+  } catch (e) {
+    // Synchronous throw = the extension context is gone (updated/reloaded). Retrying can't help.
+    if (/context invalidated/i.test(e && e.message || '') || !retry()) {
+      updateDownloadAllPopupError('Extension reloaded \u2014 refresh the page');
+    }
   }
 }
 
