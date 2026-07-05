@@ -206,6 +206,10 @@
       <a href="#chrome" class="sub">— Chrome</a>
       <a href="#android" class="sub">— Android</a>
       <a href="#usage">How to use</a>
+      <a href="#whats-new">What&rsquo;s new in v2.4</a>
+      <a href="#whats-new-home" class="sub">— Custom Home</a>
+      <a href="#whats-new-stats" class="sub">— Reading stats</a>
+      <a href="#whats-new-flags" class="sub">— Community flags</a>
       <a href="#settings">Settings</a>
       <a href="#library">Output, library &amp; sync</a>
       <a href="#push-library" class="sub">— Push to library</a>
@@ -318,6 +322,51 @@
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">extension popup — live progress</span></div>
         <img src="assets/progress.png" alt="Download progress popup with activity log">
       </div>
+    </section>
+
+    <!-- what's new in v2.4 -->
+    <section class="doc-sec" id="whats-new">
+      <h2>What&rsquo;s new in v2.4</h2>
+      <p>Beyond downloading, v2.4 adds a set of optional on-site enhancements that make comix.to nicer to read. <strong>They are all off by default</strong> &mdash; turn on the ones you want from the <a href="#settings">Settings</a> page (mostly under the &ldquo;Additional features&rdquo; and &ldquo;Home&rdquo; tabs). Everything personal stays on your device.</p>
+
+      <h3 id="whats-new-home">A Home page that&rsquo;s actually yours</h3>
+      <p>Replace comix.to&rsquo;s Home with a focused layout you control: choose which sections appear and drag them into the order you want &mdash; Continue Reading, New Chapters from comics you follow, Recently Followed &mdash; plus a unified <strong>&ldquo;What&rsquo;s New&rdquo;</strong> feed, a featured hero spotlight, a welcome header, and hover previews (cover and synopsis).</p>
+      <div class="shot" style="margin-top:16px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">comix.to/home &mdash; custom layout</span></div>
+        <img src="assets/screenshot-home.jpg" alt="Custom Home with a hero spotlight, Your Reading stats and Continue Reading">
+      </div>
+
+      <h3 id="whats-new-reader">Reader upgrades</h3>
+      <ul class="plain">
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Resume exactly where you stopped</strong> &mdash; reopen a chapter and jump back to the precise scroll position, not just the chapter.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Read-ahead</strong> &mdash; the next chapter quietly preloads as you reach the end, so it opens instantly.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Broken-page warnings</strong> when a chapter&rsquo;s images fail to load (a bad upload, not your connection).</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Accurate next / previous</strong> that follows the true chapter number across sources, plus <code>J</code> / <code>K</code> keyboard shortcuts.</li>
+      </ul>
+
+      <h3 id="whats-new-stats">Your reading, measured privately</h3>
+      <p>Turn on reading stats and the extension quietly tracks how much you actually read (active time and chapters finished, <strong>on this device only</strong>) and adds a &ldquo;Your Reading&rdquo; panel to your Home: chapters this week, your reading streak, hours read, and your most-read series.</p>
+      <div class="shot" style="margin-top:16px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Home &mdash; &ldquo;Your Reading&rdquo;</span></div>
+        <img src="assets/screenshot-reading-stats.png" alt="Your Reading stats: weekly bar chart, chapters this week, streak, hours read and top series">
+      </div>
+
+      <h3 id="whats-new-recap">Catch-up estimates &amp; &ldquo;welcome back&rdquo; recaps</h3>
+      <p>On a series page, see how many chapters you have left and roughly how long they will take <em>at your own measured pace</em>. Come back to a series after a break and a small banner reminds you where you left off, with a one-click jump to the next chapter.</p>
+      <div class="shot" style="margin-top:16px;max-width:760px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">series page &mdash; recap + catch-up</span></div>
+        <img src="assets/screenshot-recap.png" alt="Welcome-back recap banner with a Continue button, and a catch-up estimate chip">
+      </div>
+
+      <h3 id="whats-new-flags">Community chapter flags &amp; profile badge</h3>
+      <p>See how many other extension users flagged a chapter as broken, missing or wrong <em>before</em> you open it, and flag problems yourself from the reader. A small tenure badge also appears on comix profiles, visible only to other extension users. These two features share only an anonymous, salted one-way hash &mdash; no titles, no readable ids &mdash; see the <a href="privacy.html">privacy page</a>.</p>
+      <div class="shot" style="margin-top:16px;max-width:420px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">reader &mdash; flag a problem</span></div>
+        <img src="assets/screenshot-flags.png" alt="Reader flag menu: flag a chapter as broken images, missing pages or wrong chapter">
+      </div>
+
+      <h3 id="whats-new-download">Download All: finds every chapter</h3>
+      <p>&ldquo;Download All&rdquo; now walks the full chapter pager, so long or multi-group series no longer drop their oldest chapters. Retry is more resilient, and the progress panel restores correctly after a page refresh.</p>
     </section>
 
     <!-- settings -->
