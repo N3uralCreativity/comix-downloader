@@ -361,3 +361,29 @@ code {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Brand mark ("Angle Tray", v2.5): comix-style pulse + hover burst ── */
+:root { --accent-rgb: 135 101 235; }
+.cdl-mark { display: block; overflow: visible; }
+.brand .cdl-mark { width: 26px; height: 26px; }
+.footer .cdl-mark { width: 20px; height: 20px; }
+.cdl-mark .ink { fill: var(--ink); }
+.cdl-mark .glow { fill: var(--accent); animation: cdl-glow 1.2s ease-in-out infinite; }
+/* burst only when the pointer is on the mark itself (tight hitbox, not the whole brand link) */
+.cdl-mark:hover .glow { animation: cdl-burst .35s linear forwards; }
+@keyframes cdl-glow {
+  0% { fill: rgb(var(--accent-rgb) / .9); }
+  50% { fill: color-mix(in srgb, rgb(var(--accent-rgb)), white 30%); }
+  100% { fill: rgb(var(--accent-rgb) / .9); }
+}
+@keyframes cdl-burst {
+  0% { fill: rgb(var(--accent-rgb) / .2); filter: drop-shadow(0 0 0 rgb(var(--accent-rgb) / 0)); }
+  20% { fill: color-mix(in srgb, rgb(var(--accent-rgb)), white 30%); filter: drop-shadow(0 0 10px rgb(var(--accent-rgb))) drop-shadow(0 0 20px rgb(var(--accent-rgb))); }
+  40% { fill: rgb(var(--accent-rgb) / .2); filter: drop-shadow(0 0 5px rgb(var(--accent-rgb) / .5)); }
+  60% { fill: color-mix(in srgb, rgb(var(--accent-rgb)), white 50%); filter: drop-shadow(0 0 15px rgb(var(--accent-rgb))) drop-shadow(0 0 30px rgb(var(--accent-rgb))); }
+  80% { fill: color-mix(in srgb, rgb(var(--accent-rgb)), white 70%); filter: drop-shadow(0 0 15px rgb(var(--accent-rgb))) drop-shadow(0 0 30px rgb(var(--accent-rgb))); }
+  100% { fill: rgb(var(--accent-rgb)); filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cdl-mark .glow, .cdl-mark:hover .glow { animation: none; }
+}

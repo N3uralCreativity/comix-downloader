@@ -20,9 +20,9 @@
     text-align: center;
     color: #fff;
     background:
-      radial-gradient(900px 420px at 18% -12%, oklch(62% 0.19 293 / .55), transparent 60%),
-      radial-gradient(700px 420px at 108% 118%, oklch(45% 0.2 285 / .6), transparent 55%),
-      linear-gradient(150deg, oklch(28% 0.09 293), oklch(38% 0.15 293));
+      radial-gradient(900px 420px at 18% -12%, oklch(46% 0.16 293 / .32), transparent 60%),
+      radial-gradient(700px 420px at 108% 118%, oklch(36% 0.15 285 / .4), transparent 55%),
+      linear-gradient(150deg, oklch(16% 0.04 293), oklch(24% 0.085 293));
     box-shadow: var(--shadow-lg);
     overflow: hidden;
     position: relative;
@@ -34,10 +34,16 @@
     pointer-events: none;
   }
   .card > * { position: relative; }
-  .card img.logo {
-    width: 76px; height: 76px; border-radius: 20px;
-    margin: 0 auto 30px;
-    box-shadow: 0 10px 34px oklch(20% 0.1 293 / .55);
+  .card .logo {
+    width: 76px; height: 76px;
+    margin: 0 auto 30px; display: block;
+    overflow: visible;
+  }
+  .card .logo .ink { fill: #fff; }
+  .card .logo .glow { fill: rgb(var(--accent-rgb)); animation: cdl-glow 1.2s ease-in-out infinite; }
+  .card .logo:hover .glow { animation: cdl-burst .35s linear forwards; }
+  @media (prefers-reduced-motion: reduce) {
+    .card .logo .glow, .card .logo:hover .glow { animation: none; }
   }
   .card h1 {
     font-size: clamp(38px, 6vw, 66px);
@@ -67,7 +73,7 @@
 <header class="nav">
   <div class="nav-inner">
     <a class="brand" href="index.html">
-      <img src="assets/icon128.png" alt="">
+      <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
       Comix Downloader
       <span class="ver">v2.4.0</span>
     </a>
@@ -86,7 +92,7 @@
 <main class="container" id="main" tabindex="-1">
   <div class="wrapb">
     <section class="card">
-      <img class="logo" src="assets/icon128.png" alt="">
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
       <h1>Thanks for installing.</h1>
       <p class="sub">Open any comix.to title page, the buttons are already there. That's it.</p>
       <div class="cta">
@@ -100,7 +106,7 @@
 
 <footer class="footer">
   <div class="footer-inner">
-    <span class="brand" style="font-weight:700;"><img src="assets/icon128.png" alt="" style="width:20px;height:20px;border-radius:5px;">Comix Downloader</span>
+    <span class="brand" style="font-weight:700;"><svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>Comix Downloader</span>
     <span class="sep">·</span>
     <span>MIT © N3uralCreativity</span>
     <div class="right">

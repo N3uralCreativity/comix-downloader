@@ -1,0 +1,10 @@
+<!-- Comix Downloader mark: "Angle Tray" (v2.5 redesign).
+     Backgroundless, comix-inspired geometry (45° cuts). Two layers:
+       .glow = the arrow (accent color; pulses / bursts where CSS animation is possible)
+       .ink  = the tray  (neutral; adapts to the surface)
+     Toolbar PNGs are rendered from this file by scripts (three sets: default violet,
+     cyan for comix "Main" theme, light-toolbar variant with a dark tray). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <polygon class="glow" fill="#8765eb" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/>
+  <path class="ink" fill="#4a4458" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/>
+</svg>
