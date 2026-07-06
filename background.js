@@ -302,6 +302,14 @@ chrome.runtime.onInstalled.addListener(setupContextMenus);
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(setupContextMenus);
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(_clearToolbarBadge); // clear any persisted "NEW" badge
 
+// First install → open the site's welcome page (thanks + what's new). Install only:
+// updates must never steal a tab from the user.
+const CDL_WELCOME_URL = 'https://n3uralcreativity.github.io/comix-downloader/welcome.html';
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason !== 'install') return;
+  try { chrome.tabs.create({ url: CDL_WELCOME_URL }); } catch (_) {}
+});
+
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason !== 'install' && details.reason !== 'update') return;
   _clearToolbarBadge(); // remove any lingering "NEW" badge from earlier versions

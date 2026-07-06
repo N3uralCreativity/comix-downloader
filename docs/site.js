@@ -42,6 +42,33 @@
   });
 })();
 
+/* Arriving from the welcome page (?from=welcome#target): start at the top and
+   smoothly scroll down to the target section, instead of the browser's instant jump. */
+(function () {
+  "use strict";
+  if (!/[?&]from=welcome(?:&|$)/.test(location.search) || !location.hash) return;
+  var target = null;
+  try { target = document.querySelector(location.hash); } catch (e) { return; }
+  if (!target) return;
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  window.scrollTo(0, 0);
+  window.addEventListener("load", function () {
+    window.scrollTo(0, 0); // undo the browser's automatic anchor jump
+    var attempts = 0;
+    var glide = function () {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Images loading in above the target shift the layout while we glide, so
+      // re-correct until the section actually sits at the top (or we give up).
+      attempts++;
+      setTimeout(function () {
+        var top = target.getBoundingClientRect().top;
+        if (Math.abs(top - 84) > 60 && attempts < 5) glide();
+      }, 1300);
+    };
+    setTimeout(glide, 350);
+  });
+})();
+
 /* Documentation — Linux browser + distro install-command selectors (icon dropdowns) */
 (function () {
   "use strict";

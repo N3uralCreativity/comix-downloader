@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Welcome — Comix Downloader</title>
+<meta name="description" content="Thanks for installing Comix Downloader.">
+<meta name="theme-color" content="#774fd0">
+<meta name="robots" content="noindex">
+<link rel="canonical" href="https://n3uralcreativity.github.io/comix-downloader/welcome.html">
+<link rel="icon" href="assets/icon128.png">
+<link rel="stylesheet" href="site.css">
+<style>
+  /* ── Welcome ── */
+  .wrapb { min-height: calc(100vh - 62px); display: grid; place-items: center; padding: 26px 0 40px; }
+  .card {
+    width: 100%;
+    border-radius: 26px;
+    padding: clamp(56px, 9vw, 110px) 28px;
+    text-align: center;
+    color: #fff;
+    background:
+      radial-gradient(900px 420px at 18% -12%, oklch(62% 0.19 293 / .55), transparent 60%),
+      radial-gradient(700px 420px at 108% 118%, oklch(45% 0.2 285 / .6), transparent 55%),
+      linear-gradient(150deg, oklch(28% 0.09 293), oklch(38% 0.15 293));
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    position: relative;
+  }
+  .card::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(420px 200px at 50% 0%, oklch(100% 0 0 / .07), transparent 70%);
+    pointer-events: none;
+  }
+  .card > * { position: relative; }
+  .card img.logo {
+    width: 76px; height: 76px; border-radius: 20px;
+    margin: 0 auto 30px;
+    box-shadow: 0 10px 34px oklch(20% 0.1 293 / .55);
+  }
+  .card h1 {
+    font-size: clamp(38px, 6vw, 66px);
+    font-weight: 800; letter-spacing: -0.035em; line-height: 1.02;
+  }
+  .card p.sub {
+    margin: 16px auto 0; max-width: 44ch;
+    font-size: 17px; color: oklch(90% 0.02 293);
+  }
+  .card .cta { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 34px; }
+  .btn-light {
+    background: #fff; color: var(--accent-deep); border: 1px solid #fff;
+    font-weight: 700;
+  }
+  .btn-light:hover { background: oklch(95% 0.015 293); color: var(--accent-deep); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  .btn-dim {
+    background: oklch(100% 0 0 / .1); color: #fff; border: 1px solid oklch(100% 0 0 / .3);
+  }
+  .btn-dim:hover { background: oklch(100% 0 0 / .18); color: #fff; transform: translateY(-1px); }
+  .card .fine { margin-top: 26px; font-size: 13px; color: oklch(80% 0.03 293); }
+  .card .fine a { color: #fff; font-weight: 600; }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <img src="assets/icon128.png" alt="">
+      Comix Downloader
+      <span class="ver">v2.4.0</span>
+    </a>
+    <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <nav class="nav-links" id="nav-links">
+      <a href="index.html">Home</a>
+      <a href="Documentation.html">Documentation</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container" id="main" tabindex="-1">
+  <div class="wrapb">
+    <section class="card">
+      <img class="logo" src="assets/icon128.png" alt="">
+      <h1>Thanks for installing.</h1>
+      <p class="sub">Open any comix.to title page, the buttons are already there. That's it.</p>
+      <div class="cta">
+        <a class="btn btn-light" href="Documentation.html?from=welcome#whats-new">See what's new in v2.4</a>
+        <a class="btn btn-dim" href="https://comix.to" target="_blank" rel="noopener">Open comix.to</a>
+      </div>
+      <p class="fine">Free, open source, and nothing personal leaves your device. <a href="privacy.html">Privacy</a></p>
+    </section>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span class="brand" style="font-weight:700;"><img src="assets/icon128.png" alt="" style="width:20px;height:20px;border-radius:5px;">Comix Downloader</span>
+    <span class="sep">·</span>
+    <span>MIT © N3uralCreativity</span>
+    <div class="right">
+      <a class="status-btn" href="https://everythingmoe.com/monitor" target="_blank" rel="noopener" title="Check comix.to status on EverythingMoe"><span class="status-dot"></span>Comix Status</a>
+      <a href="privacy.html">Privacy</a>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js" defer></script>
+
+</body>
+</html>
