@@ -19,10 +19,11 @@ let _lastDlAllParams = null;
 let _dlAllInjRetryTimer = null;
 
 // SVG icône téléchargement (flèche vers le bas + barre)
-const ICON_DOWNLOAD = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-  <polyline points="7 10 12 15 17 10"/>
-  <line x1="12" y1="15" x2="12" y2="3"/>
+// The "Angle Tray" brand mark (icons/icon.svg), filled with currentColor so the
+// buttons' accent theming keeps working.
+const ICON_DOWNLOAD = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+  <polygon points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/>
+  <path d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/>
 </svg>`;
 
 // SVG icône succès (checkmark)

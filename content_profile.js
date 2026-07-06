@@ -46,7 +46,20 @@
     paths.forEach(function (p) { var el2 = document.createElementNS(ns, p[0]); el2.setAttribute(p[0] === 'polyline' ? 'points' : 'd', p[1]); s.appendChild(el2); });
     return s;
   }
-  function mark() { return svgIcon([['path', 'M12 3v11'], ['path', 'M7 10l5 5 5-5'], ['path', 'M5 20h14']]); }
+  function mark() {
+    // The "Angle Tray" brand mark (icons/icon.svg), filled with currentColor.
+    var ns = 'http://www.w3.org/2000/svg';
+    var s = document.createElementNS(ns, 'svg');
+    s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('width', '13'); s.setAttribute('height', '13');
+    s.setAttribute('fill', 'currentColor');
+    var g = document.createElementNS(ns, 'polygon');
+    g.setAttribute('points', '10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6');
+    s.appendChild(g);
+    var t = document.createElementNS(ns, 'path');
+    t.setAttribute('d', 'M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z');
+    s.appendChild(t);
+    return s;
+  }
   function devIcon() { return svgIcon([['polyline', '8 7 3 12 8 17'], ['polyline', '16 7 21 12 16 17']]); }
 
   function bg(action, payload) {

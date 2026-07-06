@@ -89,6 +89,21 @@
     paths.forEach(function (d) { var p = document.createElementNS(ns, 'path'); p.setAttribute('d', d); s.appendChild(p); });
     return s;
   }
+  // The "Angle Tray" brand mark (icons/icon.svg), filled with currentColor.
+  function markSvg(size) {
+    var ns = 'http://www.w3.org/2000/svg';
+    var s = document.createElementNS(ns, 'svg');
+    s.setAttribute('width', size || 16); s.setAttribute('height', size || 16);
+    s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'currentColor');
+    s.setAttribute('aria-hidden', 'true');
+    var g = document.createElementNS(ns, 'polygon');
+    g.setAttribute('points', '10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6');
+    s.appendChild(g);
+    var t = document.createElementNS(ns, 'path');
+    t.setAttribute('d', 'M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z');
+    s.appendChild(t);
+    return s;
+  }
   function getLocal(key) {
     return new Promise(function (res) { try { chrome.storage.local.get(key, function (r) { res((r && r[key]) || null); }); } catch (_) { res(null); } });
   }
@@ -485,7 +500,7 @@
     if (!list || document.getElementById(NAV_ID)) return;
     if (!document.querySelector('.cdl-umenu-sep')) list.appendChild(el('li', { class: 'cdl-umenu-sep', text: 'Extension' }));
     var btn = el('button', { type: 'button', class: 'umenu__item', id: NAV_ID }, [
-      el('span', { class: 'umenu__icon' }, [svg(['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'M7 10l5 5 5-5', 'M12 15V3'], 16)]),
+      el('span', { class: 'umenu__icon' }, [markSvg(16)]),
       el('span', { class: 'umenu__text', text: 'Comix Downloader' }),
     ]);
     btn.addEventListener('click', function () { activate(true); });
