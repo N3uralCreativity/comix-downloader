@@ -34,7 +34,28 @@
       background: var(--panel);
       border-bottom: 1px solid var(--line);
     }
-    .header-icon { width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0; }
+    .header-icon { width: 34px; height: 34px; flex-shrink: 0; overflow: visible; }
+    /* "Angle Tray" mark: comix-style idle pulse + hover burst. color-mix keeps it
+       working with the dynamic --accent that popup.js applies from the site theme. */
+    .header-icon .ink { fill: var(--fg); }
+    .header-icon .glow { fill: var(--accent); animation: cdl-glow 1.2s ease-in-out infinite; }
+    .header-icon:hover .glow { animation: cdl-burst .35s linear forwards; }
+    @keyframes cdl-glow {
+      0% { fill: color-mix(in srgb, var(--accent) 90%, transparent); }
+      50% { fill: color-mix(in srgb, var(--accent), white 30%); }
+      100% { fill: color-mix(in srgb, var(--accent) 90%, transparent); }
+    }
+    @keyframes cdl-burst {
+      0% { fill: color-mix(in srgb, var(--accent) 20%, transparent); filter: none; }
+      20% { fill: color-mix(in srgb, var(--accent), white 30%); filter: drop-shadow(0 0 10px var(--accent)) drop-shadow(0 0 20px var(--accent)); }
+      40% { fill: color-mix(in srgb, var(--accent) 20%, transparent); filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 50%, transparent)); }
+      60% { fill: color-mix(in srgb, var(--accent), white 50%); filter: drop-shadow(0 0 15px var(--accent)) drop-shadow(0 0 30px var(--accent)); }
+      80% { fill: color-mix(in srgb, var(--accent), white 70%); filter: drop-shadow(0 0 15px var(--accent)) drop-shadow(0 0 30px var(--accent)); }
+      100% { fill: var(--accent); filter: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .header-icon .glow, .header-icon:hover .glow { animation: none; }
+    }
     .header-info { flex: 1; min-width: 0; }
     .header-title { font-size: 15px; font-weight: 700; color: var(--fg-strong); letter-spacing: .01em; }
     .header-sub { font-size: 11px; color: var(--muted-2); margin-top: 2px; }
@@ -113,13 +134,9 @@
 <body>
 
   <div class="header">
-    <svg class="header-icon" viewBox="0 0 128 128" aria-hidden="true">
-      <rect width="128" height="128" rx="28" fill="var(--bg)"></rect>
-      <g fill="none" stroke="var(--accent)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="64" y1="28" x2="64" y2="72"></line>
-        <path d="M42 54 64 76 86 54"></path>
-        <line x1="34" y1="98" x2="94" y2="98"></line>
-      </g>
+    <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"></polygon>
+      <path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"></path>
     </svg>
     <div class="header-info">
       <div class="header-title">Comix Downloader</div>
