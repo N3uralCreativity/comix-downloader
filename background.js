@@ -1643,6 +1643,8 @@ function getScrambleInfo(headers) {
     seed: seed >>> 0,
     cols: Math.max(1, cols),
     rows: Math.max(1, rows),
+    algo: (headers.get('X-Scramble-Algo') || '').trim(),
+    hash: (headers.get('X-Scramble-Hash') || '').trim().toLowerCase(),
   };
 }
 
@@ -1658,15 +1660,20 @@ function getImageExtension(src, contentType = '') {
 }
 
 // comix.to ships more than one tile-scramble variant (the X-Scramble-Algo header
-// changed in 2026). They share the same xorshift+Durstenfeld generator and differ
-// only in the PRNG's init constant — and the response headers don't reliably say
-// which. So we descramble with each known constant and keep the result whose tile
-// seams join most smoothly: a wrong permutation leaves hard edges at every tile
-// boundary, the right one is continuous. Content-based, so it needs no per-image
-// metadata and degrades gracefully if a new variant appears.
-const SCRAMBLE_INIT_CONSTS = [0xe42f, 0x1];
+// changed in 2026). The observed algo-3 variants share the same
+// xorshift+Durstenfeld generator and differ only in the PRNG's init constant.
+// The X-Scramble-Hash header helps identify known variants, but the fallback still
+// tries every known constant and keeps the result whose tile seams join smoothly.
+const SCRAMBLE_INIT_CONSTS = [0xe42f, 0x1, 0x1cb1d];
+const SCRAMBLE_HASH_INIT_CONSTS = {
+  '03632': [0xe42f],
+  '02900': [0x1cb1d],
+  '09197': [0x1],
+  bca9b: [0x1],
+  e8a87: [0x1],
+};
 
-async function unscrambleImageBlob(blob, { seed, cols, rows }) {
+async function unscrambleImageBlob(blob, { seed, cols, rows, hash }) {
   if (typeof createImageBitmap !== 'function') {
     throw new Error('createImageBitmap is unavailable');
   }
@@ -1677,13 +1684,19 @@ async function unscrambleImageBlob(blob, { seed, cols, rows }) {
     const tileH = Math.floor(bitmap.height / rows);
     if (tileW < 1 || tileH < 1) throw new Error('invalid scramble grid');
     const count = cols * rows;
-    const multi = count > 1 && SCRAMBLE_INIT_CONSTS.length > 1;
+    const candidates = getScrambleInitCandidates(hash);
+    const multi = count > 1 && candidates.length > 1;
 
     let best = null;
-    for (const initConst of SCRAMBLE_INIT_CONSTS) {
+    for (const initConst of candidates) {
       const canvas = createZipCanvas(bitmap.width, bitmap.height);
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('2D canvas context is unavailable');
+
+      // The reader draws the whole mosaic first, then overwrites the grid tiles.
+      // This preserves bottom/right remainders when dimensions are not exactly
+      // divisible by the scramble grid.
+      ctx.drawImage(bitmap, 0, 0);
 
       const permutation = makeScramblePermutation(seed, count, initConst);
       for (let i = 0; i < count; i++) {
@@ -1706,6 +1719,15 @@ async function unscrambleImageBlob(blob, { seed, cols, rows }) {
   } finally {
     bitmap.close?.();
   }
+}
+
+function getScrambleInitCandidates(hash) {
+  const preferred = hash ? SCRAMBLE_HASH_INIT_CONSTS[hash] : null;
+  const out = [];
+  for (const initConst of [...(preferred || []), ...SCRAMBLE_INIT_CONSTS]) {
+    if (!out.includes(initConst)) out.push(initConst);
+  }
+  return out;
 }
 
 // Total colour discontinuity along the internal tile seams. Low = tiles line up
@@ -1768,9 +1790,9 @@ function canvasToBlob(canvas, type, quality) {
 //   • PRNG step: xorshift32 with shifts (13, 17, 5)
 //   • shuffle: Durstenfeld (Fisher-Yates), i = count-1 .. 1, j = state % (i+1)
 // order[srcTile] = destPosition, exactly what unscrambleImageBlob redraws.
-// comix's 2026 "algo 3" uses the same generator but with two different init
-// constants (0xe42f and 0x1) across pages; unscrambleImageBlob tries both and
-// keeps whichever produces continuous tile seams.
+// comix's 2026 "algo 3" uses the same generator with multiple init constants
+// (currently 0xe42f, 0x1, and 0x1cb1d) across pages; unscrambleImageBlob tries
+// the known variants and keeps whichever produces continuous tile seams.
 function makeScramblePermutation(seed, count, initConst = 0xe42f) {
   const order = Array.from({ length: count }, (_, i) => i);
   let state = (initConst ^ ((seed >>> 1) << 1)) >>> 0;

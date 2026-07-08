@@ -77,13 +77,14 @@ check('default chapter folder keeps decimal suffix',
 
 // 5. manifest wiring sanity
 const mf = JSON.parse(read('manifest.json'));
-check('manifest version is 2.x', /^2\./.test(mf.version));
+check('manifest version is 4.x', /^4\./.test(mf.version));
 const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content_title.js'));
-check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['settings.js', 'cdl-features-core.js', 'cdl-home-core.js', 'cdl-badge-core.js', 'content_title.js', 'content_features.js', 'content_home.js', 'content_profile.js']));
+check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['settings.js', 'content_notices.js', 'cdl-features-core.js', 'cdl-home-core.js', 'cdl-badge-core.js', 'content_title.js', 'content_features.js', 'content_home.js', 'content_profile.js']));
 // The title/features bundle must match ALL of comix.to (not just /title/*) so it
 // is present when a Next.js soft-navigation lands on a title page — otherwise the
 // download buttons only appear after a hard refresh (SPA injection fix).
 check('title content scripts match all of comix.to (SPA soft-nav)', !!mainCs && mainCs.matches.indexOf('*://comix.to/*') !== -1);
+check('remote notices content script is registered', !!mainCs && mainCs.js.indexOf('content_notices.js') !== -1);
 const bridgeCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('scripts/extract-bridge.js'));
 check('extract-bridge runs at document_start in the MAIN world', !!bridgeCs && bridgeCs.run_at === 'document_start' && bridgeCs.world === 'MAIN');
 const embedCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('cdl-embed-settings.js'));
@@ -153,6 +154,9 @@ check('descramble: output is a valid permutation of 0..N-1', (() => {
 check('descramble: algo-3 0x1 init variant (real seed 3620498592, 5x5)',
   JSON.stringify(makeScramblePermutation(3620498592, 25, 0x1)) ===
   JSON.stringify([20, 15, 0, 12, 1, 10, 9, 18, 6, 7, 17, 8, 5, 2, 16, 19, 22, 3, 11, 13, 23, 14, 4, 24, 21]));
+check('descramble: algo-3 0x1cb1d init variant (real seed 3869954323, 5x5)',
+  JSON.stringify(makeScramblePermutation(3869954323, 25, 0x1cb1d)) ===
+  JSON.stringify([2, 0, 12, 5, 19, 17, 8, 7, 11, 22, 10, 18, 14, 15, 9, 16, 3, 6, 24, 1, 20, 21, 4, 23, 13]));
 
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

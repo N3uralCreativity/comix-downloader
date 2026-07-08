@@ -35,6 +35,7 @@ function Copy-ReleaseFiles([string]$Destination) {
   $runtimePaths = @(
     "background.js",
     "content_title.js",
+    "content_notices.js",
     "cdl-features-core.js",
     "cdl-home-core.js",
     "cdl-badge-core.js",

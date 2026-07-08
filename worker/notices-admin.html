@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comix Downloader Notices Admin</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #111827;
+      --muted: #64748b;
+      --line: #cbd5e1;
+      --strong: #0f172a;
+      --accent: #0891b2;
+      --danger: #b91c1c;
+      --warn: #b45309;
+      --ok: #047857;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 Arial, Helvetica, sans-serif;
+      letter-spacing: 0;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+    p { margin: 0; color: var(--muted); }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 0;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .settings {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) minmax(220px, 0.8fr) auto;
+      gap: 12px;
+      align-items: end;
+    }
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--strong);
+      font-weight: 700;
+    }
+    input[type="url"], input[type="password"], input[type="text"], textarea, select {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: #fff;
+      color: var(--text);
+      padding: 8px 10px;
+      font: inherit;
+    }
+    textarea {
+      min-height: 86px;
+      resize: vertical;
+    }
+    button {
+      min-height: 38px;
+      border: 1px solid var(--strong);
+      border-radius: 0;
+      background: var(--strong);
+      color: #fff;
+      padding: 8px 12px;
+      font: 700 14px/1 Arial, Helvetica, sans-serif;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #fff;
+      color: var(--strong);
+    }
+    button.danger {
+      background: var(--danger);
+      border-color: var(--danger);
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .status {
+      min-height: 22px;
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .status.error { color: var(--danger); }
+    .status.ok { color: var(--ok); }
+    .notice-list {
+      display: grid;
+      gap: 12px;
+    }
+    .notice {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-left: 6px solid var(--accent);
+      border-radius: 0;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+    .notice.warning { border-left-color: var(--warn); }
+    .notice.notification { border-left-color: var(--accent); }
+    .notice-head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: start;
+    }
+    .notice-title {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    .meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #f8fafc;
+      color: var(--strong);
+      font-weight: 700;
+    }
+    .pill.on {
+      border-color: #86efac;
+      background: #dcfce7;
+      color: #166534;
+    }
+    .pill.off {
+      border-color: #fecaca;
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .fields {
+      display: grid;
+      grid-template-columns: 180px 180px 1fr 1fr;
+      gap: 10px;
+    }
+    .fields .wide { grid-column: 1 / -1; }
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      color: var(--strong);
+    }
+    .switch input {
+      width: 18px;
+      height: 18px;
+    }
+    .empty {
+      padding: 28px;
+      border: 1px dashed var(--line);
+      background: #fff;
+      color: var(--muted);
+      text-align: center;
+    }
+    @media (max-width: 840px) {
+      main { padding: 16px; }
+      header, .settings, .notice-head, .fields { grid-template-columns: 1fr; }
+      header { display: grid; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Comix Downloader Notices Admin</h1>
+        <p>Local-only control panel for the deployed Cloudflare Worker notices.</p>
+      </div>
+      <div class="row">
+        <button id="reloadBtn" class="secondary" type="button">Reload</button>
+        <button id="addNoticeBtn" class="secondary" type="button">Add Notice</button>
+        <button id="saveAllBtn" type="button">Save All</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="settings">
+        <label>
+          Worker URL
+          <input id="workerUrl" type="url" spellcheck="false" autocomplete="off">
+        </label>
+        <label>
+          Admin token
+          <input id="adminToken" type="password" spellcheck="false" autocomplete="off">
+        </label>
+        <div class="row">
+          <label class="switch">
+            <input id="rememberToken" type="checkbox">
+            Remember on this PC
+          </label>
+          <button id="saveSettingsBtn" class="secondary" type="button">Save</button>
+        </div>
+      </div>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section id="noticeList" class="notice-list" aria-live="polite"></section>
+  </main>
+
+  <template id="noticeTemplate">
+    <article class="notice">
+      <div class="notice-head">
+        <div>
+          <h2 class="notice-title"></h2>
+          <div class="meta">
+            <span class="pill notice-type"></span>
+            <span class="pill notice-state"></span>
+            <span class="pill notice-id"></span>
+          </div>
+        </div>
+        <label class="switch">
+          <input class="active-input" type="checkbox">
+          Active
+        </label>
+      </div>
+      <div class="fields">
+        <label>
+          Type
+          <select class="type-input">
+            <option value="warning">warning</option>
+            <option value="notification">notification</option>
+          </select>
+        </label>
+        <label>
+          ID
+          <input class="id-input" type="text" spellcheck="false">
+        </label>
+        <label>
+          Button label
+          <input class="cta-label-input" type="text">
+        </label>
+        <label>
+          Button URL
+          <input class="cta-url-input" type="url" spellcheck="false">
+        </label>
+        <label class="wide">
+          Title
+          <input class="title-input" type="text">
+        </label>
+        <label class="wide">
+          Message
+          <textarea class="message-input"></textarea>
+        </label>
+      </div>
+      <div class="actions">
+        <div class="row">
+          <button class="save-one" type="button">Save This Notice</button>
+          <button class="toggle-one secondary" type="button"></button>
+        </div>
+        <button class="delete-one danger" type="button">Remove Locally</button>
+      </div>
+    </article>
+  </template>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const DEFAULT_WORKER = 'https://comix-downloader-badge.comixdl.workers.dev';
+      const SETTINGS_KEY = 'cdlNoticeAdminSettings';
+      const TOKEN_KEY = 'cdlNoticeAdminToken';
+      const noticeList = document.getElementById('noticeList');
+      const statusEl = document.getElementById('status');
+      const workerUrlEl = document.getElementById('workerUrl');
+      const adminTokenEl = document.getElementById('adminToken');
+      const rememberTokenEl = document.getElementById('rememberToken');
+      const template = document.getElementById('noticeTemplate');
+      let notices = [];
+
+      function setStatus(text, kind) {
+        statusEl.textContent = text || '';
+        statusEl.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      function readSettings() {
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (_) {}
+        workerUrlEl.value = saved.workerUrl || DEFAULT_WORKER;
+        rememberTokenEl.checked = localStorage.getItem(TOKEN_KEY) != null;
+        adminTokenEl.value = rememberTokenEl.checked ? (localStorage.getItem(TOKEN_KEY) || '') : '';
+      }
+
+      function saveSettings() {
+        const settings = { workerUrl: cleanBaseUrl(workerUrlEl.value) || DEFAULT_WORKER };
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        workerUrlEl.value = settings.workerUrl;
+        if (rememberTokenEl.checked) localStorage.setItem(TOKEN_KEY, adminTokenEl.value);
+        else localStorage.removeItem(TOKEN_KEY);
+        setStatus('Settings saved locally in this browser.', 'ok');
+      }
+
+      function cleanBaseUrl(value) {
+        const s = String(value || '').trim().replace(/\/+$/, '');
+        if (!s) return '';
+        try {
+          const url = new URL(s);
+          return /^https?:$/.test(url.protocol) ? url.href.replace(/\/+$/, '') : '';
+        } catch (_) {
+          return '';
+        }
+      }
+
+      function endpoint(admin) {
+        const base = cleanBaseUrl(workerUrlEl.value);
+        if (!base) throw new Error('Worker URL is invalid.');
+        return base + '/v1/notices' + (admin ? '?admin=1' : '');
+      }
+
+      function token() {
+        const value = adminTokenEl.value.trim();
+        if (!value) throw new Error('Admin token is required.');
+        return value;
+      }
+
+      async function requestJson(url, options) {
+        const res = await fetch(url, options || {});
+        let body = null;
+        try { body = await res.json(); } catch (_) {}
+        if (!res.ok) {
+          const msg = body && body.error ? body.error : 'HTTP ' + res.status;
+          throw new Error(msg);
+        }
+        return body || {};
+      }
+
+      async function loadNotices() {
+        setStatus('Loading notices...');
+        const data = await requestJson(endpoint(true), {
+          headers: { Authorization: 'Bearer ' + token(), Accept: 'application/json' },
+          cache: 'no-store',
+        });
+        notices = Array.isArray(data.notices) ? data.notices : [];
+        render();
+        setStatus('Loaded ' + notices.length + ' notice' + (notices.length === 1 ? '' : 's') + '.', 'ok');
+      }
+
+      async function saveAll() {
+        const collected = collectNotices();
+        if (!collected.length) throw new Error('There must be at least one valid notice.');
+        setStatus('Saving notices...');
+        const data = await requestJson(endpoint(false), {
+          method: 'PUT',
+          headers: {
+            Authorization: 'Bearer ' + token(),
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({ notices: collected }),
+        });
+        notices = Array.isArray(data.notices) ? data.notices : collected;
+        render();
+        setStatus('Saved all notices. Refresh comix.to to see active changes.', 'ok');
+      }
+
+      async function toggleNotice(id, active) {
+        setStatus((active ? 'Enabling ' : 'Disabling ') + id + '...');
+        const data = await requestJson(endpoint(false), {
+          method: 'PUT',
+          headers: {
+            Authorization: 'Bearer ' + token(),
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({ id, active }),
+        });
+        notices = Array.isArray(data.notices) ? data.notices : notices.map((notice) => notice.id === id ? Object.assign({}, notice, { active }) : notice);
+        render();
+        setStatus((active ? 'Enabled ' : 'Disabled ') + id + '.', 'ok');
+      }
+
+      function addNotice() {
+        notices = collectNotices();
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+        notices.push({
+          id: 'custom-notice-' + stamp,
+          type: 'notification',
+          active: false,
+          title: 'New notice',
+          message: 'Write the message users should see.',
+          ctaLabel: '',
+          ctaUrl: '',
+        });
+        render();
+        setStatus('Added a local notice draft. Edit it, then click Save All.');
+      }
+
+      function collectNotices() {
+        return Array.from(noticeList.querySelectorAll('.notice')).map((node) => ({
+          id: node.querySelector('.id-input').value.trim(),
+          type: node.querySelector('.type-input').value,
+          active: node.querySelector('.active-input').checked,
+          title: node.querySelector('.title-input').value.trim(),
+          message: node.querySelector('.message-input').value.trim(),
+          ctaLabel: node.querySelector('.cta-label-input').value.trim(),
+          ctaUrl: node.querySelector('.cta-url-input').value.trim(),
+        })).filter((notice) => notice.id && notice.type && notice.title && notice.message);
+      }
+
+      function render() {
+        noticeList.textContent = '';
+        if (!notices.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'No notices returned. Deploy the updated Worker, then reload.';
+          noticeList.appendChild(empty);
+          return;
+        }
+        notices.forEach((notice) => noticeList.appendChild(renderNotice(notice)));
+      }
+
+      function renderNotice(notice) {
+        const node = template.content.firstElementChild.cloneNode(true);
+        node.classList.add(notice.type === 'warning' ? 'warning' : 'notification');
+        node.querySelector('.notice-title').textContent = notice.title || notice.id;
+        node.querySelector('.notice-type').textContent = notice.type;
+        const state = node.querySelector('.notice-state');
+        state.textContent = notice.active ? 'active' : 'inactive';
+        state.classList.add(notice.active ? 'on' : 'off');
+        node.querySelector('.notice-id').textContent = notice.id;
+        node.querySelector('.active-input').checked = !!notice.active;
+        node.querySelector('.type-input').value = notice.type || 'notification';
+        node.querySelector('.id-input').value = notice.id || '';
+        node.querySelector('.title-input').value = notice.title || '';
+        node.querySelector('.message-input').value = notice.message || '';
+        node.querySelector('.cta-label-input').value = notice.ctaLabel || '';
+        node.querySelector('.cta-url-input').value = notice.ctaUrl || '';
+        const toggleBtn = node.querySelector('.toggle-one');
+        toggleBtn.textContent = notice.active ? 'Disable' : 'Enable';
+        toggleBtn.addEventListener('click', () => run(() => toggleNotice(notice.id, !notice.active)));
+        node.querySelector('.save-one').addEventListener('click', () => run(saveAll));
+        node.querySelector('.delete-one').addEventListener('click', () => {
+          notices = collectNotices().filter((item) => item.id !== notice.id);
+          render();
+          setStatus('Removed locally. Click Save All to apply this to the Worker.');
+        });
+        return node;
+      }
+
+      async function run(fn) {
+        try {
+          saveSettings();
+          await fn();
+        } catch (err) {
+          setStatus(err && err.message ? err.message : String(err), 'error');
+        }
+      }
+
+      document.getElementById('reloadBtn').addEventListener('click', () => run(loadNotices));
+      document.getElementById('addNoticeBtn').addEventListener('click', addNotice);
+      document.getElementById('saveAllBtn').addEventListener('click', () => run(saveAll));
+      document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+      rememberTokenEl.addEventListener('change', saveSettings);
+
+      readSettings();
+      setStatus('Paste your admin token, then click Reload.');
+    })();
+  </script>
+</body>
+</html>

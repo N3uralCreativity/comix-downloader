@@ -41,7 +41,7 @@
     },
     {
       "matches": ["*://comix.to/*"],
-      "js": ["settings.js", "cdl-features-core.js", "cdl-home-core.js", "cdl-badge-core.js", "content_title.js", "content_features.js", "content_home.js", "content_profile.js"],
+      "js": ["settings.js", "content_notices.js", "cdl-features-core.js", "cdl-home-core.js", "cdl-badge-core.js", "content_title.js", "content_features.js", "content_home.js", "content_profile.js"],
       "run_at": "document_idle"
     },
     {

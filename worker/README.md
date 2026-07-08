@@ -46,3 +46,20 @@ only if it doesn't already exist (never overwrites). All responses are JSON with
 cd worker
 wrangler dev      # serves the Worker locally for the extension's E2E harness
 ```
+
+## Notices admin
+
+The local-only notice dashboard is `worker/notices-admin.html`. Open it from disk in your browser after deploying the current Worker:
+
+```sh
+cd worker
+wrangler deploy
+```
+
+Set the admin token once with:
+
+```sh
+wrangler secret put CDL_NOTICE_ADMIN_TOKEN
+```
+
+Cloudflare only lets you list secret names, not read secret values back. Keep the token in a password manager. The dashboard asks for that token locally and uses `GET /v1/notices?admin=1` plus `PUT /v1/notices` to enable or disable warnings and notifications.
