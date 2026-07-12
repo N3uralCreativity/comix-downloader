@@ -2,7 +2,7 @@
 /**
  * Node unit tests for cdl-comicinfo.js (run: `node tests/comicinfo.test.js`).
  */
-const C = require('../cdl-comicinfo.js');
+const C = require('../core/cdl-comicinfo.js');
 
 let pass = 0, fail = 0;
 function check(name, cond) { if (cond) { pass++; } else { fail++; console.error('FAIL:', name); } }

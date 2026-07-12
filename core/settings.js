@@ -3,10 +3,10 @@
  *
  * Single source of truth for user configuration. Loaded as a plain classic
  * script in FOUR contexts and attaches `globalThis.CDLSettings`:
- *   - Service worker (Chrome): importScripts('settings.js')
+ *   - Service worker (Chrome): importScripts('core/settings.js')
  *   - Service worker (Firefox): listed in background.scripts
  *   - Content script: listed before content_title.js in manifest content_scripts
- *   - popup.html / options.html: <script src="settings.js"></script>
+ *   - legacy/options.html: <script src="../core/settings.js"></script>
  *
  * No DOM / window assumptions. Defaults equal the v1.1.2 hardcoded behavior, so
  * an untouched config reproduces the previous version exactly.

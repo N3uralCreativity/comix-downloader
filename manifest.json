@@ -35,18 +35,18 @@
   "content_scripts": [
     {
       "matches": ["*://comix.to/*"],
-      "js": ["scripts/extract-bridge.js"],
+      "js": ["content/extract-bridge.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
       "matches": ["*://comix.to/*"],
-      "js": ["settings.js", "content_notices.js", "cdl-features-core.js", "cdl-home-core.js", "cdl-badge-core.js", "content_title.js", "content_features.js", "content_home.js", "content_profile.js"],
+      "js": ["core/settings.js", "content/content_notices.js", "core/cdl-features-core.js", "core/cdl-home-core.js", "core/cdl-badge-core.js", "content/content_title.js", "content/content_features.js", "content/content_home.js", "content/content_profile.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["*://comix.to/*"],
-      "js": ["settings.js", "cdl-embed-settings.js"],
+      "js": ["core/settings.js", "content/cdl-embed-settings.js"],
       "run_at": "document_idle"
     }
   ],
@@ -54,12 +54,6 @@
     "page": "legacy/options.html",
     "open_in_tab": true
   },
-  "web_accessible_resources": [
-    {
-      "resources": ["lib/jszip.min.js"],
-      "matches": ["<all_urls>"]
-    }
-  ],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -67,7 +61,7 @@
   },
   "action": {
     "default_title": "Comix Downloader",
-    "default_popup": "popup.html",
+    "default_popup": "popup/popup.html",
     "default_icon": {
       "16":  "icons/icon16.png",
       "48":  "icons/icon48.png",

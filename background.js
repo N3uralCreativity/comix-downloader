@@ -18,16 +18,16 @@ if (typeof importScripts === 'function' && typeof JSZip === 'undefined') {
 // via manifest.background.scripts (jszip, settings, features-core, comicinfo,
 // background — in that order).
 if (typeof importScripts === 'function' && typeof CDLSettings === 'undefined') {
-  importScripts('settings.js');
+  importScripts('core/settings.js');
 }
 
 // Chapter-identity helpers (CDLFeaturesCore) for the downloaded-manifest, and the
 // ComicInfo.xml builder (CDLComicInfo) for CBZ output. Same dual-context pattern.
 if (typeof importScripts === 'function' && typeof CDLFeaturesCore === 'undefined') {
-  importScripts('cdl-features-core.js');
+  importScripts('core/cdl-features-core.js');
 }
 if (typeof importScripts === 'function' && typeof CDLComicInfo === 'undefined') {
-  importScripts('cdl-comicinfo.js');
+  importScripts('core/cdl-comicinfo.js');
 }
 
 'use strict';
@@ -862,7 +862,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // alt="Page N" src="<opaque url>"> in a *virtualized* list; the URLs are opaque
 // and extension-less, so the old "derive 01.webp..NN.webp and enumerate" trick no
 // longer works. Strategies, newest first:
-//   0. The page list captured by scripts/extract-bridge.js from the reader's own
+//   0. The page list captured by content/extract-bridge.js from the reader's own
 //      (decrypted) chapters API — instant and works in a BACKGROUND tab with no
 //      scrolling/rendering. This is the primary path.
 //   A. Re-fetch the raw server HTML and parse every rpage-page__img out of it.
@@ -874,7 +874,7 @@ async function extractChapterImagesFromPage(opts) {
   const aggressive = !!opts.aggressive;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // ── STRATEGY 0: page list captured by scripts/extract-bridge.js ──────────────
+  // ── STRATEGY 0: page list captured by content/extract-bridge.js ──────────────
   // The bridge (document_start, MAIN world) grabs the reader's decrypted chapters
   // API and exposes window.__cdlPages = [{src,index}]. It arrives within ~1s of load
   // regardless of tab focus, so it both fixes background extraction and skips the

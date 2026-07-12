@@ -2140,7 +2140,7 @@ function cdlSyncRoute() {
     }
   } catch (_) {}
 
-  // SPA-aware lifecycle. comix's MAIN-world bridge (scripts/extract-bridge.js) emits
+  // SPA-aware lifecycle. comix's MAIN-world bridge (content/extract-bridge.js) emits
   // `cdl:locationchange` on every pushState/replaceState — Next fires those often with
   // the SAME path (shallow updates), so only re-sync when the path actually changes.
   // (In-page DOM swaps that keep the path are still caught by the MutationObserver.)

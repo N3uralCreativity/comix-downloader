@@ -43,6 +43,6 @@ Update-VersionInFile "docs/welcome.html"       '(class="ver">v)[0-9][0-9.]*(<)' 
 
 # Extension UI version fallbacks (overwritten by JS at runtime, kept in sync for tidiness).
 Update-VersionInFile "legacy/options.html" '(id="ver">v)[0-9][0-9.]*(<)' "options fallback"
-Update-VersionInFile "popup.html"   '(id="ext-version">v)[0-9][0-9.]*(<)' "popup fallback"
+Update-VersionInFile "popup/popup.html" '(id="ext-version">v)[0-9][0-9.]*(<)' "popup fallback"
 
 Write-Host "All files set to version $Version"

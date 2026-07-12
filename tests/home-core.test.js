@@ -7,8 +7,8 @@
  * with `.card__poster-wrap img` (alt=title, srcset), `.card__title[title]`, `.card__ch`,
  * `.card__time`; sections are `section.section` with `h2.section__title`.
  */
-const C = require('../cdl-home-core.js');
-const S = require('../settings.js');
+const C = require('../core/cdl-home-core.js');
+const S = require('../core/settings.js');
 
 let pass = 0, fail = 0;
 function check(name, cond) { if (cond) { pass++; } else { fail++; console.error('FAIL:', name); } }

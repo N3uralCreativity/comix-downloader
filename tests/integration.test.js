@@ -11,7 +11,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const S = require('../settings.js');
+const S = require('../core/settings.js');
 
 const root = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
@@ -34,17 +34,17 @@ check('background.js reads a meaningful number of settings', bgKeys.length >= 15
 bgKeys.forEach((k) => check('background.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
 
 // 2. content_title.js (content script) settings keys
-const ctKeys = refsIn(read('content_title.js'), 'CFG');
+const ctKeys = refsIn(read('content/content_title.js'), 'CFG');
 check('content_title.js reads a meaningful number of settings', ctKeys.length >= 9);
 ctKeys.forEach((k) => check('content_title.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
 
 // 2b. content_features.js (content script) feature-flag keys
-const cfKeys = refsIn(read('content_features.js'), 'cfg');
+const cfKeys = refsIn(read('content/content_features.js'), 'cfg');
 check('content_features.js reads the feature flags', cfKeys.length >= 3);
 cfKeys.forEach((k) => check('content_features.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
 
 // 2c. content_profile.js (tenure badge) keys
-const cpKeys = refsIn(read('content_profile.js'), 'cfg');
+const cpKeys = refsIn(read('content/content_profile.js'), 'cfg');
 cpKeys.forEach((k) => check('content_profile.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
 
 // 3. options.js dependency + preview maps must reference real keys
@@ -78,18 +78,18 @@ check('default chapter folder keeps decimal suffix',
 // 5. manifest wiring sanity
 const mf = JSON.parse(read('manifest.json'));
 check('manifest version is 4.x', /^4\./.test(mf.version));
-const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content_title.js'));
-check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['settings.js', 'content_notices.js', 'cdl-features-core.js', 'cdl-home-core.js', 'cdl-badge-core.js', 'content_title.js', 'content_features.js', 'content_home.js', 'content_profile.js']));
+const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/content_title.js'));
+check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['core/settings.js', 'content/content_notices.js', 'core/cdl-features-core.js', 'core/cdl-home-core.js', 'core/cdl-badge-core.js', 'content/content_title.js', 'content/content_features.js', 'content/content_home.js', 'content/content_profile.js']));
 // The title/features bundle must match ALL of comix.to (not just /title/*) so it
 // is present when a Next.js soft-navigation lands on a title page — otherwise the
 // download buttons only appear after a hard refresh (SPA injection fix).
 check('title content scripts match all of comix.to (SPA soft-nav)', !!mainCs && mainCs.matches.indexOf('*://comix.to/*') !== -1);
-check('remote notices content script is registered', !!mainCs && mainCs.js.indexOf('content_notices.js') !== -1);
-const bridgeCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('scripts/extract-bridge.js'));
+check('remote notices content script is registered', !!mainCs && mainCs.js.indexOf('content/content_notices.js') !== -1);
+const bridgeCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/extract-bridge.js'));
 check('extract-bridge runs at document_start in the MAIN world', !!bridgeCs && bridgeCs.run_at === 'document_start' && bridgeCs.world === 'MAIN');
-const embedCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('cdl-embed-settings.js'));
+const embedCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/cdl-embed-settings.js'));
 check('settings-embed content script is registered on comix.to', !!embedCs && embedCs.matches.indexOf('*://comix.to/*') !== -1);
-check('settings-embed loads the settings module (CDLSettings)', !!embedCs && embedCs.js.indexOf('settings.js') !== -1);
+check('settings-embed loads the settings module (CDLSettings)', !!embedCs && embedCs.js.indexOf('core/settings.js') !== -1);
 check('options_ui points at the archived legacy page', mf.options_ui && mf.options_ui.page === 'legacy/options.html' && mf.options_ui.open_in_tab === true);
 
 // 6. analyzeImageSequence (background.js) — gate of the CDN page-count probe.
