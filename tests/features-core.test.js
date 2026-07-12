@@ -4,7 +4,7 @@
  * Pure logic — no DOM, no chrome shim. Not shipped (build allowlist excludes tests/).
  */
 
-const C = require('../cdl-features-core.js');
+const C = require('../core/cdl-features-core.js');
 const fs = require('fs');
 const path = require('path');
 

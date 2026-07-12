@@ -30,7 +30,7 @@ global.chrome = {
   runtime: {}
 };
 
-const S = require('../settings.js');
+const S = require('../core/settings.js');
 
 let pass = 0, fail = 0;
 function check(name, cond) {

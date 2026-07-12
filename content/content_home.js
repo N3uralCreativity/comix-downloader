@@ -18,7 +18,7 @@
  * (we only hide native nodes via a class, never delete them).
  *
  * Isolated world, loaded after content_features.js, SPA-aware via `cdl:locationchange`
- * (dispatched by the MAIN-world bridge in scripts/extract-bridge.js). Pure parsing lives in
+ * (dispatched by the MAIN-world bridge in content/extract-bridge.js). Pure parsing lives in
  * cdl-home-core.js (CDLHomeCore).
  */
 (function () {

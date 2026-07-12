@@ -1371,7 +1371,7 @@
 
     // SPA-aware: the page type can change without a content-script re-run, so
     // re-apply on every soft navigation + bfcache restore. The `cdl:locationchange`
-    // event is emitted by the MAIN-world bridge in scripts/extract-bridge.js — an
+    // event is emitted by the MAIN-world bridge in content/extract-bridge.js — an
     // isolated-world history patch can't observe the page's own pushState calls.
     // Next fires pushState/replaceState often with the SAME path; only re-apply on a
     // real path change (in-page list changes are handled by the list MutationObserver).

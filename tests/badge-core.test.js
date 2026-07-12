@@ -3,7 +3,7 @@
  * Node unit tests for cdl-badge-core.js (run: `node tests/badge-core.test.js`).
  * Pure logic — no DOM, no chrome, no crypto. Not shipped (build allowlist excludes tests/).
  */
-const C = require('../cdl-badge-core.js');
+const C = require('../core/cdl-badge-core.js');
 
 let pass = 0, fail = 0;
 function check(name, cond) { if (cond) { pass++; } else { fail++; console.error('FAIL:', name); } }
