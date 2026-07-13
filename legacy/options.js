@@ -70,7 +70,7 @@
     naming: 'File and folder names inside the ZIPs.',
     appearance: 'Customize the on-page download buttons and the progress panel.',
     advanced: 'Powerful options that can break downloads or hurt quality. Read each warning.',
-    features: 'Extra tweaks that make comix.to nicer to use — not about downloading. All off by default, so turn on what you like.',
+    features: 'Extra tweaks that make comix.to nicer to use — not about downloading. Ad blocking is on by default; the other features remain opt-in.',
     sync: 'Watch subscribed series for new chapters, and optionally push finished CBZ files to your own media server (Komga / Kavita via a watched folder).',
     about: 'Back up your configuration, and information about the extension.'
   };

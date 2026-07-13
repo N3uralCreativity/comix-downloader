@@ -119,7 +119,7 @@
   <section class="legal-hero">
     <span class="eyebrow">Legal</span>
     <h1>Privacy Policy &amp; Legal Notice</h1>
-    <div class="updated">Last updated: 5 July 2026 · Effective: 5 July 2026</div>
+    <div class="updated">Last updated: 14 July 2026 · Effective: 5 July 2026</div>
     <p class="lede">This document explains how the Comix Downloader browser extension handles information, the browser permissions it uses, and the legal terms that apply to its use. Please read it carefully.</p>
 
     <div class="summary">
@@ -166,7 +166,7 @@
 
       <section id="scope">
         <h2><span class="num">01</span> Who we are &amp; scope</h2>
-        <p>“Comix Downloader” (the “<strong>Extension</strong>”) is a free, open-source browser extension published by <strong>N3uralCreativity</strong> (the “<strong>Developer</strong>”, “we”, “us”). It adds download controls to title pages on the third-party website comix.to so that you can save comic chapters to your own device.</p>
+        <p>“Comix Downloader” (the “<strong>Extension</strong>”) is a free, open-source browser extension published by <strong>N3uralCreativity</strong> (the “<strong>Developer</strong>”, “we”, “us”). It adds download controls to the third-party website comix.to so that you can save comic chapters to your own device, and locally blocks the site's intrusive click ads and popups.</p>
         <p>This Privacy Policy &amp; Legal Notice (the “<strong>Policy</strong>”) applies to the Extension as distributed through the Chrome Web Store, the Mozilla Firefox Add-ons site (AMO), the project's GitHub repository, and any other channel where we publish it. It does <strong>not</strong> apply to comix.to or to any other website, service, or software you may use alongside the Extension.</p>
         <p>By installing or using the Extension, you acknowledge that you have read and understood this Policy.</p>
       </section>
@@ -201,10 +201,11 @@
         </ul>
 
         <h3>b) Data processed transiently (not stored)</h3>
-        <p>While you actively trigger a download, the Extension reads the following in your browser's memory and then discards it once the download completes:</p>
+        <p>The Extension reads the following in your browser's memory only while performing the relevant action, then discards it:</p>
         <ul>
           <li>The web address (URL) and on-page data of the comix.to chapter you ask it to download, in order to locate the page images, and (optionally) public series details shown on the title page (cover, author, description, genres) to write metadata into the saved files.</li>
           <li>The image files themselves, which are fetched from comix.to's image hosts and assembled into a ZIP or CBZ archive entirely within your browser.</li>
+          <li>While ad blocking is enabled, the destination of a clicked link or requested popup, used only to distinguish a link or share action you intentionally opened from an unsolicited ad. These destinations are neither stored nor transmitted by the Extension.</li>
         </ul>
         <p>This transient data is handed to your browser's own download manager to save the resulting file. The Developer never receives any of it.</p>
 

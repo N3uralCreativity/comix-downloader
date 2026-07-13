@@ -87,10 +87,17 @@ check('title content scripts match all of comix.to (SPA soft-nav)', !!mainCs && 
 check('remote notices content script is registered', !!mainCs && mainCs.js.indexOf('content/content_notices.js') !== -1);
 const bridgeCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/extract-bridge.js'));
 check('extract-bridge runs at document_start in the MAIN world', !!bridgeCs && bridgeCs.run_at === 'document_start' && bridgeCs.world === 'MAIN');
+check('ad blocker loads before the bridge in MAIN world', !!bridgeCs && JSON.stringify(bridgeCs.js) === JSON.stringify(['content/adblock-main.js', 'content/extract-bridge.js']));
+const adControlCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/adblock-control.js'));
+check('ad blocker control runs at document_start in isolated world', !!adControlCs && adControlCs.run_at === 'document_start' && !adControlCs.world);
 const embedCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/cdl-embed-settings.js'));
 check('settings-embed content script is registered on comix.to', !!embedCs && embedCs.matches.indexOf('*://comix.to/*') !== -1);
 check('settings-embed loads the settings module (CDLSettings)', !!embedCs && embedCs.js.indexOf('core/settings.js') !== -1);
 check('options_ui points at the archived legacy page', mf.options_ui && mf.options_ui.page === 'legacy/options.html' && mf.options_ui.open_in_tab === true);
+const releaseScript = read('scripts/build-release.ps1');
+check('release packages both ad blocker scripts', releaseScript.includes('content/adblock-main.js') && releaseScript.includes('content/adblock-control.js'));
+const adblockMain = read('content/adblock-main.js');
+check('ad blocker observes cross-world setting changes', adblockMain.includes('new win.MutationObserver(syncState)') && adblockMain.includes('attributeFilter: [STATE_ATTR]'));
 
 // 6. analyzeImageSequence (background.js) — gate of the CDN page-count probe.
 // It must recognize ONLY the enumerator's signature (same base/ext, exactly

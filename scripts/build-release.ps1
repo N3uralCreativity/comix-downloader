@@ -40,6 +40,8 @@ function Copy-ReleaseFiles([string]$Destination) {
     "content/content_home.js",
     "content/content_profile.js",
     "content/cdl-embed-settings.js",
+    "content/adblock-main.js",
+    "content/adblock-control.js",
     "content/extract-bridge.js",
     "core/settings.js",
     "core/cdl-features-core.js",

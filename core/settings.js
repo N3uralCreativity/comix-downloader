@@ -91,7 +91,8 @@
     // Logs
     'logs.maxEntries': 500,                // MAX_LOG_ENTRIES
 
-    // Additional Features (comix.to site enhancements — all OFF by default)
+    // Additional Features (comix.to site enhancements)
+    'features.blockAds': true,             // block injected click ads/popups (on by default)
     'features.dedupeChapters': false,      // hide duplicate chapters in the title list
     'features.enforceChapterOrder': false, // force ascending numeric order in the list
     'features.fixReaderNav': false,        // accurate reader next/prev w/ source switching
@@ -277,6 +278,8 @@
     'logs.maxEntries': { type: 'int', min: 50, max: 2000, risk: 'none',
       label: 'Activity log size', help: 'How many log entries to keep.' },
 
+    'features.blockAds': { type: 'bool', risk: 'none',
+      label: 'Block comix.to ads and popups', help: 'Stops the site\'s intermittent click-anywhere ads, popunders, scripted external tabs, and transparent ad overlays. Enabled by default; turn it off to restore the site\'s native ad behavior.' },
     'features.dedupeChapters': { type: 'bool', risk: 'none',
       label: 'Hide duplicate chapters', help: 'On a title page, show only one row per chapter number (the same chapter from other sources is hidden). Affects only what you see — your downloads are unchanged.' },
     'features.enforceChapterOrder': { type: 'bool', risk: 'none',
@@ -349,7 +352,7 @@
     { id: 'advanced', label: 'Advanced', icon: 'warn',
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
     { id: 'features', label: 'Additional Features', icon: 'sparkles',
-      keys: ['features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'features.prefetchNext', 'features.resumeScroll', 'features.recapOnReturn', 'features.readingStats', 'features.catchupEstimate', 'reader.keyboardShortcuts'] },
+      keys: ['features.blockAds', 'features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'features.prefetchNext', 'features.resumeScroll', 'features.recapOnReturn', 'features.readingStats', 'features.catchupEstimate', 'reader.keyboardShortcuts'] },
     { id: 'home', label: 'Home', icon: 'sparkles',
       keys: ['home.customLayout', 'home.sections', 'home.hero', 'home.heroSource', 'home.heroSkipRead',
         'home.cardStyle', 'home.rows', 'home.density', 'home.showProgress', 'home.itemsPerSection',

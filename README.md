@@ -29,6 +29,8 @@ If the download buttons aren't showing up, just refresh the page. Your browser t
 
 Adds download buttons directly to every comix.to title page. grab a single chapter or the entire series, all neatly zipped and organized.
 
+It also blocks comix.to's intermittent click-anywhere ads, popunders, and transparent ad overlays. Ad blocking is enabled by default and can be turned off under **Settings -> Additional Features**. Normal links and the site's share popup remain available.
+
 ---
 
 ## Download an entire series in one click

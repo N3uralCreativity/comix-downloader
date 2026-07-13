@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Comix Downloader",
   "version": "4.2.6",
-  "description": "Adds a download button to every chapter on comix.to, with a full settings page.",
+  "description": "Downloads comix.to chapters and blocks the site's intrusive click ads and popups.",
   "permissions": [
     "tabs",
     "downloads",
@@ -35,9 +35,14 @@
   "content_scripts": [
     {
       "matches": ["*://comix.to/*"],
-      "js": ["content/extract-bridge.js"],
+      "js": ["content/adblock-main.js", "content/extract-bridge.js"],
       "run_at": "document_start",
       "world": "MAIN"
+    },
+    {
+      "matches": ["*://comix.to/*"],
+      "js": ["content/adblock-control.js"],
+      "run_at": "document_start"
     },
     {
       "matches": ["*://comix.to/*"],
