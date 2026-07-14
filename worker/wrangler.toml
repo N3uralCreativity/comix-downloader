@@ -8,3 +8,20 @@ compatibility_date = "2024-11-01"
 kv_namespaces = [
   { binding = "BADGES", id = "8eebf9a8f2734ebab0efb54b7d94ea36" }
 ]
+
+# Keep the checked-in configuration aligned with the production dashboard.
+# Logs are retained at 100%; distributed traces remain disabled.
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1

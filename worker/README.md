@@ -62,4 +62,6 @@ Set the admin token once with:
 wrangler secret put CDL_NOTICE_ADMIN_TOKEN
 ```
 
-Cloudflare only lets you list secret names, not read secret values back. Keep the token in a password manager. The dashboard asks for that token locally and uses `GET /v1/notices?admin=1` plus `PUT /v1/notices` to enable or disable warnings and notifications.
+Cloudflare only lets you list secret names, not read secret values back. Keep the token in a password manager and never add it to `wrangler.toml` or the repository. The dashboard asks for that token locally and uses `GET /v1/notices?admin=1` plus `PUT /v1/notices` to enable or disable warnings and notifications.
+
+The observability sections in `wrangler.toml` mirror production: persisted invocation logs are enabled at 100% sampling, while traces are disabled. Keep these values in source control so future Wrangler deployments do not silently replace the dashboard settings.
