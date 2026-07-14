@@ -1,0 +1,42 @@
+name: Validate source
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests and Worker validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run JavaScript tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test_file in tests/*.test.js; do
+            node "$test_file"
+          done
+
+      - name: Validate D1 migrations locally
+        run: npx --yes wrangler@4.110.0 d1 migrations apply FLAGS_DB --local --config worker/wrangler.toml
+
+      - name: Bundle the Worker without deploying
+        run: npx --yes wrangler@4.110.0 deploy --dry-run --config worker/wrangler.toml

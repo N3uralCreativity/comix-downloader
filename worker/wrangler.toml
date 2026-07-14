@@ -1,13 +1,34 @@
 name = "comix-downloader-badge"
 main = "worker.js"
-compatibility_date = "2024-11-01"
+compatibility_date = "2026-07-14"
+compatibility_flags = ["nodejs_compat"]
 
-# KV namespace that stores  hashedId -> "YYYY-MM-DD"  (first-seen).
-# Create it once with:  wrangler kv namespace create BADGES
-# then paste the returned id below (replace REPLACE_WITH_KV_ID).
+# KV stores the globally distributed, read-heavy remote notice document.
 kv_namespaces = [
   { binding = "BADGES", id = "8eebf9a8f2734ebab0efb54b7d94ea36" }
 ]
+
+[[d1_databases]]
+binding = "FLAGS_DB"
+database_name = "comix-downloader-community"
+database_id = "e3c1c615-e5c7-4e73-aa58-47097491f429"
+migrations_dir = "migrations"
+
+[[ratelimits]]
+name = "READ_RATE_LIMITER"
+namespace_id = "420271400"
+
+[ratelimits.simple]
+limit = 120
+period = 60
+
+[[ratelimits]]
+name = "WRITE_RATE_LIMITER"
+namespace_id = "420271401"
+
+[ratelimits.simple]
+limit = 30
+period = 60
 
 # Keep the checked-in configuration aligned with the production dashboard.
 # Logs are retained at 100%; distributed traces remain disabled.

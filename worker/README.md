@@ -1,67 +1,88 @@
-# Comix-Downloader badge service (Cloudflare Worker)
+# Comix-Downloader community service
 
-A tiny, free backend for the "Comix-Downloader user · N months" badge shown on comix.to profiles.
-It stores, per user, the date the service **first** heard from them — keyed by an **opaque salted
-hash** of the comix user id (the extension hashes it before sending), with the date **timestamped
-server-side** so it can't be forged. No raw ids, no PII.
+This Cloudflare Worker supports three extension features while storing only opaque hashes produced on the user's device:
 
-Runs comfortably inside Cloudflare's **free** tier (100k requests/day; KV 100k reads + 1k writes/day).
+- first-seen dates for the profile tenure badge;
+- deduplicated chapter quality flags;
+- admin-controlled extension notices.
 
-## Deploy (one time, ~5 minutes)
+D1 stores first-seen records and chapter flags. KV stores the small notice document. No raw comix.to user or chapter identifiers are sent to the service.
 
-1. Create a free Cloudflare account: https://dash.cloudflare.com/sign-up
-2. Install Wrangler and log in:
-   ```sh
-   npm install -g wrangler
-   wrangler login
-   ```
-3. Create the KV namespace and copy the printed `id`:
-   ```sh
-   wrangler kv namespace create BADGES
-   ```
-   Paste that id into `wrangler.toml` (replace `REPLACE_WITH_KV_ID`).
-4. Deploy:
-   ```sh
-   cd worker
-   wrangler deploy
-   ```
-   Wrangler prints your Worker URL, e.g. `https://comix-downloader-badge.<your-subdomain>.workers.dev`.
+## Production resources
 
-5. **Send me that URL.** It gets baked into the extension's `CDL_BADGE_API` constant
-   (`background.js`). Until then the feature is inert (no badges, no network calls).
+The checked-in `wrangler.toml` is the source of truth for the deployed Worker:
 
-## Endpoints
+- Worker: `comix-downloader-badge`
+- D1 binding: `FLAGS_DB` (`comix-downloader-community`)
+- KV binding: `BADGES`
+- read rate-limit binding: `READ_RATE_LIMITER` (120 reads per IP and endpoint per minute)
+- write/admin rate-limit binding: `WRITE_RATE_LIMITER` (30 requests per IP and endpoint per minute)
+- secret: `CDL_NOTICE_ADMIN_TOKEN`
 
-| Method | Path                       | Body / Query                | Response                              |
-|--------|----------------------------|-----------------------------|---------------------------------------|
-| POST   | `/v1/seen`                 | `{"id":"<hash>"}`           | `{"id","first":"YYYY-MM-DD"}`         |
-| GET    | `/v1/seen?ids=h1,h2,…`     | up to 50 hex hashes         | `{"h1":"YYYY-MM-DD","h2":null,…}`     |
+Persisted invocation logs are enabled at 100 percent sampling. Distributed traces remain disabled.
 
-`id` is `sha256(comixHashId + SALT)` (hex), computed by the extension. POST sets the first-seen date
-only if it doesn't already exist (never overwrites). All responses are JSON with permissive CORS.
+## Deploy
 
-## Local test
+Wrangler 4.x is required. From this directory:
 
-```sh
-cd worker
-wrangler dev      # serves the Worker locally for the extension's E2E harness
-```
-
-## Notices admin
-
-The local-only notice dashboard is `worker/notices-admin.html`. Open it from disk in your browser after deploying the current Worker:
-
-```sh
-cd worker
+```powershell
+wrangler login
+wrangler d1 migrations apply FLAGS_DB --remote
 wrangler deploy
 ```
 
-Set the admin token once with:
+Set or rotate the notice dashboard token separately. Never place its value in this repository:
 
-```sh
+```powershell
 wrangler secret put CDL_NOTICE_ADMIN_TOKEN
 ```
 
-Cloudflare only lets you list secret names, not read secret values back. Keep the token in a password manager and never add it to `wrangler.toml` or the repository. The dashboard asks for that token locally and uses `GET /v1/notices?admin=1` plus `PUT /v1/notices` to enable or disable warnings and notifications.
+Cloudflare only exposes the secret name after upload. Store the value in a password manager.
 
-The observability sections in `wrangler.toml` mirror production: persisted invocation logs are enabled at 100% sampling, while traces are disabled. Keep these values in source control so future Wrangler deployments do not silently replace the dashboard settings.
+For a new Cloudflare account, create the backing resources first and replace their IDs in `wrangler.toml`:
+
+```powershell
+wrangler kv namespace create BADGES
+wrangler d1 create comix-downloader-community --location weur
+```
+
+The rate-limit namespace ID is an account-local integer. Use a unique value if this config is deployed into another account.
+
+## Endpoints
+
+| Method | Path | Body or query | Response |
+| --- | --- | --- | --- |
+| `POST` | `/v1/seen` | `{"id":"<hash>"}` | `{"id","first":"YYYY-MM-DD"}` |
+| `GET` | `/v1/seen?ids=h1,h2` | up to 50 hashes | hash-to-date map |
+| `POST` | `/v1/flag` | `{"chapter":"<hash>","user":"<hash>","type":"broken"}` | chapter counts |
+| `GET` | `/v1/flags?ids=h1,h2` | up to 50 chapter hashes | hash-to-count map |
+| `GET` | `/v1/notices` | none | active notices |
+| `GET` | `/v1/notices?admin=1` | bearer token | all notices |
+| `PUT` | `/v1/notices` | bearer token and notice JSON | saved notice state |
+
+Mutation bodies must use `application/json`. Public bodies are limited to 2 KiB and notice updates to 64 KiB. API traffic is rate limited per Cloudflare location, client IP, and endpoint.
+
+## Local validation
+
+Run the committed endpoint tests from the repository root:
+
+```powershell
+node tests/worker.test.js
+```
+
+Validate a deploy without publishing it:
+
+```powershell
+cd worker
+wrangler deploy --dry-run
+wrangler d1 migrations apply FLAGS_DB --local
+wrangler dev
+```
+
+The local-only notice dashboard is `notices-admin.html`. Open it from disk, enter the deployed Worker URL and admin token, then load or save notices. The token is stored only when the dashboard's remember option is enabled.
+
+## Continuous validation and deployment
+
+`.github/workflows/validate.yml` runs every JavaScript test, applies the D1 migration to a local database, and performs a Wrangler dry run on pushes and pull requests. It needs no repository secrets.
+
+To make production deployments automatic, connect the existing Worker to `N3uralCreativity/comix-downloader` under **Workers & Pages > comix-downloader-badge > Settings > Builds**. Use branch `master`, root directory `/worker`, build command `npx wrangler d1 migrations apply FLAGS_DB --remote`, and deploy command `npx wrangler deploy`. Cloudflare must authorize the GitHub repository once before its Builds API can create this connection.
