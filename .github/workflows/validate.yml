@@ -35,6 +35,17 @@ jobs:
             node "$test_file"
           done
 
+      - name: Build all browser packages
+        shell: pwsh
+        run: ./scripts/build-release.ps1
+
+      - name: Validate browser archives
+        shell: pwsh
+        run: ./scripts/validate-release.ps1
+
+      - name: Lint Firefox package
+        run: npx --yes web-ext@10.5.0 lint --source-dir dist/package-work/firefox --warnings-as-errors
+
       - name: Validate D1 migrations locally
         run: npx --yes wrangler@4.110.0 d1 migrations apply FLAGS_DB --local --config worker/wrangler.toml
 

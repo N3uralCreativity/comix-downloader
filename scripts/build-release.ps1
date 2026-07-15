@@ -3,7 +3,7 @@ param(
   [string]$OutputDir = "dist/release",
   [string]$Suffix = "",
   # When supplied (by the release workflow, derived from the tag) this OVERRIDES the
-  # committed manifest version so both browser packages and the zip filenames always
+  # committed manifest version so all browser packages and the zip filenames always
   # match the release. Empty = fall back to the committed manifest.json version.
   [string]$Version = ""
 )
@@ -106,15 +106,26 @@ $manifest.version = $version
 $outputFull = Reset-Directory $OutputDir
 $stagingFull = Reset-Directory "dist/package-work"
 
-$chromeDir = Join-Path $stagingFull "chrome"
+$chromiumTargets = @("chrome", "opera", "chromium")
+$chromiumDirs = [ordered]@{}
+foreach ($target in $chromiumTargets) {
+  $chromiumDirs[$target] = Join-Path $stagingFull $target
+}
 $firefoxDir = Join-Path $stagingFull "firefox"
-New-Item -ItemType Directory -Path $chromeDir, $firefoxDir -Force | Out-Null
+New-Item -ItemType Directory -Path @($chromiumDirs.Values) -Force | Out-Null
+New-Item -ItemType Directory -Path $firefoxDir -Force | Out-Null
 
-Copy-ReleaseFiles $chromeDir
+foreach ($target in $chromiumTargets) {
+  Copy-ReleaseFiles $chromiumDirs[$target]
+}
 Copy-ReleaseFiles $firefoxDir
 
-# Chrome: overwrite the verbatim-copied manifest with the version-stamped one.
-Write-JsonFile $manifest (Join-Path $chromeDir "manifest.json")
+# Chrome, Opera, Brave, Vivaldi, and other Chromium browsers share the
+# same MV3 runtime. Keeping these store packages byte-for-byte equivalent at
+# the file level prevents a platform build from silently losing a feature.
+foreach ($target in $chromiumTargets) {
+  Write-JsonFile $manifest (Join-Path $chromiumDirs[$target] "manifest.json")
+}
 
 $firefoxManifest = $manifest | ConvertTo-Json -Depth 20 | ConvertFrom-Json
 $firefoxManifest.background = [ordered]@{
@@ -139,12 +150,18 @@ $firefoxManifest | Add-Member -NotePropertyName browser_specific_settings -NoteP
 }) -Force
 Write-JsonFile $firefoxManifest (Join-Path $firefoxDir "manifest.json")
 
-$chromeZip = Join-Path $outputFull "comix-downloader-chrome-v$version$Suffix.zip"
 $firefoxZip = Join-Path $outputFull "comix-downloader-firefox-v$version$Suffix.zip"
 
-New-Zip $chromeDir $chromeZip
+$builtAssets = @()
+foreach ($target in $chromiumTargets) {
+  $zip = Join-Path $outputFull "comix-downloader-$target-v$version$Suffix.zip"
+  New-Zip $chromiumDirs[$target] $zip
+  $builtAssets += $zip
+}
 New-Zip $firefoxDir $firefoxZip
+$builtAssets += $firefoxZip
 
 Write-Host "Built release assets:"
-Write-Host " - $chromeZip"
-Write-Host " - $firefoxZip"
+foreach ($asset in $builtAssets) {
+  Write-Host " - $asset"
+}

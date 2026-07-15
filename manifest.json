@@ -3,6 +3,7 @@
   "name": "Comix Downloader",
   "version": "4.2.9",
   "description": "Downloads comix.to chapters and blocks the site's intrusive click ads and popups.",
+  "homepage_url": "https://github.com/N3uralCreativity/comix-downloader",
   "permissions": [
     "tabs",
     "downloads",

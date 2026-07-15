@@ -107,7 +107,7 @@ Or load it unpacked:
 
 ### iOS & iPadOS — via Orion browser
 
-Safari can't run download extensions, but [Orion](https://orionbrowser.com/) (a free WebKit browser by Kagi) can install Chrome and Firefox extensions on iPhone and iPad. Orion's extension support is still in beta, so it's a bit more experimental than desktop.
+Comix Downloader does not currently ship a Safari build. Safari Web Extensions require a separate Apple app, Xcode build, signing, and Apple-platform test pipeline. [Orion](https://orionbrowser.com/) (a free WebKit browser by Kagi) can install Chrome and Firefox extensions on iPhone and iPad, although its extension support is still more experimental than desktop.
 
 1. Install [Orion Browser](https://orionbrowser.com/) (by Kagi) from the App Store.
 2. In Orion: **•••** menu → **Settings** → the **Extensions** group → turn on **Chrome extensions** (and/or Firefox extensions).
@@ -119,6 +119,8 @@ For fully offline reading on mobile, Mihon (Option A) is still the most reliable
 
 ---
 ## PC support
+
+Chrome, Opera, Opera GX, Brave, Vivaldi, Chromium, and Firefox are supported. Every GitHub release contains separately named store packages, and CI verifies that all Chromium packages contain exactly the same runtime files.
 
 ### Firefox
 
@@ -134,10 +136,18 @@ The extension is on the **Chrome Web Store** — one click to install.
 2. Click **Add to Chrome** and confirm the permissions prompt.
 3. Head to any [comix.to](https://comix.to) title page — buttons appear automatically.
 
+### Opera and Opera GX
+
+The release workflow produces `comix-downloader-opera-vX.Y.Z.zip` for Opera Add-ons. Opera and Opera GX can also use the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp).
+
+### Brave, Vivaldi, and other Chromium browsers
+
+Use the Chrome Web Store listing, or the `comix-downloader-chromium-vX.Y.Z.zip` release asset for manual installation. These browsers share the same tested Chromium runtime as the Chrome and Opera packages.
+
 <details>
 <summary>Or install manually (unpacked / developer mode)</summary>
 
-1. [Download this repo](https://github.com/N3uralCreativity/comix-downloader/archive/refs/heads/master.zip) and unzip it
+1. Download the matching browser ZIP from [GitHub Releases](https://github.com/N3uralCreativity/comix-downloader/releases) and unzip it
 2. Open Chrome → go to `chrome://extensions`
 3. Toggle **Developer mode** on (top-right)
 4. Click **Load unpacked** → select the unzipped folder

@@ -96,6 +96,13 @@ check('settings-embed loads the settings module (CDLSettings)', !!embedCs && emb
 check('options_ui points at the archived legacy page', mf.options_ui && mf.options_ui.page === 'legacy/options.html' && mf.options_ui.open_in_tab === true);
 const releaseScript = read('scripts/build-release.ps1');
 check('release packages both ad blocker scripts', releaseScript.includes('content/adblock-main.js') && releaseScript.includes('content/adblock-control.js'));
+check('release emits dedicated Chromium-store packages',
+  ['chrome', 'opera', 'chromium'].every((target) => releaseScript.includes(`"${target}"`)));
+const releaseValidator = read('scripts/validate-release.ps1');
+check('release validator enforces Chromium package parity',
+  releaseValidator.includes('Assert-MapsEqual $referenceMap $targetMap') && releaseValidator.includes("@('chrome', 'opera', 'chromium')"));
+check('release validator audits ZIP contents',
+  releaseValidator.includes('Get-ArchiveFileMap') && releaseValidator.includes('Assert-MapsEqual $stagedMap $archiveMap'));
 const adblockMain = read('content/adblock-main.js');
 check('ad blocker observes cross-world setting changes', adblockMain.includes('new win.MutationObserver(syncState)') && adblockMain.includes('attributeFilter: [STATE_ATTR]'));
 

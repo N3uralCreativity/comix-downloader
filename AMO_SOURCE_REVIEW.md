@@ -1,6 +1,6 @@
 # AMO Source Review Notes
 
-This source package corresponds to Comix Chapter Downloader v1.0.6.
+This source package corresponds to the version declared in `manifest.json` (currently v4.2.9).
 
 ## Build Environment
 
@@ -22,21 +22,21 @@ From the repository root:
 .\scripts\build-release.ps1
 ```
 
-The generated Firefox package is:
+The script copies only the allowlisted extension runtime files into staging directories, generates the Firefox-specific manifest with `background.scripts`, `browser_specific_settings.gecko`, and `browser_specific_settings.gecko_android`, then creates the Firefox package and matching Chromium-store packages. No source file is transformed.
+
+For the current source version, the generated package is:
 
 ```text
-dist/release/comix-downloader-firefox-v1.0.6.zip
+dist/release/comix-downloader-firefox-v4.2.9.zip
 ```
-
-The script copies the extension runtime files into a staging directory, generates the Firefox-specific manifest with `background.scripts`, `browser_specific_settings.gecko`, and `browser_specific_settings.gecko_android`, then creates the Chrome and Firefox release ZIP files.
 
 ## Validation
 
 The Firefox package was validated with:
 
 ```powershell
-$env:NODE_OPTIONS='--use-system-ca'
-npx --yes web-ext@latest lint --source-dir dist/package-work/firefox
+./scripts/validate-release.ps1
+npx --yes web-ext@10.5.0 lint --source-dir dist/package-work/firefox --warnings-as-errors
 ```
 
 Validation result:

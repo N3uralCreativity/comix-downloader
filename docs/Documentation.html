@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Documentation — Comix Downloader</title>
-<meta name="description" content="How to install and use Comix Downloader on Firefox, Chrome and Android — plus CBZ/ComicInfo export, library-server push, settings, and troubleshooting.">
+<meta name="description" content="How to install and use Comix Downloader on Firefox, Chrome, Opera and Android — plus CBZ/ComicInfo export, library-server push, settings, and troubleshooting.">
 <meta name="theme-color" content="#774fd0">
 <link rel="canonical" href="https://n3uralcreativity.github.io/comix-downloader/Documentation.html">
 
@@ -12,7 +12,7 @@
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="Comix Downloader">
 <meta property="og:title" content="Documentation — Comix Downloader">
-<meta property="og:description" content="How to install and use Comix Downloader on Firefox, Chrome and Android — plus CBZ/ComicInfo export, library-server push, settings, and troubleshooting.">
+<meta property="og:description" content="How to install and use Comix Downloader on Firefox, Chrome, Opera and Android — plus CBZ/ComicInfo export, library-server push, settings, and troubleshooting.">
 <meta property="og:url" content="https://n3uralcreativity.github.io/comix-downloader/Documentation.html">
 <meta property="og:image" content="https://n3uralcreativity.github.io/comix-downloader/assets/screenshot-title.jpg">
 <meta property="og:image:width" content="1125">
@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="Comix Downloader on a comix.to title page">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Documentation — Comix Downloader">
-<meta name="twitter:description" content="How to install and use Comix Downloader on Firefox, Chrome and Android — plus CBZ/ComicInfo export, library-server push, settings, and troubleshooting.">
+<meta name="twitter:description" content="How to install and use Comix Downloader on Firefox, Chrome, Opera and Android — plus CBZ/ComicInfo export, library-server push, settings, and troubleshooting.">
 <meta name="twitter:image" content="https://n3uralcreativity.github.io/comix-downloader/assets/screenshot-title.jpg">
 <meta name="twitter:image:alt" content="Comix Downloader on a comix.to title page">
 <link rel="icon" type="image/png" href="assets/icon128.png?v=2">
@@ -258,6 +258,7 @@
       <a href="#install">Install</a>
       <a href="#firefox" class="sub">— Firefox</a>
       <a href="#chrome" class="sub">— Chrome</a>
+      <a href="#opera" class="sub">— Opera</a>
       <a href="#linux" class="sub">— Linux</a>
       <a href="#android" class="sub">— Android</a>
       <a href="#ios" class="sub">— iOS &amp; iPadOS</a>
@@ -297,7 +298,7 @@
     <!-- install -->
     <section class="doc-sec" id="install">
       <h2>Install</h2>
-      <p>The fastest paths are the signed Firefox add-on and the Chrome Web Store listing — both one click. Android and iOS take a couple of extra steps, covered below.</p>
+      <p>The signed Firefox add-on and Chrome Web Store listing are the current one-click installs. A dedicated, parity-checked Opera package is also produced with every release.</p>
 
       <h3 id="firefox">Firefox (desktop)</h3>
       <p>The extension is published and signed on Mozilla Add-ons — one click to install.</p>
@@ -308,17 +309,20 @@
       </ol>
 
       <h3 id="chrome">Chrome (desktop)</h3>
-      <p>The extension is published and reviewed on the Chrome Web Store — one click to install. It also works in any Chromium browser (Edge, Brave, Opera, Vivaldi).</p>
+      <p>The extension is published and reviewed on the Chrome Web Store — one click to install. The same tested Chromium runtime powers the Opera, Brave, and Vivaldi builds.</p>
       <ol class="steps">
         <li>Open the listing on the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener"><strong>Chrome Web Store</strong></a>.</li>
         <li>Click <strong>Add to Chrome</strong> and confirm the permissions prompt.</li>
         <li>Visit any <strong>comix.to</strong> title page — the buttons appear automatically.</li>
       </ol>
 
+      <h3 id="opera">Opera and Opera GX</h3>
+      <p>Every GitHub release includes an `opera` ZIP prepared for Opera Add-ons. Until that listing is published, Opera can install the Chrome Web Store version directly. Brave and Vivaldi use the Chrome listing as well.</p>
+
       <p style="margin-top:22px;">Prefer to run it from source, or want the latest unreleased build? Install it unpacked in developer mode:</p>
       <ol class="steps">
-        <li><a href="https://github.com/N3uralCreativity/comix-downloader/archive/refs/heads/master.zip" target="_blank" rel="noopener"><strong>Download the repo ZIP</strong></a> and unzip it.</li>
-        <li>Open Chrome and go to <code>chrome://extensions</code>.</li>
+        <li>Download and extract the matching package from <a href="https://github.com/N3uralCreativity/comix-downloader/releases" target="_blank" rel="noopener"><strong>GitHub Releases</strong></a>.</li>
+        <li>Open <code>chrome://extensions</code> or <code>opera://extensions</code>.</li>
         <li>Toggle <strong>Developer mode</strong> on (top-right).</li>
         <li>Click <strong>Load unpacked</strong> and select the unzipped folder.</li>
         <li>Head to any comix.to title page — buttons appear automatically.</li>
@@ -377,7 +381,7 @@
         <li>Open the <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">Firefox add-on</a> and click <strong>Add to Firefox</strong> — or, in Chrome / any Chromium browser, the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome Web Store listing</a> and <strong>Add to Chrome</strong>.</li>
         <li>Visit any comix.to title page — the buttons appear automatically.</li>
       </ol>
-      <p style="font-size:13.5px;color:var(--muted);">Prefer the open-source <strong>Chromium</strong> instead of Google Chrome? Install <code>chromium</code> (Fedora, Arch, openSUSE, Void, Alpine), <code>chromium-browser</code> (older Ubuntu/Debian), or <code>org.chromium.Chromium</code> from Flathub. Any Chromium-based browser (Brave, Vivaldi, Edge) works too — add the extension from the Chrome Web Store.</p>
+      <p style="font-size:13.5px;color:var(--muted);">Prefer the open-source <strong>Chromium</strong> instead of Google Chrome? Install <code>chromium</code> (Fedora, Arch, openSUSE, Void, Alpine), <code>chromium-browser</code> (older Ubuntu/Debian), or <code>org.chromium.Chromium</code> from Flathub. Brave and Vivaldi work too — add the extension from the Chrome Web Store.</p>
 
       <h3 id="android">Android</h3>
       <p>There are three ways to read on Android, depending on what you want.</p>
@@ -410,7 +414,7 @@
       </ol>
 
       <h3 id="ios">iOS &amp; iPadOS (Orion browser)</h3>
-      <p>iOS Safari can't run download extensions, but <a href="https://orionbrowser.com/" target="_blank" rel="noopener"><strong>Orion</strong></a> — a free WebKit browser by Kagi — installs Chrome and Firefox extensions on iPhone and iPad. Orion's extension support is still in beta, so treat this as experimental: the in-page buttons work, but some advanced download behaviour may be limited by Apple's platform restrictions.</p>
+      <p>Comix Downloader does not currently ship a Safari build because Safari Web Extensions require a separate Apple app, Xcode build, signing, and Apple-platform test pipeline. <a href="https://orionbrowser.com/" target="_blank" rel="noopener"><strong>Orion</strong></a> — a free WebKit browser by Kagi — installs Chrome and Firefox extensions on iPhone and iPad. Treat Orion support as experimental: the in-page buttons work, but some advanced download behaviour may be limited by Apple's platform restrictions.</p>
       <ol class="steps">
         <li>Install <a href="https://orionbrowser.com/" target="_blank" rel="noopener"><strong>Orion Browser</strong></a> (by Kagi) from the App Store.</li>
         <li>In Orion, open the <strong>•••</strong> menu → <strong>Settings</strong> → the <strong>Extensions</strong> group, and turn on <strong>Chrome extensions</strong> (and/or Firefox extensions).</li>
@@ -688,7 +692,7 @@
       <details>
         <summary>Is there an iOS version?</summary>
         <div class="ans">
-          <p>Yes — through the <a href="https://orionbrowser.com/" target="_blank" rel="noopener">Orion</a> browser (by Kagi), which can install Chrome and Firefox extensions on iPhone and iPad. Safari itself still can't run download extensions, so install Comix Downloader in Orion instead — see the <a href="#ios">iOS &amp; iPadOS</a> steps above. Orion's extension support is in beta, so it's a bit more experimental than desktop; for fully offline reading on mobile, Mihon is still the most reliable option.</p>
+          <p>Yes — through the <a href="https://orionbrowser.com/" target="_blank" rel="noopener">Orion</a> browser (by Kagi), which can install Chrome and Firefox extensions on iPhone and iPad. This project does not currently ship the separately packaged and signed app required for Safari, so install Comix Downloader in Orion instead — see the <a href="#ios">iOS &amp; iPadOS</a> steps above. Orion's extension support is more experimental than desktop; for fully offline reading on mobile, Mihon is still the most reliable option.</p>
         </div>
       </details>
 

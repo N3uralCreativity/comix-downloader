@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   browser:
-    name: Package browser ZIPs
+    name: Package and validate browser ZIPs
     runs-on: windows-latest
 
     steps:
@@ -18,7 +18,13 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name }}
 
-      - name: Build Chrome and Firefox ZIPs
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+
+      - name: Build browser ZIPs
+        id: package
         shell: pwsh
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
@@ -30,6 +36,15 @@ jobs:
           # "v2.3.10 (BIS)", v2.3.10-beta, …) all resolve to a clean version.
           $version = [regex]::Match($tag, '\d+(\.\d+){1,3}').Value
           ./scripts/build-release.ps1 -Version $version -Suffix $suffix
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "suffix=$suffix" >> $env:GITHUB_OUTPUT
+
+      - name: Validate every browser archive
+        shell: pwsh
+        run: ./scripts/validate-release.ps1 -Version "${{ steps.package.outputs.version }}" -Suffix "${{ steps.package.outputs.suffix }}"
+
+      - name: Lint Firefox package
+        run: npx --yes web-ext@10.5.0 lint --source-dir dist/package-work/firefox --warnings-as-errors
 
       - name: Upload ZIPs to release
         shell: pwsh
