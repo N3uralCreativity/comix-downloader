@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Comix Downloader",
-  "version": "4.2.8",
+  "version": "4.2.9",
   "description": "Downloads comix.to chapters and blocks the site's intrusive click ads and popups.",
   "permissions": [
     "tabs",
