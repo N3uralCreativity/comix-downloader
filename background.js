@@ -175,8 +175,8 @@ const _IS_FIREFOX = typeof browser !== 'undefined';
 /** Map { tabId (chapitre) → { chapterUrl, zipName, originTabId } } */
 const pendingDownloads = new Map();
 
-/** File d'attente pour éviter les ZIP simultanés */
-let isDownloading = false;
+/** Bounded queue for independent single-chapter ZIP/CBZ downloads. */
+let activeChapterDownloads = 0;
 const downloadQueue = [];
 
 /** Flag d'annulation du téléchargement groupé */
@@ -213,6 +213,11 @@ const ZIP_PART_MAX_CHAPTERS = 5;
 const ZIP_PART_MAX_BYTES = 300 * 1024 * 1024;
 const DOWNLOAD_ALL_LOG_LIMIT = 150;
 const DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS = 2 * 60 * 1000;
+
+function chapterConcurrencyLimit(cfg) {
+  const value = parseInt(cfg && cfg['download.concurrentChapters'], 10);
+  return Number.isFinite(value) ? Math.max(1, Math.min(10, value)) : 2;
+}
 
 // Keep the activity-log cap in sync with user settings (cheap, read often), and
 // keep the subscribe alarm aligned with subscribe.enabled / interval changes.
@@ -1404,24 +1409,37 @@ async function verifyEnumeratedImages(images, label) {
 
 function scheduleDownload(payload) {
   downloadQueue.push(payload);
-  if (!isDownloading) processDownloadQueue();
+  notifyTab(payload.originTabId, {
+    action: 'downloadProgress',
+    chapterUrl: payload.chapterUrl,
+    current: 0,
+    total: payload.images.length,
+  });
+  processDownloadQueue();
 }
 
 function processDownloadQueue() {
-  if (downloadQueue.length === 0) { isDownloading = false; return; }
-  isDownloading = true;
-  const payload = downloadQueue.shift();
-  downloadImagesAsZip(payload)
-    .catch((err) => {
-      console.error('[ComixDL] ZIP error:', err);
-      cdlLog('error', `ZIP error (${payload.zipName}): ${err.message}`);
-      notifyTab(payload.originTabId, {
-        action: 'downloadError',
-        chapterUrl: payload.chapterUrl,
-        error: err.message || 'Erreur inconnue',
+  while (downloadQueue.length > 0) {
+    const payload = downloadQueue[0];
+    if (activeChapterDownloads >= chapterConcurrencyLimit(payload.cfg)) return;
+
+    downloadQueue.shift();
+    activeChapterDownloads++;
+    downloadImagesAsZip(payload)
+      .catch((err) => {
+        console.error('[ComixDL] ZIP error:', err);
+        cdlLog('error', `ZIP error (${payload.zipName}): ${err.message}`);
+        notifyTab(payload.originTabId, {
+          action: 'downloadError',
+          chapterUrl: payload.chapterUrl,
+          error: err.message || 'Erreur inconnue',
+        });
+      })
+      .finally(() => {
+        activeChapterDownloads = Math.max(0, activeChapterDownloads - 1);
+        processDownloadQueue();
       });
-    })
-    .finally(() => processDownloadQueue());
+  }
 }
 
 // ── Téléchargement + création du ZIP ─────────────────────────────────────────
@@ -2108,7 +2126,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     const libCfg = await getLibraryConfig();
     if (libCfg && libCfg.enabled && /^https?:\/\//i.test(libCfg.endpoint || '')) opts.pushLib = libCfg;
   }
-  const concurrency = Math.max(1, Math.min(10, parseInt(cfg['download.concurrentChapters'], 10) || 2));
+  const concurrency = chapterConcurrencyLimit(cfg);
   const batchSize = cfg['perf.batchSize'] || BATCH_SIZE;
   const padDigits = cfg['naming.imagePadDigits'] || 3;
   const imageRetries = cfg['retry.imageRetries'] || 0;

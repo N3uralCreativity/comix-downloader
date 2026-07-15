@@ -162,8 +162,8 @@
       label: 'Max size per part (MB)', help: 'Start a new ZIP part after this size.',
       warn: 'Parts larger than ~800 MB may strain memory while the ZIP is being built.' },
     'download.concurrentChapters': { type: 'int', min: 1, max: 10, risk: 'risky',
-      label: 'Chapters at once', help: 'How many chapters "Download All" fetches at the same time (it opens that many background tabs at once). The default is 2 — a gentle pace that is easy on the site; raise it to download faster (the new reader is slow per chapter), but higher is more aggressive. 1 = one chapter at a time. Up to 10.',
-      warn: 'This multiplies how hard the extension hits comix.to (more open tabs AND more image requests at once). Higher values are faster but far more aggressive and can get your IP temporarily blocked by the site (usually a few minutes up to about an hour, occasionally longer if you keep pushing); while blocked, pages or whole chapters can fail. If you push this high, keep "Parallel image downloads" low and leave rate limiting on.' },
+      label: 'Chapters at once', help: 'How many chapters can download at the same time. This applies to "Download All" and to separate chapter buttons. The default is 2; raise it to download faster, or use 1 to process chapters one at a time. Up to 10.',
+      warn: 'This multiplies how hard the extension hits comix.to by opening more background tabs and making more image requests at once. Higher values are faster but more aggressive and can get your IP temporarily blocked by the site. While blocked, pages or whole chapters can fail. If you raise this value, keep "Parallel image downloads" low and leave rate limiting on.' },
     'download.skipDownloaded': { type: 'bool', risk: 'none',
       label: 'Skip already-downloaded', help: 'In "Download All", default to only the chapters you have not downloaded yet. You can still choose "All" in the panel to re-download everything.' },
 

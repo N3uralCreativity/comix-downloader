@@ -44,6 +44,7 @@ Hit **Download All** on any title page. Every chapter is downloaded, packaged in
 ## Or pick individual chapters
 
 Each chapter gets its own download button right in the list.
+Multiple chapter downloads can run at the same time. The **Chapters at once** setting controls the limit for both individual downloads and **Download All**.
 
 ![Per-chapter download buttons](assets/screenshot-chapters.png)
 
