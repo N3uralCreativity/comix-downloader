@@ -709,12 +709,12 @@
       }, 250);
     };
     prefetchState.onScroll = onScroll;
-    window.addEventListener('scroll', onScroll, { passive: true });
+    addReaderScrollListener(onScroll);
     if (nearChapterEnd()) doPrefetch(); // short chapter / already scrolled down
   }
   function stopPrefetch() {
     if (!prefetchState) return;
-    if (prefetchState.onScroll) { try { window.removeEventListener('scroll', prefetchState.onScroll); } catch (e) {} }
+    if (prefetchState.onScroll) removeReaderScrollListener(prefetchState.onScroll);
     if (prefetchState.scrollTimer) clearTimeout(prefetchState.scrollTimer);
     prefetchState = null;
   }
@@ -783,8 +783,60 @@
   var RESUME_MAX = 300;        // cap stored chapters (evict oldest by timestamp)
   var RESUME_MIN_FRAC = 0.02;  // ignore trivially-near-top positions (and clear on scroll-to-top)
 
-  function scrollMax() { return Math.max(1, (document.documentElement.scrollHeight || 0) - window.innerHeight); }
-  function scrollFrac() { return Math.min(1, Math.max(0, window.scrollY / scrollMax())); }
+  function readerScrollElement() {
+    var preferred = document.querySelector('main.rpage-main, .rpage-main');
+    if (preferred && preferred.scrollHeight > preferred.clientHeight + 40) return preferred;
+
+    // Keep working if comix.to renames the reader class: walk from a rendered page
+    // to the first genuinely scrollable ancestor, matching the extraction logic.
+    var node = document.querySelector('[data-page], ' + PAGE_IMG_SEL);
+    while (node && node !== document.body && node !== document.documentElement) {
+      var style = null;
+      try { style = window.getComputedStyle(node); } catch (e) {}
+      if (node.scrollHeight > node.clientHeight + 40 && (!style || /(auto|scroll)/.test(style.overflowY || ''))) return node;
+      node = node.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+
+  function isRootScrollElement(node) {
+    return node === document.scrollingElement || node === document.documentElement || node === document.body;
+  }
+
+  function readerScrollMetrics() {
+    var node = readerScrollElement();
+    var root = isRootScrollElement(node);
+    var viewport = Math.max(1, root ? window.innerHeight : (node.clientHeight || window.innerHeight));
+    var top = root ? Math.max(window.scrollY || 0, node.scrollTop || 0) : (node.scrollTop || 0);
+    var height = node.scrollHeight || 0;
+    if (root) height = Math.max(height, document.documentElement.scrollHeight || 0, document.body ? document.body.scrollHeight || 0 : 0);
+    return { node: node, root: root, top: top, viewport: viewport, max: Math.max(1, height - viewport) };
+  }
+
+  function addReaderScrollListener(listener) {
+    try { window.addEventListener('scroll', listener, { passive: true }); } catch (e) {}
+    // Element scroll events do not bubble, but they do pass through capture. This
+    // also survives the reader replacing its scroll container during a mode change.
+    try { document.addEventListener('scroll', listener, { passive: true, capture: true }); } catch (e) {}
+  }
+
+  function removeReaderScrollListener(listener) {
+    try { window.removeEventListener('scroll', listener); } catch (e) {}
+    try { document.removeEventListener('scroll', listener, true); } catch (e) {}
+  }
+
+  function setReaderScrollTop(top) {
+    var metrics = readerScrollMetrics();
+    var target = Math.max(0, Math.min(metrics.max, Math.round(top || 0)));
+    if (metrics.root) window.scrollTo(0, target);
+    else metrics.node.scrollTop = target;
+  }
+
+  function scrollMax() { return readerScrollMetrics().max; }
+  function scrollFrac() {
+    var metrics = readerScrollMetrics();
+    return Math.min(1, Math.max(0, metrics.top / metrics.max));
+  }
   // The page currently at the top of the viewport + how far into it we've scrolled (0..1).
   function currentPageInfo() {
     var els = document.querySelectorAll('[data-page]');
@@ -809,7 +861,7 @@
       resumeState.saveTimer = setTimeout(function () { if (resumeState) { resumeState.saveTimer = null; saveResume(); } }, 400);
     };
     resumeState.onScroll = onScroll;
-    window.addEventListener('scroll', onScroll, { passive: true });
+    addReaderScrollListener(onScroll);
     if (!id) { resumeState.restored = true; return; }
     try {
       chrome.storage.local.get(RESUME_KEY, function (r) {
@@ -823,12 +875,17 @@
 
   function scrollToSaved(saved) {
     var target = null;
+    var metrics = readerScrollMetrics();
     if (saved.page != null) {
       var el = document.querySelector('[data-page="' + saved.page + '"]');
-      if (el) { var r = el.getBoundingClientRect(); target = window.scrollY + r.top + (saved.intra || 0) * r.height; }
+      if (el) {
+        var r = el.getBoundingClientRect();
+        var viewportTop = metrics.root ? 0 : metrics.node.getBoundingClientRect().top;
+        target = metrics.top + (r.top - viewportTop) + (saved.intra || 0) * r.height;
+      }
     }
     if (target == null) target = (saved.frac || 0) * scrollMax();
-    window.scrollTo(0, Math.max(0, Math.round(target)));
+    setReaderScrollTop(target);
   }
 
   function tryRestore(saved) {
@@ -872,7 +929,7 @@
 
   function stopResume() {
     if (!resumeState) return;
-    if (resumeState.onScroll) { try { window.removeEventListener('scroll', resumeState.onScroll); } catch (e) {} }
+    if (resumeState.onScroll) removeReaderScrollListener(resumeState.onScroll);
     if (resumeState.saveTimer) clearTimeout(resumeState.saveTimer);
     if (resumeState.restoreTimer) clearTimeout(resumeState.restoreTimer);
     resumeState = null;
@@ -1026,11 +1083,11 @@
   // How far through the chapter you are, but robust to the reader not having laid out yet
   // (a short scrollHeight makes the plain ratio read ~1 at the top of a fresh page).
   function chapterFrac() {
-    var mx = scrollMax();
-    if (mx > window.innerHeight) return scrollFrac(); // long strip: the ratio is meaningful
+    var metrics = readerScrollMetrics();
+    if (metrics.max > metrics.viewport) return Math.min(1, Math.max(0, metrics.top / metrics.max));
     // Short (or not-yet-grown) documents: only trust "finished" when truly at the bottom
     // of real, rendered chapter content.
-    if (mx > 40 && window.scrollY >= mx - 20 && document.querySelector(PAGE_IMG_SEL)) return 1;
+    if (metrics.max > 40 && metrics.top >= metrics.max - 20 && document.querySelector(PAGE_IMG_SEL)) return 1;
     return 0;
   }
 
@@ -1045,7 +1102,8 @@
       active: 0, total: 0, credited: false, lastAct: Date.now(), maxFrac: 0, tick: null, onAct: null, onHide: null };
     var onAct = function () { if (readTrack) readTrack.lastAct = Date.now(); };
     readTrack.onAct = onAct;
-    ['scroll', 'keydown', 'pointerdown', 'wheel'].forEach(function (ev) { window.addEventListener(ev, onAct, { passive: true }); });
+    addReaderScrollListener(onAct);
+    ['keydown', 'pointerdown', 'wheel'].forEach(function (ev) { window.addEventListener(ev, onAct, { passive: true }); });
     var onHide = function () { if (readTrack && document.visibilityState === 'hidden') flushReadTrack(); };
     readTrack.onHide = onHide;
     document.addEventListener('visibilitychange', onHide);
@@ -1055,9 +1113,11 @@
         readTrack.active += TRACK_TICK_SECS;
         var f = chapterFrac();
         if (f > readTrack.maxFrac) readTrack.maxFrac = f;
+        var reachedEnd = !readTrack.credited && readTrack.total + readTrack.active >= TRACK_MIN_SECS && readTrack.maxFrac >= TRACK_FINISH_FRAC;
         // Flush every 30 active seconds: a full-page navigation kills this script without
-        // warning, so long sessions must not sit only in memory.
-        if (readTrack.active >= TRACK_MIN_SECS) flushReadTrack();
+        // warning, so long sessions must not sit only in memory. Also flush as soon as
+        // the finish threshold is crossed, instead of risking a route change first.
+        if (reachedEnd || readTrack.active >= TRACK_MIN_SECS) flushReadTrack();
       }
     }, TRACK_TICK_SECS * 1000);
   }
@@ -1066,11 +1126,15 @@
   // A chapter is credited as "finished" (and teaches the pace) at most ONCE per open.
   function flushReadTrack() {
     if (!readTrack) return;
+    var currentFrac = chapterFrac();
+    if (currentFrac > readTrack.maxFrac) readTrack.maxFrac = currentFrac;
     var secs = Math.min(readTrack.active, TRACK_MAX_SECS);
-    if (secs < TRACK_TICK_SECS) return; // nothing meaningful happened
     readTrack.active = 0;
     readTrack.total = Math.min(readTrack.total + secs, TRACK_MAX_SECS);
     var finished = !readTrack.credited && readTrack.total >= TRACK_MIN_SECS && readTrack.maxFrac >= TRACK_FINISH_FRAC;
+    // A final route/visibility flush can happen between five-second ticks. It may
+    // carry no new seconds but must still preserve a newly observed completion.
+    if (secs < TRACK_TICK_SECS && !finished) return;
     if (finished) readTrack.credited = true;
     var sample = { ts: Date.now(), slug: readTrack.slug, name: readTrack.name, seconds: secs,
       finished: finished, paceSecs: finished ? readTrack.total : 0 };
@@ -1087,7 +1151,10 @@
     flushReadTrack();
     if (readTrack.tick) clearInterval(readTrack.tick);
     var onAct = readTrack.onAct;
-    if (onAct) ['scroll', 'keydown', 'pointerdown', 'wheel'].forEach(function (ev) { try { window.removeEventListener(ev, onAct); } catch (e) {} });
+    if (onAct) {
+      removeReaderScrollListener(onAct);
+      ['keydown', 'pointerdown', 'wheel'].forEach(function (ev) { try { window.removeEventListener(ev, onAct); } catch (e) {} });
+    }
     if (readTrack.onHide) { try { document.removeEventListener('visibilitychange', readTrack.onHide); } catch (e) {} }
     readTrack = null;
   }
