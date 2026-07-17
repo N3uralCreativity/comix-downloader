@@ -87,13 +87,16 @@ Follow every step in order:
    ```
    https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json
    ```
-3. **Install the Comix extension.** Open the **Browse** tab (bottom bar) → **Extensions**. Under a heading like *Comix Mihon Extensions*, find **Comix** and tap **Install**. If Android blocks it, allow *"install unknown apps"* for Mihon and try again.
-4. **Open the Comix catalogue.** Still in **Browse**, tap **Comix** in your list of sources. You should now see comix titles loading **inside Mihon** — that's how you know it's working. Use the search icon to find a specific series.
-5. **Add a title to your library** (optional but recommended) so Mihon tracks new chapters — open a title and tap **Add to library**.
-6. **Download.** Open a title → **⋮** menu → **Download** → **All** / **Next** / **Unread** / **custom range**. For one chapter, long-press its row or tap its download arrow. Track progress under **More → Download queue**.
-7. **Read offline.** Downloaded chapters open instantly in Mihon's reader with no connection needed.
+3. **Turn on 18+ sources — required, don't skip.** Still on the **Settings → Browse** screen, enable **Show NSFW sources** (18+). Comix is flagged 18+, so with this **off** it installs fine but stays **completely hidden from your Sources list** — this is the usual reason people install it and then can't find it.
+4. **Install the Comix extension.** Open the **Browse** tab (bottom bar) → **Extensions**. Under a heading like *Comix Mihon Extensions*, find **Comix** and tap **Install**. If Android blocks it, allow *"install unknown apps"* for Mihon and try again.
+5. **Open the Comix catalogue.** Go to the **Browse** tab and tap **Comix** under **Sources** (that's the tab where you actually browse — not the Extensions sub-tab). You should now see comix titles loading **inside Mihon** — that's how you know it's working. Use the search icon to find a specific series.
+6. **Add a title to your library** (optional but recommended) so Mihon tracks new chapters — open a title and tap **Add to library**.
+7. **Download.** Open a title → **⋮** menu → **Download** → **All** / **Next** / **Unread** / **custom range**. For one chapter, long-press its row or tap its download arrow. Track progress under **More → Download queue**.
+8. **Read offline.** Downloaded chapters open instantly in Mihon's reader with no connection needed.
 
 Mihon fetches new versions automatically whenever a new release is published here — no reinstalling.
+
+> **Installed Comix but it never shows under Sources?** That's almost always the 18+ filter (step 3). Comix is NSFW-flagged, so Mihon installs it and lists it under *Extensions* but hides it from **Browse → Sources** until **Settings → Browse → Show NSFW sources** is on. Turn it on and Comix appears in Sources right away.
 
 #### Manual APK install (one-off)
 
