@@ -85,6 +85,7 @@
     border-radius: var(--radius-sm);
     font-size: 14.5px;
     color: var(--ink-soft);
+    min-width: 0;
   }
   ol.steps li::before {
     content: counter(s);
@@ -110,6 +111,9 @@
   }
   pre .c { color: oklch(62% 0.03 290); }
   pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+  /* Long, unbreakable strings (e.g. the repo URL) inside a step must wrap
+     instead of forcing the grid item — and the page — wider than the screen. */
+  ol.steps li pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
   ul.plain { list-style: none; display: grid; gap: 9px; margin: 6px 0 14px; }
   ul.plain li { position: relative; padding-left: 29px; font-size: 14.5px; color: var(--ink-soft); }
@@ -155,7 +159,7 @@
 
   /* command box + click-to-copy (revealed on hover, unobtrusive) */
   .cmd-box { position: relative; margin: 12px 0 0; }
-  .cmd-box pre { margin: 0; }
+  .cmd-box pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .cmd-copy {
     position: absolute; top: 7px; right: 7px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -223,6 +227,11 @@
     .doc-wrap { grid-template-columns: 1fr; gap: 0; }
     .toc { display: none; }
     .anchor-cards { grid-template-columns: 1fr; }
+  }
+  /* Very small phones: shrink the display heading so a long single word
+     (e.g. "Documentation") can't push the page wider than the screen. */
+  @media (max-width: 380px) {
+    .doc-main h1 { font-size: 30px; }
   }
 </style>
 </head>

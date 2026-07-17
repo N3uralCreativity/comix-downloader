@@ -257,7 +257,7 @@ img { display: block; max-width: 100%; }
 }
 .footer-inner .brand { font-size: 15px; }
 .footer-inner .sep { color: var(--line-strong); }
-.footer-inner .right { margin-left: auto; display: flex; gap: 18px; align-items: center; }
+.footer-inner .right { margin-left: auto; display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
 .footer-inner a { color: var(--ink-soft); font-weight: 500; }
 .footer-inner a:hover { color: var(--accent); }
 .footer-inner .status-btn {
@@ -291,6 +291,9 @@ code {
   border-radius: 5px;
   padding: 1.5px 6px;
   color: var(--accent-deep);
+  /* Long unbreakable tokens (paths, URLs) must wrap rather than push the
+     page wider than a phone screen. */
+  overflow-wrap: anywhere;
 }
 
 /* ── hamburger button ───────────────────────────────── */
