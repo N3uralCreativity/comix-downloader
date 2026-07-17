@@ -384,18 +384,30 @@
       <p style="font-size:13.5px;color:var(--muted);">Prefer the open-source <strong>Chromium</strong> instead of Google Chrome? Install <code>chromium</code> (Fedora, Arch, openSUSE, Void, Alpine), <code>chromium-browser</code> (older Ubuntu/Debian), or <code>org.chromium.Chromium</code> from Flathub. Brave and Vivaldi work too — add the extension from the Chrome Web Store.</p>
 
       <h3 id="android">Android</h3>
-      <p>There are three ways to read on Android, depending on what you want.</p>
+      <p>There are three ways to read on Android, depending on what you want. If you just want to read and download comix titles offline, <strong>Option A (Mihon) is the one to use</strong> — it's the most reliable, and it auto-updates.</p>
 
-      <p><strong>Option A — Mihon</strong> (recommended for offline reading). You get the same download capability through Mihon's native UI, with auto-updates.</p>
+      <div class="callout" style="margin-top:20px;">
+        <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <div>
+          <strong>Read this first — Mihon is not the browser extension.</strong>
+          <p style="margin-top:8px;">The desktop/Firefox version adds <em>download buttons onto the comix.to web page</em>. Mihon works completely differently. Mihon is its own <strong>reading app</strong> — a separate app on your phone with its own library, reader and download manager. Our <strong>Comix source</strong> teaches Mihon how to find comix.to titles, chapters and pages.</p>
+          <p style="margin-top:8px;">So after you install the source you will <strong>not</strong> see anything change if you open comix.to in a web browser — that's expected, and it's the number-one point of confusion. Everything happens <em>inside the Mihon app instead</em>: you browse comix, open a title, and download from Mihon's own menu. The browser is never involved.</p>
+        </div>
+      </div>
+
+      <p style="margin-top:22px;"><strong>Option A — Mihon</strong> (recommended for offline reading). You browse and download entirely inside the Mihon app, with auto-updates. Follow every step in order:</p>
       <ol class="steps">
-        <li>Install <a href="https://mihon.app/download" target="_blank" rel="noopener"><strong>Mihon</strong></a> on your device.</li>
-        <li>Open Mihon → <strong>More → Settings → Browse → Extension repos</strong>.</li>
-        <li>Tap <strong>+</strong> and paste the source URL below.</li>
-        <li>Go to <strong>Browse → Extensions</strong> and install <strong>Comix</strong>.</li>
-        <li>Open <strong>Browse → Comix</strong> and start reading or downloading.</li>
+        <li><strong>Install the Mihon app.</strong> Get it from <a href="https://mihon.app/download" target="_blank" rel="noopener"><strong>mihon.app/download</strong></a> and open it once so it finishes setting up. This is a standalone app — it is <em>not</em> a browser and not our extension.</li>
+        <li><strong>Add our source to Mihon.</strong> In Mihon, tap <strong>More</strong> (bottom-right) → <strong>Settings</strong> → <strong>Browse</strong> → <strong>Extension repos</strong>. Tap the <strong>+</strong> button, paste the address below exactly, and confirm:
+          <pre style="margin-top:10px;"><code>https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json</code></pre>
+        </li>
+        <li><strong>Install the Comix extension.</strong> Go to the <strong>Browse</strong> tab (bottom bar) → <strong>Extensions</strong>. Under a heading like <em>Comix Mihon Extensions</em> you'll see <strong>Comix</strong> — tap <strong>Install</strong> and allow the install if Android asks. (If Android blocks it, allow <em>“install unknown apps”</em> for Mihon, then try again.)</li>
+        <li><strong>Open the Comix catalogue.</strong> Still in <strong>Browse</strong>, tap <strong>Comix</strong> in your list of sources. You should now see comix titles loading <em>inside Mihon</em> — this is the moment that tells you it's working. Use the search icon to find a specific series.</li>
+        <li><strong>Add a title to your library</strong> (optional but recommended). Open a title and tap the heart / <strong>Add to library</strong> so Mihon can track new chapters for you.</li>
+        <li><strong>Download.</strong> Open any title, then tap the <strong>⋮</strong> menu → <strong>Download</strong> → <strong>All</strong> (or <strong>Next</strong>, <strong>Unread</strong>, or a <strong>custom range</strong>). For a single chapter, long-press the chapter row (or tap its download arrow). Watch progress under <strong>More → Download queue</strong>.</li>
+        <li><strong>Read offline.</strong> Downloaded chapters open instantly in Mihon's reader with no connection needed. On disk they live under <code>Mihon/downloads/Comix/&lt;Manga&gt;/&lt;Chapter&gt;/</code>.</li>
       </ol>
-      <pre><code>https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json</code></pre>
-      <p>To download in Mihon: open a title → tap the <strong>⋮</strong> menu → <strong>Download → All</strong> (or Next / Unread / a custom range). Files land under <code>Mihon/downloads/Comix/&lt;Manga&gt;/&lt;Chapter&gt;/</code>.</p>
+      <p>Because the source is installed from our auto-updating repo, Mihon fetches new versions automatically whenever we publish a release — you don't need to reinstall.</p>
 
       <p><strong>Option B — Kiwi Browser</strong> if you specifically want the same in-page buttons as desktop. Kiwi installs Chrome Web Store extensions directly, so the easiest route is to open the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome Web Store listing</a> in Kiwi and tap <strong>Add to Chrome</strong>. Or load it unpacked:</p>
       <ol class="steps">

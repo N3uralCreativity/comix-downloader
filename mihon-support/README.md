@@ -2,7 +2,20 @@
 
 This folder is a standalone Android source extension for [Mihon](https://mihon.app/) and Tachiyomi-compatible readers. It is **not** the Chrome/Firefox WebExtension; it has no browser APIs and is a separate APK with its own build pipeline.
 
-Once installed in Mihon, the source gives you the same "download all" and "per chapter" experience as the desktop extension — except those actions are part of Mihon's built-in download manager, not custom buttons. An extension's job in Mihon is to expose the catalog (browse / search / chapters / pages); the reader and downloader UI are owned by the app itself.
+Once installed in Mihon, the source gives you the same "download all" and "per chapter" experience as the desktop extension — except those actions are part of Mihon's built-in download manager, not custom buttons. An extension's job in Mihon is to expose the catalog (browse / search / chapters / pages); the reader and downloader UI are owned by the app itself. In other words: installing this source does **not** put buttons on the comix.to web page — the user browses and downloads entirely inside the Mihon app.
+
+## How the source works
+
+comix.to serves its catalogue from a JSON API under `/api/v1`. Two things make that API non-trivial, and both are handled transparently inside the OkHttp client so the parse methods only ever see clean JSON:
+
+1. **Request signing.** Every `/manga*` and `/chapters/{id}` GET must carry a `_` query token equal to `encode(path?<params sorted by name>)`. Without it the API returns HTTP 403 `Missing token`. `Comix.tokenFor` / `signRequest` build the canonical string from the request URL and sign it with `ComixCrypto.encode`.
+2. **Response decryption.** The chapter-list and page-list endpoints answer with encrypted JSON — response header `x-enc: 1`, body `{"e":"<token>"}` — which is decoded with `ComixCrypto.decode`.
+
+`ComixCrypto` is a native Kotlin port of the cipher in comix's `secure-*.js` bundle: three stacked layers of 256-entry S-box substitution + repeating-key XOR + CBC-style chaining. The S-box / key / IV material lives as base64 constants at the top of `ComixCrypto.kt`; the file header documents the one-line `curl | grep` command that re-extracts them from a fresh `secure-*.js` if comix ever rotates them (symptom: the API starts returning 403 again).
+
+Scrambled pages (rare; flagged by an `X-Scramble-Seed` image response header) are un-shuffled by `ComixImageInterceptor`, which reproduces the reader's tile permutation and redraws the tiles. Un-flagged images pass straight through untouched. This is a native port of the same descramble the desktop extension performs.
+
+Earlier versions of this source loaded the site in a `WebView` to capture a token; that approach could not sign the source's own paginated API calls and did not handle the encrypted responses, which is why browsing produced nothing after the site's redesign. The current source talks to the API directly — no WebView.
 
 ## How users install it
 

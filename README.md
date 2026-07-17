@@ -62,31 +62,44 @@ Multiple chapter downloads can run at the same time. The **Chapters at once** se
 
 ### Option A — Mihon (recommended for offline reading)
 
-[Mihon](https://mihon.app/) you get the **exact same download capability** as the PC extension:
+> [!IMPORTANT]
+> **Mihon is not the browser extension, and it works completely differently — please read this before installing.**
+>
+> The desktop / Firefox version adds download buttons *onto the comix.to web page*. **Mihon does not.** [Mihon](https://mihon.app/) is a separate **reading app** on your phone, with its own library, reader and download manager. Our **Comix source** simply teaches Mihon how to find comix.to titles, chapters and pages.
+>
+> So after you install the source, **nothing will change if you open comix.to in a web browser** — that's expected, and it's the most common point of confusion. Everything happens **inside the Mihon app instead**: you browse comix, open a title, and download from Mihon's own menu. The web browser is never involved.
 
-- **Download All chapters** : open any title → tap the **⋮** menu → **Download** → **All** (or Next / Unread / Custom range)
-- **Per-chapter download** : tap the download icon on a chapter row, or long-press to multi-select
+Once it's set up, you get the same **Download All** and **per-chapter** capability as the PC extension — just through Mihon's own UI:
+
+- **Download all chapters** — open any title → tap the **⋮** menu → **Download** → **All** (or Next / Unread / Custom range)
+- **Per-chapter download** — tap the download arrow on a chapter row, or long-press to multi-select
 - Monitor / pause / reorder downloads from **More → Download queue**
 - Files land under `Mihon/downloads/Comix/<Manga>/<Chapter>/` for offline reading
 
-#### One-tap install (auto-updates)
+#### Step-by-step install (auto-updating — recommended)
 
-1. Install [Mihon](https://mihon.app/download) on your Android device.
-2. Open Mihon → **More** → **Settings** → **Browse** → **Extension repos**.
-3. Tap **+** and paste this URL:
+Follow every step in order:
+
+1. **Install the Mihon app.** Get it from [mihon.app/download](https://mihon.app/download) and open it once so it finishes setting up. (This is a standalone app — not a browser, and not our extension.)
+2. **Add our source to Mihon.** In Mihon, tap **More** (bottom-right) → **Settings** → **Browse** → **Extension repos**. Tap **+**, paste the address below exactly, and confirm:
    ```
    https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json
    ```
-4. Go to **Browse** → **Extensions** → install **Comix**.
-5. Open **Browse** → **Comix** and start reading or downloading.
+3. **Install the Comix extension.** Open the **Browse** tab (bottom bar) → **Extensions**. Under a heading like *Comix Mihon Extensions*, find **Comix** and tap **Install**. If Android blocks it, allow *"install unknown apps"* for Mihon and try again.
+4. **Open the Comix catalogue.** Still in **Browse**, tap **Comix** in your list of sources. You should now see comix titles loading **inside Mihon** — that's how you know it's working. Use the search icon to find a specific series.
+5. **Add a title to your library** (optional but recommended) so Mihon tracks new chapters — open a title and tap **Add to library**.
+6. **Download.** Open a title → **⋮** menu → **Download** → **All** / **Next** / **Unread** / **custom range**. For one chapter, long-press its row or tap its download arrow. Track progress under **More → Download queue**.
+7. **Read offline.** Downloaded chapters open instantly in Mihon's reader with no connection needed.
 
-Mihon will fetch new versions automatically whenever a new release is published here.
+Mihon fetches new versions automatically whenever a new release is published here — no reinstalling.
 
 #### Manual APK install (one-off)
 
 1. Grab `comix-mihon-vX.Y.Z.apk` from [Releases](https://github.com/N3uralCreativity/comix-downloader/releases).
 2. Install on your phone (allow unknown app installs if prompted).
 3. Open Mihon → **Browse** → **Comix**.
+
+> Note: the manual APK doesn't auto-update. The repo URL in the step-by-step above is the better choice for most people.
 
 ### Option B — Kiwi Browser (browser-extension parity)
 
