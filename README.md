@@ -37,7 +37,7 @@ It also blocks comix.to's intermittent click-anywhere ads, popunders, and transp
 
 ## Download an entire series in one click
 
-Hit **Download All** on any title page. Every chapter is downloaded, packaged into its own folder, and bundled into a single ZIP — named, padded, and sorted.
+Hit **Download All** on any title page. Every chapter is downloaded, packaged into its own folder, and bundled into a single ZIP named, padded, and sorted.
 
 ![Download All button on title page](assets/screenshot-title.png) (peak Manhwa btw)
 
@@ -62,39 +62,39 @@ Multiple chapter downloads can run at the same time. The **Chapters at once** se
 
 ## Mobile support (Android & iOS)
 
-### Option A — Mihon (recommended for offline reading)
+### Option A - Mihon (recommended for offline reading)
 
 > [!IMPORTANT]
-> **Mihon is not the browser extension, and it works completely differently — please read this before installing.**
+> **Mihon is not the browser extension, and it works completely differently - please read this before installing.**
 >
 > The desktop / Firefox version adds download buttons *onto the comix.to web page*. **Mihon does not.** [Mihon](https://mihon.app/) is a separate **reading app** on your phone, with its own library, reader and download manager. Our **Comix source** simply teaches Mihon how to find comix.to titles, chapters and pages.
 >
-> So after you install the source, **nothing will change if you open comix.to in a web browser** — that's expected, and it's the most common point of confusion. Everything happens **inside the Mihon app instead**: you browse comix, open a title, and download from Mihon's own menu. The web browser is never involved.
+> So after you install the source, **nothing will change if you open comix.to in a web browser** - that's expected, and it's the most common point of confusion. Everything happens **inside the Mihon app instead**: you browse comix, open a title, and download from Mihon's own menu. The web browser is never involved.
 
-Once it's set up, you get the same **Download All** and **per-chapter** capability as the PC extension — just through Mihon's own UI:
+Once it's set up, you get the same **Download All** and **per-chapter** capability as the PC extension - just through Mihon's own UI:
 
-- **Download all chapters** — open any title → tap the **⋮** menu → **Download** → **All** (or Next / Unread / Custom range)
-- **Per-chapter download** — tap the download arrow on a chapter row, or long-press to multi-select
+- **Download all chapters** - open any title → tap the **⋮** menu → **Download** → **All** (or Next / Unread / Custom range)
+- **Per-chapter download** - tap the download arrow on a chapter row, or long-press to multi-select
 - Monitor / pause / reorder downloads from **More → Download queue**
 - Files land under `Mihon/downloads/Comix/<Manga>/<Chapter>/` for offline reading
 
-#### Step-by-step install (auto-updating — recommended)
+#### Step-by-step install (auto-updating - recommended)
 
 Follow every step in order:
 
-1. **Install the Mihon app.** Get it from [mihon.app/download](https://mihon.app/download) and open it once so it finishes setting up. (This is a standalone app — not a browser, and not our extension.)
+1. **Install the Mihon app.** Get it from [mihon.app/download](https://mihon.app/download) and open it once so it finishes setting up. (This is a standalone app - not a browser, and not our extension.)
 2. **Add our source to Mihon.** In Mihon, tap **More** (bottom-right) → **Settings** → **Browse** → **Extension repos**. Tap **+**, paste the address below exactly, and confirm:
    ```
    https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json
    ```
-3. **Turn on 18+ sources — required, don't skip.** Still on the **Settings → Browse** screen, enable **Show NSFW sources** (18+). Comix is flagged 18+, so with this **off** it installs fine but stays **completely hidden from your Sources list** — this is the usual reason people install it and then can't find it.
+3. **Turn on 18+ sources - required, don't skip.** Still on the **Settings → Browse** screen, enable **Show NSFW sources** (18+). Comix is flagged 18+, so with this **off** it installs fine but stays **completely hidden from your Sources list** - this is the usual reason people install it and then can't find it.
 4. **Install the Comix extension.** Open the **Browse** tab (bottom bar) → **Extensions**. Under a heading like *Comix Mihon Extensions*, find **Comix** and tap **Install**. If Android blocks it, allow *"install unknown apps"* for Mihon and try again.
-5. **Open the Comix catalogue.** Go to the **Browse** tab and tap **Comix** under **Sources** (that's the tab where you actually browse — not the Extensions sub-tab). You should now see comix titles loading **inside Mihon** — that's how you know it's working. Use the search icon to find a specific series.
-6. **Add a title to your library** (optional but recommended) so Mihon tracks new chapters — open a title and tap **Add to library**.
+5. **Open the Comix catalogue.** Go to the **Browse** tab and tap **Comix** under **Sources** (that's the tab where you actually browse - not the Extensions sub-tab). You should now see comix titles loading **inside Mihon** - that's how you know it's working. Use the search icon to find a specific series.
+6. **Add a title to your library** (optional but recommended) so Mihon tracks new chapters - open a title and tap **Add to library**.
 7. **Download.** Open a title → **⋮** menu → **Download** → **All** / **Next** / **Unread** / **custom range**. For one chapter, long-press its row or tap its download arrow. Track progress under **More → Download queue**.
 8. **Read offline.** Downloaded chapters open instantly in Mihon's reader with no connection needed.
 
-Mihon fetches new versions automatically whenever a new release is published here — no reinstalling.
+Mihon fetches new versions automatically whenever a new release is published here - no reinstalling.
 
 > **Installed Comix but it never shows under Sources?** That's almost always the 18+ filter (step 3). Comix is NSFW-flagged, so Mihon installs it and lists it under *Extensions* but hides it from **Browse → Sources** until **Settings → Browse → Show NSFW sources** is on. Turn it on and Comix appears in Sources right away.
 
@@ -106,11 +106,11 @@ Mihon fetches new versions automatically whenever a new release is published her
 
 > Note: the manual APK doesn't auto-update. The repo URL in the step-by-step above is the better choice for most people.
 
-### Option B — Kiwi Browser (browser-extension parity)
+### Option B - Kiwi Browser (browser-extension parity)
 
 If you specifically want the in-page buttons that the desktop extension provides, the WebExtension works as-is on Android via **[Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser)**:
 
-**Easiest:** open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp) in Kiwi and tap **Add to Chrome** — Kiwi installs Chrome Web Store extensions directly.
+**Easiest:** open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp) in Kiwi and tap **Add to Chrome** - Kiwi installs Chrome Web Store extensions directly.
 
 Or load it unpacked:
 
@@ -119,12 +119,12 @@ Or load it unpacked:
 3. Open Kiwi → go to `chrome://extensions`.
 4. Toggle **Developer mode** on.
 5. Tap **Load unpacked (zip or folder)** → select the extracted folder.
-6. Head to any [comix.to](https://comix.to) title page — buttons appear automatically.
+6. Head to any [comix.to](https://comix.to) title page - buttons appear automatically.
 
-### Option C — Firefox Android add-on
+### Option C - Firefox Android add-on
 [![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
 
-### iOS & iPadOS — via Orion browser
+### iOS & iPadOS - via Orion browser
 
 Comix Downloader does not currently ship a Safari build. Safari Web Extensions require a separate Apple app, Xcode build, signing, and Apple-platform test pipeline. [Orion](https://orionbrowser.com/) (a free WebKit browser by Kagi) can install Chrome and Firefox extensions on iPhone and iPad, although its extension support is still more experimental than desktop.
 
@@ -132,7 +132,7 @@ Comix Downloader does not currently ship a Safari build. Safari Web Extensions r
 2. In Orion: **•••** menu → **Settings** → the **Extensions** group → turn on **Chrome extensions** (and/or Firefox extensions).
 3. Open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp) (or the [Firefox add-on](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)) in Orion and tap **Add to Chrome** / **Add to Firefox**.
 4. **•••** menu → **Extensions** → toggle **Comix Downloader** on.
-5. Open any [comix.to](https://comix.to) title page — buttons appear automatically.
+5. Open any [comix.to](https://comix.to) title page - buttons appear automatically.
 
 For fully offline reading on mobile, Mihon (Option A) is still the most reliable.
 
@@ -149,11 +149,11 @@ Chrome, Opera, Opera GX, Brave, Vivaldi, Chromium, and Firefox are supported. Ev
 
 [![Get the Extension](https://img.shields.io/badge/Chrome-Get%20the%20Extension-4285F4?logo=googlechrome&logoColor=white&style=for-the-badge)](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp)
 
-The extension is on the **Chrome Web Store** — one click to install.
+The extension is on the **Chrome Web Store** - one click to install.
 
 1. Open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp).
 2. Click **Add to Chrome** and confirm the permissions prompt.
-3. Head to any [comix.to](https://comix.to) title page — buttons appear automatically.
+3. Head to any [comix.to](https://comix.to) title page - buttons appear automatically.
 
 ### Opera and Opera GX
 
@@ -170,7 +170,7 @@ Use the Chrome Web Store listing, or the `comix-downloader-chromium-vX.Y.Z.zip` 
 2. Open Chrome → go to `chrome://extensions`
 3. Toggle **Developer mode** on (top-right)
 4. Click **Load unpacked** → select the unzipped folder
-5. Head to any [comix.to](https://comix.to) title page — buttons appear automatically
+5. Head to any [comix.to](https://comix.to) title page - buttons appear automatically
 
 </details>
 
