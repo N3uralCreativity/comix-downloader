@@ -55,7 +55,8 @@ function Copy-ReleaseFiles([string]$Destination) {
     "legacy/options.js",
     "legacy/options.css",
     "icons",
-    "lib"
+    "lib",
+    "rules"
   )
 
   foreach ($relativePath in $runtimePaths) {

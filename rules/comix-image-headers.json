@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "Origin",
+          "operation": "remove"
+        },
+        {
+          "header": "Referer",
+          "operation": "set",
+          "value": "https://comix.to/"
+        }
+      ]
+    },
+    "condition": {
+      "regexFilter": "^https://[^/]+\\.wowpic[1-9]\\.store/",
+      "resourceTypes": [
+        "xmlhttprequest"
+      ]
+    }
+  }
+]

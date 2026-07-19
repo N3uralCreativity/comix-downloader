@@ -94,8 +94,26 @@ const embedCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.inclu
 check('settings-embed content script is registered on comix.to', !!embedCs && embedCs.matches.indexOf('*://comix.to/*') !== -1);
 check('settings-embed loads the settings module (CDLSettings)', !!embedCs && embedCs.js.indexOf('core/settings.js') !== -1);
 check('options_ui points at the archived legacy page', mf.options_ui && mf.options_ui.page === 'legacy/options.html' && mf.options_ui.open_in_tab === true);
+check('image CDN request rule has host-access-only permission',
+  mf.permissions.includes('declarativeNetRequestWithHostAccess') && !mf.permissions.includes('declarativeNetRequest'));
+const imageRuleResource = mf.declarative_net_request && mf.declarative_net_request.rule_resources &&
+  mf.declarative_net_request.rule_resources.find((resource) => resource.id === 'comix_image_headers');
+check('image CDN request rule is registered and enabled',
+  !!imageRuleResource && imageRuleResource.enabled === true && imageRuleResource.path === 'rules/comix-image-headers.json');
+const imageRules = JSON.parse(read('rules/comix-image-headers.json'));
+const imageRule = imageRules.find((rule) => rule.id === 1);
+check('image CDN rule only modifies extension fetches to wowpic hosts',
+  !!imageRule && imageRule.action.type === 'modifyHeaders' &&
+  imageRule.condition.regexFilter.includes('wowpic[1-9]') &&
+  JSON.stringify(imageRule.condition.resourceTypes) === JSON.stringify(['xmlhttprequest']));
+check('image CDN rule removes Origin and supplies the comix.to referrer', (() => {
+  const headers = imageRule && imageRule.action.requestHeaders || [];
+  return headers.some((header) => header.header.toLowerCase() === 'origin' && header.operation === 'remove') &&
+    headers.some((header) => header.header.toLowerCase() === 'referer' && header.operation === 'set' && header.value === 'https://comix.to/');
+})());
 const releaseScript = read('scripts/build-release.ps1');
 check('release packages both ad blocker scripts', releaseScript.includes('content/adblock-main.js') && releaseScript.includes('content/adblock-control.js'));
+check('release packages declarative request rules', releaseScript.includes('"rules"'));
 check('release emits dedicated Chromium-store packages',
   ['chrome', 'opera', 'chromium'].every((target) => releaseScript.includes(`"${target}"`)));
 const releaseValidator = read('scripts/validate-release.ps1');

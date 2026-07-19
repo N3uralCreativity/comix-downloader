@@ -1,0 +1,176 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const source = fs.readFileSync(path.join(__dirname, '..', 'background.js'), 'utf8');
+
+let passed = 0;
+let failed = 0;
+
+function check(name, condition) {
+  if (condition) passed++;
+  else { failed++; console.error('FAIL:', name); }
+}
+
+function extractFunction(name) {
+  const marker = source.indexOf(`function ${name}(`);
+  if (marker === -1) throw new Error(`Missing function ${name}`);
+  const start = source.slice(Math.max(0, marker - 6), marker) === 'async ' ? marker - 6 : marker;
+
+  const bodyStart = source.indexOf('{', source.indexOf(')', marker));
+  let depth = 0;
+  let quote = '';
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let i = bodyStart; i < source.length; i++) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (lineComment) { if (ch === '\n') lineComment = false; continue; }
+    if (blockComment) { if (ch === '*' && next === '/') { blockComment = false; i++; } continue; }
+    if (quote) {
+      if (escaped) { escaped = false; continue; }
+      if (ch === '\\') { escaped = true; continue; }
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === '/' && next === '/') { lineComment = true; i++; continue; }
+    if (ch === '/' && next === '*') { blockComment = true; i++; continue; }
+    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; continue; }
+    if (ch === '{') depth++;
+    if (ch === '}' && --depth === 0) return source.slice(start, i + 1);
+  }
+  throw new Error(`Unterminated function ${name}`);
+}
+
+const helperContext = {};
+vm.createContext(helperContext);
+vm.runInContext(`${extractFunction('formatImageDownloadFailure')}; globalThis.formatFailure = formatImageDownloadFailure;`, helperContext);
+check('zero-image chapters get an explicit error',
+  helperContext.formatFailure(0, 0, null) === 'No images were found for this chapter.');
+check('complete CDN rejection reports saved/total and HTTP status', (() => {
+  const message = helperContext.formatFailure(79, 0, new Error('HTTP 403'));
+  return message.includes('0/79') && message.includes('HTTP 403') && message.includes('Reload comix.to');
+})());
+check('partial image failure reports the incomplete count',
+  helperContext.formatFailure(89, 88, new Error('HTTP 503')).includes('Only 88 of 89 images'));
+
+class ZipStub {
+  file() {}
+}
+
+const singleChapterFunction = extractFunction('downloadImagesAsZip');
+const incompleteGuard = singleChapterFunction.indexOf('if (total === 0 || files.length !== total)');
+const zipGeneration = singleChapterFunction.indexOf('await _zipToDownloadUrl(zip)');
+check('single-chapter download rejects incomplete image sets before ZIP generation',
+  incompleteGuard !== -1 && zipGeneration !== -1 && incompleteGuard < zipGeneration);
+
+const allEvents = { progress: [], errors: [], done: [], saves: [], recorded: [], logs: [] };
+let fetchMode = 'fail';
+let chaptersPerPart = 30;
+const allContext = {
+  BATCH_SIZE: 4,
+  ZIP_PART_MAX_CHAPTERS: 30,
+  JSZip: ZipStub,
+  loadCfg: async () => ({
+    'perf.batchSize': 4,
+    'perf.rateLimitMode': 'off',
+    'download.concurrentChapters': 2,
+    'download.chaptersPerPart': chaptersPerPart,
+  }),
+  resolveOutputOptions: (_cfg, options) => ({ format: 'zip', slug: 'series', ...(options || {}) }),
+  getLibraryConfig: async () => null,
+  chapterConcurrencyLimit: () => 2,
+  startDownloadAllSession() {},
+  persistDownloadAllSession() {},
+  cdlLog(level, message) { allEvents.logs.push({ level, message }); },
+  notifyDownloadAllProgress(_tabId, message) { allEvents.progress.push(message); },
+  getZipPartName: (name, part) => `${name}.part${part}`,
+  _doZipAndSave: async ({ zipName }) => { allEvents.saves.push(zipName); return zipName; },
+  extractFromTab: async (url) => [
+    { index: 1, src: `${url}/image-1` },
+    { index: 2, src: `${url}/image-2` },
+  ],
+  verifyEnumeratedImages: async (images) => images,
+  fetchImageToFile: async (index, src) => {
+    if (fetchMode === 'pass' || (fetchMode === 'mixed' && src.includes('/good/'))) {
+      return { file: { name: `${index}.webp`, buffer: new ArrayBuffer(2), bytes: 2 }, error: null };
+    }
+    return { file: null, error: new Error('HTTP 403') };
+  },
+  downloadAllAbortFlag: false,
+  _downloadAllAbortPromise: () => new Promise(() => {}),
+  recordChapterDownloaded: (_slug, label) => allEvents.recorded.push(label),
+  addChapterToOuter: async (_zip, result) => result.bytes,
+  _signalDownloadAllAbort() {},
+  addSeriesMetaToOuter: async () => {},
+  notifyDownloadAllCancelled() {},
+  notifyDownloadAllError: (_tabId, error, canRetryZip) => allEvents.errors.push({ error, canRetryZip }),
+  notifyDownloadAllDone: (_tabId, zipName, warning) => allEvents.done.push({ zipName, warning }),
+  _libPushChain: Promise.resolve(),
+  console,
+};
+vm.createContext(allContext);
+vm.runInContext(`
+  ${extractFunction('formatImageDownloadFailure')}
+  ${extractFunction('handleDownloadAllRequest')}
+  globalThis.handleDownloadAllRequest = handleDownloadAllRequest;
+`, allContext);
+
+function resetAllEvents() {
+  Object.values(allEvents).forEach((items) => { items.length = 0; });
+}
+
+async function run() {
+  resetAllEvents();
+  fetchMode = 'fail';
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/bad-1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/bad-2', chapterLabel: 'Ch2' },
+  ], 'Series', 'series.zip', 7, {});
+  check('Download All reports an error when no chapter images can be fetched',
+    allEvents.errors.length === 1 && allEvents.errors[0].error.includes('No ZIP files were created') &&
+    allEvents.errors[0].error.includes('HTTP 403'));
+  check('zero-image Download All never invokes the ZIP downloader', allEvents.saves.length === 0);
+  check('zero-image Download All never emits a done event', allEvents.done.length === 0);
+  check('failed chapters are not marked as downloaded', allEvents.recorded.length === 0);
+  check('failed chapter rows report zero saved images',
+    allEvents.progress.filter((event) => event.phase === 'error').every((event) => event.imagesDone === 0 && event.imagesTotal === 2));
+
+  resetAllEvents();
+  fetchMode = 'mixed';
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/bad/2', chapterLabel: 'Ch2' },
+  ], 'Series', 'series.zip', 7, {});
+  check('complete chapters are still saved when another chapter fails',
+    allEvents.saves.length === 1 && allEvents.done.length === 1);
+  check('mixed result finishes with an explicit incomplete-chapter warning',
+    allEvents.done[0].warning.includes('1 of 2 chapters could not be included'));
+  check('only the complete chapter is marked as downloaded',
+    allEvents.recorded.length === 1 && allEvents.recorded[0] === 'Ch1');
+
+  resetAllEvents();
+  fetchMode = 'pass';
+  chaptersPerPart = 2;
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },
+    { chapterUrl: 'https://comix.to/title/series/good/3', chapterLabel: 'Ch3' },
+  ], 'Series', 'series.zip', 7, {});
+  check('chapter split threshold saves the first ZIP part before the final part',
+    JSON.stringify(allEvents.saves) === JSON.stringify(['series.zip.part1', 'series.zip.part2']));
+  check('multi-part success reports the number of ZIP parts',
+    allEvents.done.length === 1 && allEvents.done[0].zipName === '2 ZIP parts' && !allEvents.done[0].warning);
+
+  console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
+  process.exit(failed === 0 ? 0 : 1);
+}
+
+run().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -388,10 +388,10 @@ function updateDownloadAllSessionLog(progress) {
     text = `${chapterLabel} - ${imagesDone}/${imagesTotal} images`;
   } else if (phase === 'done') {
     cls = 'done';
-    text = `${chapterLabel} (${imagesDone} images)`;
+    text = `${chapterLabel} (${imagesDone}/${imagesTotal} images)`;
   } else if (phase === 'error') {
     cls = 'error';
-    text = `${chapterLabel} - failed`;
+    text = `${chapterLabel} - failed${imagesTotal ? ` (${imagesDone}/${imagesTotal} images saved)` : ''}`;
   } else if (phase === 'skipped') {
     cls = 'skipped';
     text = `${chapterLabel} - skipped`;
@@ -490,7 +490,7 @@ function _serializeSession(s) {
   const keys = ['active', 'status', 'originTabId', 'mangaName', 'zipName', 'totalChapters',
     'chapterIndex', 'completed', 'concurrency', 'imagesDone', 'imagesTotal', 'phase', 'zipPart',
     'startedAt', 'updatedAt', 'lastProgress', 'lastError', 'lastDone', 'lastCancelled',
-    'doneZipName', 'error', 'canRetryZip'];
+    'doneZipName', 'warning', 'error', 'canRetryZip'];
   const out = {};
   for (const k of keys) if (s[k] !== undefined) out[k] = s[k];
   out.logItems = Array.isArray(s.logItems) ? s.logItems.slice(-60) : []; // cap so storage stays small
@@ -570,11 +570,12 @@ function notifyDownloadAllProgress(originTabId, progress) {
   notifyTab(originTabId, { action: 'downloadAllProgress', ...progress });
 }
 
-function notifyDownloadAllDone(originTabId, zipName) {
-  const message = { action: 'downloadAllDone', zipName };
+function notifyDownloadAllDone(originTabId, zipName, warning = '') {
+  const message = { action: 'downloadAllDone', zipName, warning };
   recordDownloadAllTerminal('done', {
     originTabId,
     doneZipName: zipName,
+    warning,
     lastDone: message,
   });
   restoreIdleBadge();
@@ -1457,6 +1458,7 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   const ordered = images.slice().sort((a, b) => (a.index || 0) - (b.index || 0));
   const total = ordered.length;
   let done = 0;
+  let firstImageError = null;
   const files = [];
 
   for (let i = 0; i < ordered.length; i += batchSize) {
@@ -1465,14 +1467,22 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
       batch.map(async (img, k) => {
         const page = i + k + 1;
         const paddedIndex = String(page).padStart(padDigits, '0');
-        const file = await fetchImageToFile(paddedIndex, img.src, cfg, imageRetries);
-        if (file) { file.page = page; files.push(file); }
+        const fetched = await fetchImageToFile(paddedIndex, img.src, cfg, imageRetries);
+        if (fetched.file) {
+          fetched.file.page = page;
+          files.push(fetched.file);
+        } else if (!firstImageError) {
+          firstImageError = fetched.error;
+        }
         done++;
         notifyTab(originTabId, { action: 'downloadProgress', chapterUrl, current: done, total });
       })
     );
   }
   files.sort((a, b) => a.page - b.page);
+  if (total === 0 || files.length !== total) {
+    throw new Error(formatImageDownloadFailure(total, files.length, firstImageError));
+  }
   for (const f of files) zip.file(f.name, f.buffer);
 
   // CBZ: a single chapter is itself the .cbz (flat images + optional ComicInfo.xml).
@@ -1548,19 +1558,32 @@ async function fetchImageIntoZip(container, paddedIndex, src, cfg, retries) {
 // into a JSZip container. Used by the concurrent Download-All path: images are
 // buffered in memory and added to the ZIP later, in chapter order, by a single
 // packer — so two chapters downloading at once never race on the ZIP object.
-// Returns { name, buffer, bytes } or null when the image could not be fetched.
+// Returns a discriminated { file, error } result so callers cannot accidentally
+// count a failed request as a downloaded image.
 async function fetchImageToFile(paddedIndex, src, cfg, retries) {
   let lastErr = null;
   for (let attempt = 0; attempt <= (retries || 0); attempt++) {
     try {
       const image = await fetchImageForZip(src, cfg);
-      return { name: `${paddedIndex}.${image.ext}`, buffer: image.buffer, bytes: image.buffer.byteLength || 0 };
+      return {
+        file: { name: `${paddedIndex}.${image.ext}`, buffer: image.buffer, bytes: image.buffer.byteLength || 0 },
+        error: null,
+      };
     } catch (err) {
       lastErr = err;
     }
   }
   if (lastErr) console.warn(`[ComixDL] image ${paddedIndex} skipped:`, lastErr.message);
-  return null;
+  return { file: null, error: lastErr || new Error('Unknown image request failure') };
+}
+
+function formatImageDownloadFailure(total, saved, error) {
+  if (!total) return 'No images were found for this chapter.';
+  const reason = error && error.message ? `; ${error.message}` : '';
+  const count = saved === 0
+    ? `No images could be downloaded (0/${total}${reason})`
+    : `Only ${saved} of ${total} images could be downloaded${reason}`;
+  return `${count}. Reload comix.to and try again.`;
 }
 
 // Fetch an image and, when comix.to marks it as scrambled, redraw the CDN
@@ -2144,6 +2167,8 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   let zipPartChapters = 0;
   let zipPartBytes = 0;
   const savedZipNames = [];
+  const terminalCounts = { done: 0, skipped: 0, error: 0 };
+  let firstChapterError = '';
 
   // finishedCount (chapters reaching a terminal state: done/skipped/error) drives
   // the monotonic progress bar/counter. Injected into every progress message so
@@ -2201,11 +2226,11 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     if (extractErr) {
       console.warn(`[ComixDL-All] Chapitre ${chapterLabel} échoué:`, extractErr.message);
       cdlLog('error', `${chapterLabel} failed: ${extractErr.message}`);
-      return { index: i, chapterUrl, chapterLabel, files: [], bytes: 0, imagesTotal: 0, imgDone: 0, status: 'error' };
+      return { index: i, chapterUrl, chapterLabel, files: [], bytes: 0, imagesTotal: 0, imagesSaved: 0, status: 'error', error: extractErr.message };
     }
     if (!images || images.length === 0) {
       cdlLog('warn', `No images found, skipping ${chapterLabel}`);
-      return { index: i, chapterUrl, chapterLabel, files: [], bytes: 0, imagesTotal: 0, imgDone: 0, status: 'skipped' };
+      return { index: i, chapterUrl, chapterLabel, files: [], bytes: 0, imagesTotal: 0, imagesSaved: 0, status: 'skipped' };
     }
     images = await verifyEnumeratedImages(images, chapterLabel);
     cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
@@ -2216,22 +2241,39 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     // of order under concurrency) so the archive's entry order matches reading order.
     const ordered = images.slice().sort((a, b) => (a.index || 0) - (b.index || 0));
     const files = [];
-    let bytes = 0, imgDone = 0;
+    let bytes = 0, imagesProcessed = 0, firstImageError = null;
     for (let j = 0; j < ordered.length; j += batchSize) {
       if (downloadAllAbortFlag) break;
       const batch = ordered.slice(j, j + batchSize);
       await Promise.allSettled(batch.map(async (img, k) => {
         const page = j + k + 1;
         const paddedIndex = String(page).padStart(padDigits, '0');
-        const file = await fetchImageToFile(paddedIndex, img.src, cfg, imageRetries);
-        if (file) { file.page = page; files.push(file); bytes += file.bytes; }
-        imgDone++;
+        const fetched = await fetchImageToFile(paddedIndex, img.src, cfg, imageRetries);
+        if (fetched.file) {
+          fetched.file.page = page;
+          files.push(fetched.file);
+          bytes += fetched.file.bytes;
+        } else if (!firstImageError) {
+          firstImageError = fetched.error;
+        }
+        imagesProcessed++;
         notify({ phase: 'downloading', chapterIndex: i + 1, totalChapters: chapters.length,
-                 chapterLabel, imagesDone: imgDone, imagesTotal: ordered.length });
+                 chapterLabel, imagesDone: imagesProcessed, imagesTotal: ordered.length });
       }));
     }
     files.sort((a, b) => a.page - b.page);
-    return { index: i, chapterUrl, chapterLabel, files, bytes, imagesTotal: ordered.length, imgDone, status: 'done' };
+    if (files.length !== ordered.length) {
+      const error = formatImageDownloadFailure(ordered.length, files.length, firstImageError);
+      cdlLog('error', `${chapterLabel} failed: ${error}`);
+      return {
+        index: i, chapterUrl, chapterLabel, files: [], bytes: 0,
+        imagesTotal: ordered.length, imagesSaved: files.length, status: 'error', error,
+      };
+    }
+    return {
+      index: i, chapterUrl, chapterLabel, files, bytes,
+      imagesTotal: ordered.length, imagesSaved: files.length, status: 'done',
+    };
   };
 
   // ── Worker pool + in-order packer ───────────────────────────────────────────
@@ -2264,11 +2306,12 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       const result = await downloadChapter(i);
       results[i] = result;
       finishedCount++;   // bump before the terminal message so the bar advances
+      terminalCounts[result.status]++;
 
       if (result.status === 'done') {
         notify({ phase: 'done', chapterIndex: i + 1, totalChapters: chapters.length,
-                 chapterLabel: result.chapterLabel, imagesDone: result.imgDone, imagesTotal: result.imagesTotal });
-        cdlLog('ok', `${result.chapterLabel}: done (${result.imgDone} images)`);
+                 chapterLabel: result.chapterLabel, imagesDone: result.imagesSaved, imagesTotal: result.imagesTotal });
+        cdlLog('ok', `${result.chapterLabel}: done (${result.imagesSaved} images)`);
         recordChapterDownloaded(opts.slug, result.chapterLabel, mangaName); // mark as grabbed
         if (rateMode === 'dynamic') rateDelay = Math.max(MIN_DELAY, rateDelay - 100); // success → slightly faster
       } else if (result.status === 'skipped') {
@@ -2276,7 +2319,8 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
                  chapterLabel: result.chapterLabel, imagesDone: 0, imagesTotal: 0 });
       } else {
         notify({ phase: 'error', chapterIndex: i + 1, totalChapters: chapters.length,
-                 chapterLabel: result.chapterLabel, imagesDone: 0, imagesTotal: 0 });
+                 chapterLabel: result.chapterLabel, imagesDone: result.imagesSaved || 0, imagesTotal: result.imagesTotal || 0 });
+        if (!firstChapterError && result.error) firstChapterError = result.error;
         if (rateMode === 'dynamic') rateDelay = Math.min(MAX_DELAY, Math.round(rateDelay * 1.5)); // failure → back off
       }
       resolvers[i]();   // hand this chapter to the in-order packer
@@ -2323,6 +2367,14 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   if (packFailed) return;   // the ZIP error was already reported by _doZipAndSave
   if (downloadAllAbortFlag) { notifyDownloadAllCancelled(originTabId); return; }
 
+  if (zipPartChapters === 0 && savedZipNames.length === 0) {
+    const detail = firstChapterError ? ` ${firstChapterError}` : '';
+    const error = `No ZIP files were created because no complete chapters could be downloaded.${detail}`;
+    cdlLog('error', `Download All failed: ${error}`);
+    notifyDownloadAllError(originTabId, error, false);
+    return;
+  }
+
   // Final ZIP part.
   const saved = await saveCurrentZipPart(true);
   if (!saved) return;
@@ -2332,8 +2384,12 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   if (opts.pushLib) { try { await _libPushChain; } catch (_) {} }
 
   const doneName = savedZipNames.length === 1 ? savedZipNames[0] : `${savedZipNames.length} ZIP parts`;
-  cdlLog('ok', `Download All complete: ${doneName}`);
-  notifyDownloadAllDone(originTabId, doneName);
+  const incompleteCount = terminalCounts.error + terminalCounts.skipped;
+  const warning = incompleteCount
+    ? `${incompleteCount} of ${chapters.length} chapters could not be included. Retry the failed or skipped chapters.`
+    : '';
+  cdlLog(warning ? 'warn' : 'ok', `Download All complete: ${doneName}${warning ? ` (${warning})` : ''}`);
+  notifyDownloadAllDone(originTabId, doneName, warning);
 }
 
 async function _doZipAndSave({ zip, zipName, originTabId, notifyDone = true }) {

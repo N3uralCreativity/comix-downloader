@@ -11,7 +11,8 @@
     "storage",
     "contextMenus",
     "alarms",
-    "notifications"
+    "notifications",
+    "declarativeNetRequestWithHostAccess"
   ],
   "optional_host_permissions": [
     "*://*/*"
@@ -32,6 +33,15 @@
   ],
   "background": {
     "service_worker": "background.js"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "comix_image_headers",
+        "enabled": true,
+        "path": "rules/comix-image-headers.json"
+      }
+    ]
   },
   "content_scripts": [
     {

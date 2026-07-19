@@ -347,6 +347,7 @@ function injectStyles() {
       min-height: 18px;
     }
     .cdl-ap-status-chapter.error { color: var(--cdl-err); }
+    .cdl-ap-status-chapter.warning { color: var(--cdl-skip); }
     .cdl-ap-status-line {
       font-size: 12px;
       color: var(--cdl-muted);
@@ -631,7 +632,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     updateDownloadAllPopup(message);
 
   } else if (message.action === 'downloadAllDone') {
-    updateDownloadAllPopupDone(message.zipName || 'manga.zip');
+    updateDownloadAllPopupDone(message.zipName || 'manga.zip', message.warning || '');
 
   } else if (message.action === 'downloadAllError') {
     updateDownloadAllPopupError(message.error || 'Unknown error', { canRetryZip: !!message.canRetryZip });
@@ -1714,18 +1715,19 @@ function _dlAllSetFooterClose(popup) {
   });
 }
 
-function updateDownloadAllPopupDone(zipName) {
+function updateDownloadAllPopupDone(zipName, warning = '') {
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
   const bar = document.getElementById('cdl-ap-bar');
   if (bar) bar.style.width = '100%';
   const s = document.getElementById('cdl-ap-chapter-status');
   if (s) {
-    s.textContent = 'Download complete!';
+    s.textContent = warning ? 'Download finished with warnings.' : 'Download complete!';
     s.classList.remove('error');
+    s.classList.toggle('warning', !!warning);
   }
   const i = document.getElementById('cdl-ap-img-status');
-  if (i) i.textContent = `Saved as: ${zipName || 'manga.zip'}`;
+  if (i) i.textContent = `Saved as: ${zipName || 'manga.zip'}${warning ? `. ${warning}` : ''}`;
   _dlAllSetFooterClose(popup);
   maybeAutoHideFrame(popup);
 }
@@ -1793,12 +1795,13 @@ function updateDownloadAllPopup(msg) {
     el('cdl-ap-bar').style.width     = `${pct}%`;
     el('cdl-ap-counter').textContent = counterText;
     if (headline) el('cdl-ap-img-status').textContent = overall;
-    _dlAllAddLog(chapterLabel, 'done', `✓ ${chapterLabel} (${imagesDone} images)`);
+    _dlAllAddLog(chapterLabel, 'done', `✓ ${chapterLabel} (${imagesDone}/${imagesTotal} images)`);
 
   } else if (phase === 'error') {
     el('cdl-ap-bar').style.width     = `${pct}%`;
     el('cdl-ap-counter').textContent = counterText;
-    _dlAllAddLog(chapterLabel, 'error', `✗ ${chapterLabel} — failed`);
+    const imageCount = imagesTotal ? ` (${imagesDone}/${imagesTotal} images saved)` : '';
+    _dlAllAddLog(chapterLabel, 'error', `✗ ${chapterLabel} — failed${imageCount}`);
 
   } else if (phase === 'skipped') {
     el('cdl-ap-bar').style.width     = `${pct}%`;
@@ -1938,7 +1941,7 @@ function restoreDownloadAllPopupFromSession(session) {
   restoreDownloadAllLogItems(session.logItems);
 
   if (session.status === 'done') {
-    updateDownloadAllPopupDone(session.doneZipName || session.zipName || 'manga.zip');
+    updateDownloadAllPopupDone(session.doneZipName || session.zipName || 'manga.zip', session.warning || '');
   } else if (session.status === 'error') {
     updateDownloadAllPopupError(session.error || 'Unknown error', { canRetryZip: !!session.canRetryZip });
   } else if (session.status === 'cancelled') {
