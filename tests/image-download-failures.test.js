@@ -89,7 +89,11 @@ const allContext = {
   cdlLog(level, message) { allEvents.logs.push({ level, message }); },
   notifyDownloadAllProgress(_tabId, message) { allEvents.progress.push(message); },
   getZipPartName: (name, part) => `${name}.part${part}`,
-  _doZipAndSave: async ({ zipName }) => { allEvents.saves.push(zipName); return zipName; },
+  _doZipAndSave: async ({ zipName, chapterRecords = [] }) => {
+    allEvents.saves.push(zipName);
+    chapterRecords.forEach((record) => allEvents.recorded.push(record.chapterLabel));
+    return { filename: zipName, confirmed: true };
+  },
   extractFromTab: async (url) => [
     { index: 1, src: `${url}/image-1` },
     { index: 2, src: `${url}/image-2` },

@@ -64,6 +64,7 @@ const messages = [];
 const context = {
   console: { error() {} },
   cdlLog() {},
+  isDownloadCancelledError(error) { return error && error.code === 'DOWNLOAD_CANCELLED'; },
   notifyTab(tabId, message) { messages.push({ tabId, ...message }); },
   downloadImagesAsZip(payload) {
     started.push(payload.id);
@@ -132,6 +133,14 @@ async function run() {
   controls.get('e').resolve();
   await flush();
   check('the serial pool drains after the replacement task', api.stats().active === 0 && api.stats().queued === 0);
+
+  api.scheduleDownload(payload('f', 1));
+  controls.get('f').reject(Object.assign(new Error('Download cancelled.'), { code: 'DOWNLOAD_CANCELLED' }));
+  await flush();
+  check('a cancelled Save dialog restores the chapter without an error state',
+    messages.some((message) => message.action === 'downloadCancelled' && message.chapterUrl.includes('/f-chapter-f')) &&
+    !messages.some((message) => message.action === 'downloadError' && message.chapterUrl.includes('/f-chapter-f')));
+  check('a cancelled Save dialog releases its queue slot', api.stats().active === 0 && api.stats().queued === 0);
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);

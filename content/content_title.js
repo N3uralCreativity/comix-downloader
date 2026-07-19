@@ -595,6 +595,8 @@ function setButtonState(btn, state, extra) {
     // idle
     _setHTML(btn, getIdleContent());
     applyBtnTextClass(btn);
+    btn.title = extra || 'Download';
+    btn.style.pointerEvents = '';
   }
 }
 
@@ -618,6 +620,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === 'downloadDone') {
     const btn = findButtonByChapterUrl(message.chapterUrl);
     if (btn) setButtonState(btn, 'done', null);
+  } else if (message.action === 'downloadCancelled') {
+    const btn = findButtonByChapterUrl(message.chapterUrl);
+    if (btn) setButtonState(btn, 'idle', 'Download cancelled - click to try again');
   } else if (message.action === 'downloadError') {
     const btn = findButtonByChapterUrl(message.chapterUrl);
     if (btn) setButtonState(btn, 'error', message.error || 'Erreur inconnue');
@@ -657,7 +662,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-    } catch (_) {}
+      sendResponse({ ok: true, confirmed: false });
+    } catch (error) {
+      sendResponse({ ok: false, confirmed: false, error: error.message || 'Download fallback failed' });
+    }
   }
 });
 

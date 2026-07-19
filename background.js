@@ -1428,6 +1428,14 @@ function processDownloadQueue() {
     activeChapterDownloads++;
     downloadImagesAsZip(payload)
       .catch((err) => {
+        if (isDownloadCancelledError(err)) {
+          cdlLog('info', `Download cancelled (${payload.zipName})`);
+          notifyTab(payload.originTabId, {
+            action: 'downloadCancelled',
+            chapterUrl: payload.chapterUrl,
+          });
+          return;
+        }
         console.error('[ComixDL] ZIP error:', err);
         cdlLog('error', `ZIP error (${payload.zipName}): ${err.message}`);
         notifyTab(payload.originTabId, {
@@ -1497,26 +1505,12 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   const outName = sanitizeFilename(zipName, ext);
 
   const { url, revoke, base64: urlBase64 } = await _zipToDownloadUrl(zip);
-  try {
-    await chrome.downloads.download({ url, filename: outName, saveAs: false });
-    setTimeout(revoke, 60_000);
-  } catch (_dlErr) {
-    revoke();
-    // downloads API unavailable on this platform (Firefox Android) — send ZIP
-    // to the content script which can trigger a download via <a> click instead.
-    if (originTabId != null) {
-      const b64 = urlBase64 || await zip.generateAsync({ type: 'base64', compression: 'STORE' });
-      chrome.tabs.sendMessage(originTabId, {
-        action: 'triggerDownload',
-        base64: b64,
-        filename: outName,
-      }).catch(() => {});
-    } else {
-      throw _dlErr;
-    }
-  }
+  const delivery = await saveGeneratedArchive({
+    url, revoke, base64: urlBase64, zip, filename: outName, originTabId,
+  });
 
-  cdlLog('ok', `${ext.toUpperCase()} saved: ${outName} (${images.length} images)`);
+  cdlLog(delivery.confirmed ? 'ok' : 'warn',
+    `${ext.toUpperCase()} ${delivery.confirmed ? 'saved' : 'handed to browser'}: ${outName} (${images.length} images)`);
   notifyTab(originTabId, { action: 'downloadDone', chapterUrl });
 
   // Same bookkeeping as Download All gives each chapter: mark it downloaded in
@@ -1526,7 +1520,7 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
       (String(chapterUrl).match(/\/title\/([^/]+)\//) || [])[1] || '';
     const chapterLabel = (options && options.chapterLabel) || chapterLabelFromUrl(chapterUrl);
     const mangaName = (options && options.mangaName) || (opts.seriesMeta && opts.seriesMeta.title) || '';
-    recordChapterDownloaded(slug, chapterLabel, mangaName);
+    if (delivery.confirmed) recordChapterDownloaded(slug, chapterLabel, mangaName);
     if (isCbz) {
       const libCfg = await getLibraryConfig();
       if (libCfg && libCfg.enabled && /^https?:\/\//i.test(libCfg.endpoint || '')) {
@@ -1875,6 +1869,116 @@ async function _zipToDownloadUrl(zip) {
   return { url: `data:application/zip;base64,${base64}`, revoke: () => {}, base64 };
 }
 
+const DOWNLOAD_CONFIRM_POLL_MS = 250;
+const DOWNLOAD_CONFIRM_TIMEOUT_MS = 30 * 60 * 1000;
+
+function downloadErrorText(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return String(value.reason || value.error || value.message || value.code || value);
+}
+
+function isDownloadCancelledError(error) {
+  if (error && error.code === 'DOWNLOAD_CANCELLED') return true;
+  const text = downloadErrorText(error);
+  return /USER_(?:CANCELED|CANCELLED|SHUTDOWN)/i.test(text) ||
+    /(?:user.{0,40}cancel|cancel.{0,40}user)/i.test(text);
+}
+
+function makeDownloadCancelledError(reason) {
+  const error = new Error('Download cancelled.');
+  error.name = 'DownloadCancelledError';
+  error.code = 'DOWNLOAD_CANCELLED';
+  error.reason = downloadErrorText(reason) || 'USER_CANCELED';
+  return error;
+}
+
+function tagDownloadError(error, phase) {
+  const tagged = error instanceof Error ? error : new Error(downloadErrorText(error) || 'Download failed');
+  try { tagged.downloadPhase = phase; }
+  catch (_) {
+    const copy = new Error(tagged.message);
+    copy.downloadPhase = phase;
+    return copy;
+  }
+  return tagged;
+}
+
+async function waitForBrowserDownload(downloadId, options = {}) {
+  const pollMs = options.pollMs ?? DOWNLOAD_CONFIRM_POLL_MS;
+  const timeoutMs = options.timeoutMs ?? DOWNLOAD_CONFIRM_TIMEOUT_MS;
+  const missingLimit = options.missingLimit ?? 10;
+  const startedAt = Date.now();
+  let missingCount = 0;
+
+  while (Date.now() - startedAt <= timeoutMs) {
+    let items;
+    try { items = await chrome.downloads.search({ id: downloadId }); }
+    catch (error) { throw tagDownloadError(error, 'transfer'); }
+
+    const item = Array.isArray(items) ? items[0] : null;
+    if (item) {
+      missingCount = 0;
+      if (item.state === 'complete') return item;
+      if (item.state === 'interrupted') {
+        if (isDownloadCancelledError(item.error)) throw makeDownloadCancelledError(item.error);
+        throw tagDownloadError(new Error(`Download interrupted: ${item.error || 'unknown reason'}`), 'transfer');
+      }
+    } else if (++missingCount >= missingLimit) {
+      throw makeDownloadCancelledError('Download item was removed before completion');
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, pollMs)));
+  }
+
+  throw tagDownloadError(new Error('Timed out waiting for the browser to finish saving the file'), 'transfer');
+}
+
+async function startAndConfirmBrowserDownload(downloadOptions, waitOptions) {
+  let downloadId;
+  try {
+    downloadId = await chrome.downloads.download(downloadOptions);
+  } catch (error) {
+    if (isDownloadCancelledError(error)) throw makeDownloadCancelledError(error);
+    throw tagDownloadError(error, 'start');
+  }
+
+  if (!Number.isInteger(downloadId)) {
+    throw tagDownloadError(new Error('The browser did not create a download item'), 'start');
+  }
+  return waitForBrowserDownload(downloadId, waitOptions);
+}
+
+async function saveGeneratedArchive({ url, revoke, base64, zip, filename, originTabId }) {
+  try {
+    const item = await startAndConfirmBrowserDownload({ url, filename, saveAs: false });
+    revoke();
+    return { confirmed: true, fallback: false, downloadId: item.id };
+  } catch (error) {
+    if (isDownloadCancelledError(error)) {
+      revoke();
+      throw makeDownloadCancelledError(error);
+    }
+
+    // Firefox Android can reject the downloads API before creating an item.
+    // Its page-context fallback cannot expose the OS save result, so it is never
+    // treated as a confirmed local download for manifest bookkeeping.
+    const canFallback = _IS_FIREFOX && originTabId != null && error.downloadPhase === 'start';
+    if (!canFallback) {
+      revoke();
+      throw error;
+    }
+
+    revoke();
+    const payload = base64 || await zip.generateAsync({ type: 'base64', compression: 'STORE' });
+    const response = await chrome.tabs.sendMessage(originTabId, {
+      action: 'triggerDownload', base64: payload, filename,
+    });
+    if (response && response.ok === false) throw new Error(response.error || 'Browser download fallback failed');
+    return { confirmed: false, fallback: true, downloadId: null };
+  }
+}
+
 function sanitizeFilename(name, ext) {
   ext = (ext || 'zip').replace(/^\./, '');
   const base = name
@@ -2167,6 +2271,8 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   let zipPartChapters = 0;
   let zipPartBytes = 0;
   const savedZipNames = [];
+  let zipPartChapterRecords = [];
+  let unconfirmedZipParts = 0;
   const terminalCounts = { done: 0, skipped: 0, error: 0 };
   let firstChapterError = '';
 
@@ -2188,16 +2294,25 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
              imagesTotal: 0,
              zipPart });
 
-    _pendingZip = { zip, zipName: partName, originTabId };
-    const savedName = await _doZipAndSave({ zip, zipName: partName, originTabId, notifyDone: false });
-    if (!savedName) return false;
+    const pending = {
+      zip, zipName: partName, originTabId,
+      chapterRecords: zipPartChapterRecords.slice(),
+      slug: opts.slug,
+      mangaName,
+    };
+    _pendingZip = pending;
+    const saved = await _doZipAndSave({ ...pending, notifyDone: false });
+    if (!saved) return false;
 
-    savedZipNames.push(savedName);
-    cdlLog('ok', `Download All ZIP part saved: ${savedName}`);
+    savedZipNames.push(saved.filename);
+    if (!saved.confirmed) unconfirmedZipParts++;
+    cdlLog(saved.confirmed ? 'ok' : 'warn',
+      `Download All ZIP part ${saved.confirmed ? 'saved' : 'handed to browser'}: ${saved.filename}`);
     zip = new JSZip();
     zipPart++;
     zipPartChapters = 0;
     zipPartBytes = 0;
+    zipPartChapterRecords = [];
     return true;
   };
 
@@ -2312,7 +2427,6 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
         notify({ phase: 'done', chapterIndex: i + 1, totalChapters: chapters.length,
                  chapterLabel: result.chapterLabel, imagesDone: result.imagesSaved, imagesTotal: result.imagesTotal });
         cdlLog('ok', `${result.chapterLabel}: done (${result.imagesSaved} images)`);
-        recordChapterDownloaded(opts.slug, result.chapterLabel, mangaName); // mark as grabbed
         if (rateMode === 'dynamic') rateDelay = Math.max(MIN_DELAY, rateDelay - 100); // success → slightly faster
       } else if (result.status === 'skipped') {
         notify({ phase: 'skipped', chapterIndex: i + 1, totalChapters: chapters.length,
@@ -2344,6 +2458,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
         const added = await addChapterToOuter(zip, r, opts, mangaName);
         zipPartChapters++;
         zipPartBytes += added;
+        zipPartChapterRecords.push({ chapterLabel: r.chapterLabel });
         if (i < chapters.length - 1 && (zipPartChapters >= maxChapters || zipPartBytes >= maxBytes)) {
           const ok = await saveCurrentZipPart(false);
           if (!ok) { packFailed = true; _signalDownloadAllAbort(); return; }
@@ -2385,35 +2500,48 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
 
   const doneName = savedZipNames.length === 1 ? savedZipNames[0] : `${savedZipNames.length} ZIP parts`;
   const incompleteCount = terminalCounts.error + terminalCounts.skipped;
-  const warning = incompleteCount
-    ? `${incompleteCount} of ${chapters.length} chapters could not be included. Retry the failed or skipped chapters.`
-    : '';
+  const warnings = [];
+  if (incompleteCount) {
+    warnings.push(`${incompleteCount} of ${chapters.length} chapters could not be included. Retry the failed or skipped chapters.`);
+  }
+  if (unconfirmedZipParts) {
+    warnings.push(`${unconfirmedZipParts} ZIP part${unconfirmedZipParts === 1 ? '' : 's'} could not be verified and its chapters were not marked as downloaded.`);
+  }
+  const warning = warnings.join(' ');
   cdlLog(warning ? 'warn' : 'ok', `Download All complete: ${doneName}${warning ? ` (${warning})` : ''}`);
   notifyDownloadAllDone(originTabId, doneName, warning);
 }
 
-async function _doZipAndSave({ zip, zipName, originTabId, notifyDone = true }) {
+async function _doZipAndSave({
+  zip, zipName, originTabId, notifyDone = true,
+  chapterRecords = [], slug = '', mangaName = '',
+}) {
   try {
     const { url, revoke, base64: urlBase64 } = await _zipToDownloadUrl(zip);
     const filename = sanitizeFilename(zipName);
-    try {
-      await chrome.downloads.download({ url, filename, saveAs: false });
-      setTimeout(revoke, 60_000);
-    } catch (_dlErr) {
-      revoke();
-      // downloads API unavailable on this platform (Firefox Android) — fall back
-      // to sending ZIP data to the content script for a <a>-click download.
-      if (originTabId == null) throw _dlErr;
-      const b64 = urlBase64 || await zip.generateAsync({ type: 'base64', compression: 'STORE' });
-      await chrome.tabs.sendMessage(originTabId, { action: 'triggerDownload', base64: b64, filename });
+    const delivery = await saveGeneratedArchive({
+      url, revoke, base64: urlBase64, zip, filename, originTabId,
+    });
+    if (delivery.confirmed) {
+      for (const record of chapterRecords) {
+        if (record && record.chapterLabel) recordChapterDownloaded(slug, record.chapterLabel, mangaName);
+      }
     }
     _pendingZip = null;
     if (notifyDone) {
-      cdlLog('ok', `Download All complete: ${filename}`);
-      notifyDownloadAllDone(originTabId, filename);
+      const warning = delivery.confirmed
+        ? ''
+        : 'The browser received the file, but completion could not be verified; chapters were not marked as downloaded.';
+      cdlLog(delivery.confirmed ? 'ok' : 'warn', `Download All complete: ${filename}${warning ? ` (${warning})` : ''}`);
+      notifyDownloadAllDone(originTabId, filename, warning);
     }
-    return filename;
+    return { filename, confirmed: delivery.confirmed };
   } catch (err) {
+    if (isDownloadCancelledError(err)) {
+      cdlLog('info', `Download All save cancelled: ${sanitizeFilename(zipName)}`);
+      notifyDownloadAllCancelled(originTabId);
+      return null;
+    }
     cdlLog('error', `Download All ZIP error: ${err.message}`);
     notifyDownloadAllError(originTabId, err.message, true);
     return null;
