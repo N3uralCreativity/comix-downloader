@@ -201,8 +201,34 @@ function _downloadAllAbortPromise() {
   return new Promise((res) => _downloadAllAbortResolvers.push(res));
 }
 
-/** ZIP en attente de génération — conservé pour permettre un retry uniquement sur l'étape ZIP */
+/** ZIP/archive kept in memory while a failed ZIP or cancelled Save dialog can be retried. */
 let _pendingZip = null;
+
+function releasePendingGeneratedArchive(pending) {
+  const generated = pending && pending.generatedArchive;
+  if (!generated) return;
+  pending.generatedArchive = null;
+  try { generated.revoke(); } catch (_) {}
+}
+
+function waitForPendingArchiveSaveDecision(pending) {
+  if (pending.saveDecisionPromise) return pending.saveDecisionPromise;
+  pending.saveDecisionPromise = new Promise((resolve) => {
+    pending.resolveSaveDecision = (shouldRetry) => {
+      pending.resolveSaveDecision = null;
+      pending.saveDecisionPromise = null;
+      resolve(!!shouldRetry);
+    };
+  });
+  return pending.saveDecisionPromise;
+}
+
+function resolvePendingArchiveSaveDecision(shouldRetry) {
+  if (!_pendingZip || typeof _pendingZip.resolveSaveDecision !== 'function') return false;
+  const resolve = _pendingZip.resolveSaveDecision;
+  resolve(shouldRetry);
+  return true;
+}
 
 // Fallback defaults (mirror CDLSettings.DEFAULTS). The active values for batch
 // size and ZIP splitting are read from settings per operation; these remain as
@@ -213,6 +239,7 @@ const ZIP_PART_MAX_CHAPTERS = 5;
 const ZIP_PART_MAX_BYTES = 300 * 1024 * 1024;
 const DOWNLOAD_ALL_LOG_LIMIT = 150;
 const DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS = 2 * 60 * 1000;
+const SAVE_DIALOG_AUTO_RETRY_DELAY_MS = 350;
 
 function chapterConcurrencyLimit(cfg) {
   const value = parseInt(cfg && cfg['download.concurrentChapters'], 10);
@@ -347,8 +374,12 @@ function cdlLog(level, msg) {
   }).catch(() => {});
 }
 
-function startDownloadAllSession({ originTabId, mangaName, zipName, totalChapters }) {
+function startDownloadAllSession({
+  originTabId, mangaName, zipName, totalChapters,
+  completed = 0, resumeData = null, logItems = [], startedAt = null,
+}) {
   const now = Date.now();
+  const initialPhase = completed > 0 ? 'resuming' : 'preparing';
   downloadAllSession = {
     active: true,
     status: 'running',
@@ -356,17 +387,23 @@ function startDownloadAllSession({ originTabId, mangaName, zipName, totalChapter
     mangaName,
     zipName,
     totalChapters,
-    chapterIndex: 0,
+    chapterIndex: completed,
+    completed,
     imagesDone: 0,
     imagesTotal: 0,
-    phase: 'preparing',
-    startedAt: now,
+    phase: initialPhase,
+    canRetrySave: false,
+    canResumeDownload: false,
+    resumeData,
+    seriesSlug: downloadAllResumeSlug(resumeData),
+    startedAt: startedAt || now,
     updatedAt: now,
-    logItems: [],
+    logItems: Array.isArray(logItems) ? logItems.slice(-DOWNLOAD_ALL_LOG_LIMIT) : [],
     lastProgress: {
       action: 'downloadAllProgress',
-      phase: 'preparing',
-      chapterIndex: 0,
+      phase: initialPhase,
+      chapterIndex: completed,
+      completed,
       totalChapters,
       chapterLabel: '',
       imagesDone: 0,
@@ -429,6 +466,7 @@ function recordDownloadAllProgress(progress) {
     imagesDone: progress.imagesDone ?? downloadAllSession.imagesDone,
     imagesTotal: progress.imagesTotal ?? downloadAllSession.imagesTotal,
     zipPart: progress.zipPart ?? downloadAllSession.zipPart,
+    canRetrySave: false,
     lastProgress: normalized,
     updatedAt: Date.now(),
   });
@@ -484,50 +522,282 @@ function recordDownloadAllTerminal(status, patch = {}) {
 // worker is evicted (idle) or crashes. Persisting a serializable snapshot lets a page
 // refresh rebuild the progress popup even after the worker was torn down mid-download.
 const DL_SESSION_KEY = 'cdlDownloadAllSession';
+const DL_RESUME_KEY = 'cdlDownloadAllResume';
+const DOWNLOAD_ALL_RESUME_VERSION = 1;
 let _dlPersistTimer = null;
+
+function cloneDownloadAllOptions(options) {
+  try {
+    const cloned = JSON.parse(JSON.stringify(options || {}));
+    return cloned && typeof cloned === 'object' && !Array.isArray(cloned) ? cloned : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function normalizeDownloadAllResumeChapters(chapters) {
+  if (!Array.isArray(chapters)) return [];
+  return chapters.map((chapter) => ({
+    chapterUrl: String(chapter && chapter.chapterUrl || ''),
+    chapterLabel: String(chapter && chapter.chapterLabel || ''),
+  })).filter((chapter) => chapter.chapterUrl && chapter.chapterLabel);
+}
+
+function createDownloadAllResumeData({ chapters, mangaName, zipName, options, resumeState = null }) {
+  const source = resumeState && typeof resumeState === 'object' ? resumeState : {};
+  const normalized = normalizeDownloadAllResumeChapters(
+    Array.isArray(source.chapters) && source.chapters.length ? source.chapters : chapters
+  );
+  const totalChapters = normalized.length;
+  const checkpointIndex = Math.max(0, Math.min(
+    totalChapters,
+    Math.floor(Number(source.checkpointIndex) || 0)
+  ));
+  const counts = source.terminalCounts || {};
+  return {
+    version: DOWNLOAD_ALL_RESUME_VERSION,
+    chapters: normalized,
+    mangaName: String(source.mangaName || mangaName || ''),
+    zipName: String(source.zipName || zipName || 'manga.zip'),
+    options: cloneDownloadAllOptions(source.options || options),
+    totalChapters,
+    checkpointIndex,
+    nextZipPart: Math.max(1, Math.floor(Number(source.nextZipPart) || 1)),
+    savedZipNames: Array.isArray(source.savedZipNames)
+      ? source.savedZipNames.map(String).filter(Boolean)
+      : [],
+    terminalCounts: {
+      done: Math.max(0, Math.floor(Number(counts.done) || 0)),
+      skipped: Math.max(0, Math.floor(Number(counts.skipped) || 0)),
+      error: Math.max(0, Math.floor(Number(counts.error) || 0)),
+    },
+    firstChapterError: String(source.firstChapterError || ''),
+    checkpointBlocked: false,
+    updatedAt: Date.now(),
+  };
+}
+
+function isValidDownloadAllResumeData(data) {
+  return !!data && data.version === DOWNLOAD_ALL_RESUME_VERSION &&
+    Array.isArray(data.chapters) && data.chapters.length > 0 &&
+    Number.isInteger(data.checkpointIndex) && data.checkpointIndex >= 0 &&
+    data.checkpointIndex < data.chapters.length &&
+    data.chapters.every((chapter) => chapter && chapter.chapterUrl && chapter.chapterLabel);
+}
+
+function isCompletedDownloadAllResumeData(data) {
+  return !!data && data.version === DOWNLOAD_ALL_RESUME_VERSION &&
+    Array.isArray(data.chapters) && data.chapters.length > 0 &&
+    Number.isInteger(data.checkpointIndex) && data.checkpointIndex === data.chapters.length &&
+    Array.isArray(data.savedZipNames) && data.savedZipNames.length > 0 &&
+    data.chapters.every((chapter) => chapter && chapter.chapterUrl && chapter.chapterLabel);
+}
+
+function downloadAllResumeSlug(data) {
+  const configured = data && data.options && String(data.options.slug || '').trim();
+  if (configured) return configured;
+  const firstUrl = data && Array.isArray(data.chapters) && data.chapters[0] && data.chapters[0].chapterUrl;
+  return (String(firstUrl || '').match(/\/title\/([^/]+)/i) || [])[1] || '';
+}
+
+function downloadAllSessionMatchesUrl(session, tabUrl) {
+  const expected = String(session && session.seriesSlug || '') ||
+    downloadAllResumeSlug(session && session.resumeData);
+  const actual = (String(tabUrl || '').match(/\/title\/([^/?#]+)/i) || [])[1] || '';
+  return !!expected && !!actual && expected.toLowerCase() === actual.toLowerCase();
+}
+
+function updateDownloadAllResumeCheckpoint({
+  checkpointIndex, nextZipPart, savedZipNames, terminalCounts, firstChapterError,
+}) {
+  const data = downloadAllSession && downloadAllSession.resumeData;
+  if (!data) return;
+  data.checkpointIndex = Math.max(data.checkpointIndex || 0, Math.floor(Number(checkpointIndex) || 0));
+  data.nextZipPart = Math.max(1, Math.floor(Number(nextZipPart) || 1));
+  data.savedZipNames = Array.isArray(savedZipNames) ? savedZipNames.slice() : [];
+  data.terminalCounts = {
+    done: Math.max(0, Math.floor(Number(terminalCounts && terminalCounts.done) || 0)),
+    skipped: Math.max(0, Math.floor(Number(terminalCounts && terminalCounts.skipped) || 0)),
+    error: Math.max(0, Math.floor(Number(terminalCounts && terminalCounts.error) || 0)),
+  };
+  data.firstChapterError = String(firstChapterError || '');
+  data.updatedAt = Date.now();
+  downloadAllSession.resumeFromChapter = Math.min(data.totalChapters, data.checkpointIndex + 1);
+  persistDownloadAllSession(true, true);
+}
+
 function _serializeSession(s) {
   if (!s) return null;
   const keys = ['active', 'status', 'originTabId', 'mangaName', 'zipName', 'totalChapters',
     'chapterIndex', 'completed', 'concurrency', 'imagesDone', 'imagesTotal', 'phase', 'zipPart',
+    'seriesSlug',
     'startedAt', 'updatedAt', 'lastProgress', 'lastError', 'lastDone', 'lastCancelled',
-    'doneZipName', 'warning', 'error', 'canRetryZip'];
+    'lastSaveCancelled', 'saveFilename', 'saveZipPart', 'saveFinalPart', 'doneZipName',
+    'lastInterrupted', 'resumeFromChapter', 'resumeChapterLabel', 'warning', 'error',
+    'canRetryZip', 'canRetrySave', 'canResumeDownload'];
   const out = {};
   for (const k of keys) if (s[k] !== undefined) out[k] = s[k];
   out.logItems = Array.isArray(s.logItems) ? s.logItems.slice(-60) : []; // cap so storage stays small
   return out;
 }
-function persistDownloadAllSession(force = false) {
-  const write = () => { _dlPersistTimer = null; try { chrome.storage.local.set({ [DL_SESSION_KEY]: _serializeSession(downloadAllSession) }); } catch (_) {} };
+function persistDownloadAllSession(force = false, includeResumeData = false) {
+  const write = () => {
+    _dlPersistTimer = null;
+    try {
+      const values = { [DL_SESSION_KEY]: _serializeSession(downloadAllSession) };
+      if (includeResumeData && downloadAllSession && downloadAllSession.resumeData) {
+        values[DL_RESUME_KEY] = downloadAllSession.resumeData;
+      }
+      chrome.storage.local.set(values);
+    } catch (_) {}
+  };
   if (force) { if (_dlPersistTimer) { clearTimeout(_dlPersistTimer); _dlPersistTimer = null; } write(); return; }
   if (_dlPersistTimer) return; // throttle live progress writes to ~1/sec
   _dlPersistTimer = setTimeout(write, 1000);
 }
 function clearPersistedSession() {
   if (_dlPersistTimer) { clearTimeout(_dlPersistTimer); _dlPersistTimer = null; }
-  try { chrome.storage.local.remove(DL_SESSION_KEY); } catch (_) {}
+  try { chrome.storage.local.remove([DL_SESSION_KEY, DL_RESUME_KEY]); } catch (_) {}
+}
+function clearPersistedDownloadAllResume() {
+  if (downloadAllSession) downloadAllSession.resumeData = null;
+  try { chrome.storage.local.remove(DL_RESUME_KEY); } catch (_) {}
 }
 async function loadPersistedSession() {
-  try { const r = await chrome.storage.local.get(DL_SESSION_KEY); return (r && r[DL_SESSION_KEY]) || null; } catch (_) { return null; }
+  try {
+    const r = await chrome.storage.local.get([DL_SESSION_KEY, DL_RESUME_KEY]);
+    const session = (r && r[DL_SESSION_KEY]) || null;
+    if (session && r && r[DL_RESUME_KEY]) session.resumeData = r[DL_RESUME_KEY];
+    return session;
+  } catch (_) {
+    return null;
+  }
 }
 
 // Async session lookup used by the getDownloadAllSession message. When there is no in-memory
 // session (fresh worker after eviction/crash), fall back to the persisted one — and if it was
 // still marked "running", the worker that was running it is gone, so present it as interrupted
-// (so the popup restores with a Retry instead of a forever-spinning bar).
-async function getDownloadAllSessionForTabAsync(tabId) {
+// with a confirmed-part Resume action instead of a forever-spinning bar.
+function prepareInterruptedDownloadAllSession(stored, tabId) {
+  const resumeData = stored && stored.resumeData;
+  if (isCompletedDownloadAllResumeData(resumeData)) {
+    const doneZipName = resumeData.savedZipNames.length === 1
+      ? resumeData.savedZipNames[0]
+      : `${resumeData.savedZipNames.length} ZIP parts`;
+    Object.assign(stored, {
+      active: false,
+      status: 'done',
+      originTabId: tabId ?? stored.originTabId ?? null,
+      completed: resumeData.totalChapters,
+      chapterIndex: resumeData.totalChapters,
+      doneZipName,
+      canRetryZip: false,
+      canRetrySave: false,
+      canResumeDownload: false,
+      lastDone: { action: 'downloadAllDone', zipName: doneZipName, warning: stored.warning || '' },
+      updatedAt: Date.now(),
+    });
+    return stored;
+  }
+
+  if (!isValidDownloadAllResumeData(resumeData)) {
+    const error = 'Download interrupted - the browser or extension restarted. Start Download All again.';
+    Object.assign(stored, {
+      active: false,
+      status: 'error',
+      originTabId: tabId ?? stored.originTabId ?? null,
+      error,
+      canRetryZip: false,
+      canRetrySave: false,
+      canResumeDownload: false,
+      lastError: { action: 'downloadAllError', error, canRetryZip: false },
+      updatedAt: Date.now(),
+    });
+    return stored;
+  }
+
+  const checkpointIndex = resumeData.checkpointIndex;
+  const nextChapter = resumeData.chapters[checkpointIndex];
+  const savedParts = resumeData.savedZipNames.length;
+  let error;
+  if (stored.status === 'awaiting_save') {
+    error = checkpointIndex > 0
+      ? `The prepared ZIP was lost when the extension restarted. ${savedParts} confirmed ZIP part${savedParts === 1 ? '' : 's'} remain saved.`
+      : 'The prepared ZIP was lost when the extension restarted. No ZIP part had been confirmed yet.';
+  } else if (checkpointIndex > 0) {
+    error = `Download interrupted. ${savedParts} confirmed ZIP part${savedParts === 1 ? '' : 's'} remain saved.`;
+  } else {
+    error = 'Download interrupted before a ZIP part was confirmed.';
+  }
+  const message = {
+    action: 'downloadAllInterrupted',
+    error,
+    completed: checkpointIndex,
+    totalChapters: resumeData.totalChapters,
+    resumeFromChapter: checkpointIndex + 1,
+    resumeChapterLabel: nextChapter.chapterLabel,
+    savedZipParts: savedParts,
+    canResumeDownload: true,
+  };
+  Object.assign(stored, {
+    active: false,
+    status: 'interrupted',
+    phase: 'interrupted',
+    originTabId: tabId ?? stored.originTabId ?? null,
+    completed: checkpointIndex,
+    chapterIndex: checkpointIndex,
+    error,
+    canRetryZip: false,
+    canRetrySave: false,
+    canResumeDownload: true,
+    resumeFromChapter: checkpointIndex + 1,
+    resumeChapterLabel: nextChapter.chapterLabel,
+    lastInterrupted: message,
+    updatedAt: Date.now(),
+  });
+  return stored;
+}
+
+async function getDownloadAllSessionForTabAsync(tabId, tabUrl = '') {
   if (!downloadAllSession) {
     const stored = await loadPersistedSession();
     if (stored) {
-      if (stored.active || stored.status === 'running' || stored.status === 'cancelling') {
-        stored.active = false;
-        stored.status = 'error';
-        stored.error = 'Download interrupted — the browser or extension restarted. Click “Download All” again to restart it.';
-        stored.canRetryZip = false;
-        stored.lastError = { action: 'downloadAllError', error: stored.error, canRetryZip: false };
+      const expectedSlug = String(stored.seriesSlug || '') || downloadAllResumeSlug(stored.resumeData);
+      const requestedSlug = (String(tabUrl || '').match(/\/title\/([^/?#]+)/i) || [])[1] || '';
+      const sameTitle = expectedSlug && requestedSlug
+        ? expectedSlug.toLowerCase() === requestedSlug.toLowerCase()
+        : stored.originTabId == null || tabId == null || stored.originTabId === tabId;
+      const lostRuntimeState = stored.active ||
+        ['running', 'resuming', 'cancelling', 'awaiting_save'].includes(stored.status) ||
+        (stored.status === 'error' && stored.canRetryZip);
+      if (lostRuntimeState) {
+        prepareInterruptedDownloadAllSession(stored, sameTitle ? tabId : stored.originTabId);
       }
       downloadAllSession = stored;
       persistDownloadAllSession(true);
+      if (stored.status === 'done' && isCompletedDownloadAllResumeData(stored.resumeData)) {
+        clearPersistedDownloadAllResume();
+      }
     }
+  }
+
+  const expectedSlug = String(downloadAllSession && downloadAllSession.seriesSlug || '') ||
+    downloadAllResumeSlug(downloadAllSession && downloadAllSession.resumeData);
+  const requestedSlug = (String(tabUrl || '').match(/\/title\/([^/?#]+)/i) || [])[1] || '';
+  if (expectedSlug && requestedSlug && expectedSlug.toLowerCase() !== requestedSlug.toLowerCase()) {
+    return null;
+  }
+
+  if (
+    downloadAllSession &&
+    downloadAllSession.originTabId != null &&
+    tabId != null &&
+    downloadAllSession.originTabId !== tabId &&
+    downloadAllSessionMatchesUrl(downloadAllSession, tabUrl)
+  ) {
+    downloadAllSession.originTabId = tabId;
+    downloadAllSession.updatedAt = Date.now();
+    persistDownloadAllSession(true);
   }
   return getDownloadAllSessionForTab(tabId);
 }
@@ -543,6 +813,7 @@ function getDownloadAllSessionForTab(tabId) {
   }
   if (
     !downloadAllSession.active &&
+    !downloadAllSession.canResumeDownload &&
     Date.now() - (downloadAllSession.updatedAt || 0) > DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS
   ) {
     return null;
@@ -576,21 +847,63 @@ function notifyDownloadAllDone(originTabId, zipName, warning = '') {
     originTabId,
     doneZipName: zipName,
     warning,
+    canRetrySave: false,
     lastDone: message,
   });
+  clearPersistedDownloadAllResume();
   restoreIdleBadge();
   notifyTab(originTabId, message);
 }
 
 function notifyDownloadAllError(originTabId, error, canRetryZip = false) {
   const message = { action: 'downloadAllError', error, canRetryZip };
+  const resumeData = downloadAllSession && downloadAllSession.resumeData;
+  const canResumeDownload = !canRetryZip && isValidDownloadAllResumeData(resumeData);
+  const nextChapter = canResumeDownload ? resumeData.chapters[resumeData.checkpointIndex] : null;
+  const lastInterrupted = canResumeDownload ? {
+    action: 'downloadAllInterrupted',
+    error: `Download stopped: ${error}`,
+    completed: resumeData.checkpointIndex,
+    totalChapters: resumeData.totalChapters,
+    resumeFromChapter: resumeData.checkpointIndex + 1,
+    resumeChapterLabel: nextChapter.chapterLabel,
+    savedZipParts: resumeData.savedZipNames.length,
+    canResumeDownload: true,
+  } : null;
   recordDownloadAllTerminal('error', {
     originTabId,
     error,
     canRetryZip,
+    canRetrySave: false,
+    canResumeDownload,
+    resumeFromChapter: canResumeDownload ? resumeData.checkpointIndex + 1 : undefined,
+    resumeChapterLabel: nextChapter ? nextChapter.chapterLabel : undefined,
+    lastInterrupted,
     lastError: message,
   });
   restoreIdleBadge();
+  notifyTab(originTabId, message);
+}
+
+function notifyDownloadAllSaveCancelled(originTabId, filename, zipPart = 1, finalPart = true) {
+  const message = {
+    action: 'downloadAllSaveCancelled', filename, zipPart, finalPart, canRetrySave: true,
+  };
+  if (downloadAllSession) {
+    Object.assign(downloadAllSession, {
+      active: true,
+      status: 'awaiting_save',
+      phase: 'saving',
+      originTabId,
+      saveFilename: filename,
+      saveZipPart: zipPart,
+      saveFinalPart: finalPart,
+      canRetrySave: true,
+      lastSaveCancelled: message,
+      updatedAt: Date.now(),
+    });
+    persistDownloadAllSession(true);
+  }
   notifyTab(originTabId, message);
 }
 
@@ -598,10 +911,122 @@ function notifyDownloadAllCancelled(originTabId) {
   const message = { action: 'downloadAllCancelled' };
   recordDownloadAllTerminal('cancelled', {
     originTabId,
+    canRetrySave: false,
     lastCancelled: message,
+  });
+  clearPersistedDownloadAllResume();
+  restoreIdleBadge();
+  notifyTab(originTabId, message);
+}
+
+function notifyDownloadAllInterrupted(originTabId, error) {
+  const resumeData = downloadAllSession && downloadAllSession.resumeData;
+  if (!isValidDownloadAllResumeData(resumeData)) {
+    notifyDownloadAllError(originTabId, error, false);
+    return;
+  }
+  const nextChapter = resumeData.chapters[resumeData.checkpointIndex];
+  const message = {
+    action: 'downloadAllInterrupted',
+    error,
+    completed: resumeData.checkpointIndex,
+    totalChapters: resumeData.totalChapters,
+    resumeFromChapter: resumeData.checkpointIndex + 1,
+    resumeChapterLabel: nextChapter.chapterLabel,
+    savedZipParts: resumeData.savedZipNames.length,
+    canResumeDownload: true,
+  };
+  recordDownloadAllTerminal('interrupted', {
+    originTabId,
+    phase: 'interrupted',
+    completed: resumeData.checkpointIndex,
+    chapterIndex: resumeData.checkpointIndex,
+    error,
+    canRetryZip: false,
+    canRetrySave: false,
+    canResumeDownload: true,
+    resumeFromChapter: resumeData.checkpointIndex + 1,
+    resumeChapterLabel: nextChapter.chapterLabel,
+    lastInterrupted: message,
   });
   restoreIdleBadge();
   notifyTab(originTabId, message);
+}
+
+async function resumeDownloadAllFromCheckpoint(originTabId, tabUrl = '') {
+  const session = await getDownloadAllSessionForTabAsync(originTabId, tabUrl);
+  if (!session) throw new Error('No interrupted download was found for this title.');
+  if (session.active) throw new Error('The download is already running.');
+  if (
+    !['interrupted', 'error'].includes(session.status) ||
+    !session.canResumeDownload ||
+    !isValidDownloadAllResumeData(session.resumeData)
+  ) {
+    throw new Error('The download checkpoint is no longer available.');
+  }
+
+  const resumeData = session.resumeData;
+  const checkpointIndex = resumeData.checkpointIndex;
+  const remainingChapters = resumeData.chapters.slice(checkpointIndex);
+  if (!remainingChapters.length) throw new Error('There are no chapters left to resume.');
+
+  const completedLabels = new Set(
+    resumeData.chapters.slice(0, checkpointIndex).map((chapter) => chapter.chapterLabel)
+  );
+  const resumeState = {
+    ...resumeData,
+    logItems: (Array.isArray(session.logItems) ? session.logItems : [])
+      .filter((item) => item && completedLabels.has(item.id)),
+    startedAt: session.startedAt || Date.now(),
+  };
+
+  Object.assign(session, {
+    active: true,
+    status: 'running',
+    phase: 'resuming',
+    originTabId,
+    completed: checkpointIndex,
+    chapterIndex: checkpointIndex,
+    canRetryZip: false,
+    canRetrySave: false,
+    canResumeDownload: false,
+    lastProgress: {
+      action: 'downloadAllProgress',
+      phase: 'resuming',
+      chapterIndex: checkpointIndex,
+      completed: checkpointIndex,
+      totalChapters: resumeData.totalChapters,
+      chapterLabel: '',
+      imagesDone: 0,
+      imagesTotal: 0,
+    },
+    updatedAt: Date.now(),
+  });
+  persistDownloadAllSession(true);
+  _resetDownloadAllAbort();
+
+  Promise.resolve()
+    .then(() => handleDownloadAllRequest(
+      remainingChapters,
+      resumeData.mangaName,
+      resumeData.zipName,
+      originTabId,
+      resumeData.options,
+      resumeState
+    ))
+    .catch((error) => {
+      try { cdlLog('error', 'Download All resume failed: ' + (error?.message || error)); } catch (_) {}
+      notifyDownloadAllInterrupted(
+        originTabId,
+        'Resume failed: ' + (error?.message || 'unexpected error')
+      );
+    });
+
+  return {
+    checkpointIndex,
+    totalChapters: resumeData.totalChapters,
+    resumeChapterLabel: remainingChapters[0].chapterLabel,
+  };
 }
 
 // ── Réception des messages depuis content_title.js ───────────────────────────
@@ -619,21 +1044,95 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === 'downloadAllChapters') {
     const originTabId = sender.tab?.id ?? null;
-    sendResponse({ ok: true }); // ack synchronously so a slow/faulty start never surfaces as "connection failed"
-    _resetDownloadAllAbort();
-    // Fire-and-forget, but ALWAYS catch: an unhandled rejection here can take down the MV3
-    // service worker (and make the next Retry fail with "connection failed").
     Promise.resolve()
-      .then(() => handleDownloadAllRequest(message.chapters, message.mangaName, message.zipName, originTabId, message.options))
-      .catch((e) => { try { cdlLog('error', 'Download All failed: ' + (e?.message || e)); } catch (_) {}
-        notifyDownloadAllError(originTabId, 'Download failed: ' + (e?.message || 'unexpected error')); });
+      .then(async () => {
+        const existing = await getDownloadAllSessionForTabAsync(originTabId, sender.tab?.url || '');
+        if (existing && (
+          existing.active || existing.status === 'awaiting_save' || existing.canResumeDownload
+        )) {
+          sendResponse({ ok: false, existing: true, session: _serializeSession(existing) });
+          return;
+        }
+        if (downloadAllSession && (
+          downloadAllSession.active || downloadAllSession.canResumeDownload
+        )) {
+          const interrupted = downloadAllSession.canResumeDownload && !downloadAllSession.active;
+          sendResponse({
+            ok: false,
+            error: interrupted
+              ? `An interrupted download for "${downloadAllSession.mangaName || 'another title'}" is waiting to be resumed or discarded.`
+              : 'Another Download All operation is already running.',
+          });
+          return;
+        }
+
+        sendResponse({ ok: true });
+        _resetDownloadAllAbort();
+        // Fire-and-forget, but ALWAYS catch: an unhandled rejection here can take down the MV3
+        // service worker (and make the next Retry fail with "connection failed").
+        Promise.resolve()
+          .then(() => handleDownloadAllRequest(
+            message.chapters,
+            message.mangaName,
+            message.zipName,
+            originTabId,
+            message.options
+          ))
+          .catch((e) => {
+            try { cdlLog('error', 'Download All failed: ' + (e?.message || e)); } catch (_) {}
+            notifyDownloadAllError(
+              originTabId,
+              'Download failed: ' + (e?.message || 'unexpected error')
+            );
+          });
+      })
+      .catch((error) => sendResponse({
+        ok: false,
+        error: error?.message || 'The download could not be started.',
+      }));
     return true;
   }
 
   if (message.action === 'cancelDownloadAll') {
     _signalDownloadAllAbort();
+    resolvePendingArchiveSaveDecision(false);
     recordDownloadAllCancelling();
     sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message.action === 'resumeDownloadAll') {
+    const originTabId = sender.tab?.id ?? null;
+    resumeDownloadAllFromCheckpoint(originTabId, sender.tab?.url || '')
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({
+        ok: false,
+        error: error?.message || 'The download could not be resumed.',
+      }));
+    return true;
+  }
+
+  if (message.action === 'retryArchiveSave') {
+    const originTabId = sender.tab?.id ?? null;
+    const belongsToSender = !!_pendingZip && (
+      _pendingZip.originTabId == null || _pendingZip.originTabId === originTabId
+    );
+    const resumed = belongsToSender && resolvePendingArchiveSaveDecision(true);
+    sendResponse({
+      ok: resumed,
+      error: resumed ? '' : 'The prepared archive is no longer available. Restart Download All.',
+    });
+    return true;
+  }
+
+  if (message.action === 'abandonArchiveSave') {
+    const originTabId = sender.tab?.id ?? null;
+    const belongsToSender = !!_pendingZip && (
+      _pendingZip.originTabId == null || _pendingZip.originTabId === originTabId
+    );
+    if (belongsToSender) _pendingZip.dismissAfterAbandon = true;
+    const abandoned = belongsToSender && resolvePendingArchiveSaveDecision(false);
+    sendResponse({ ok: abandoned });
     return true;
   }
 
@@ -652,8 +1151,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'getDownloadAllSession') {
     const originTabId = sender.tab?.id ?? null;
     // Async: may need to read the persisted session when the worker was restarted.
-    getDownloadAllSessionForTabAsync(originTabId)
-      .then((session) => sendResponse({ ok: true, session }))
+    getDownloadAllSessionForTabAsync(originTabId, sender.tab?.url || '')
+      .then((session) => sendResponse({ ok: true, session: _serializeSession(session) }))
       .catch(() => sendResponse({ ok: true, session: null }));
     return true;
   }
@@ -858,6 +1357,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   pendingDownloads.delete(tabId);
+  if (_pendingZip && _pendingZip.originTabId === tabId) {
+    resolvePendingArchiveSaveDecision(false);
+  }
 });
 
 // ── Fonction d'extraction injectée dans la page chapitre ──────────────────────
@@ -1888,6 +2390,12 @@ function isDownloadCancelledError(error) {
     /(?:user.{0,40}cancel|cancel.{0,40}user)/i.test(text);
 }
 
+function isRetryableSaveCancellation(error) {
+  if (!isDownloadCancelledError(error)) return false;
+  if (error && error.downloadPhase === 'transfer') return false;
+  return !/USER_SHUTDOWN/i.test(downloadErrorText(error));
+}
+
 function makeDownloadCancelledError(reason) {
   const error = new Error('Download cancelled.');
   error.name = 'DownloadCancelledError';
@@ -1935,11 +2443,17 @@ async function waitForBrowserDownload(downloadId, options = {}) {
       if (onProgress) { try { onProgress(item); } catch (_) {} }
       if (item.state === 'complete') return item;
       if (item.state === 'interrupted') {
-        if (isDownloadCancelledError(item.error)) throw makeDownloadCancelledError(item.error);
+        if (isDownloadCancelledError(item.error)) {
+          const cancelled = makeDownloadCancelledError(item.error);
+          cancelled.downloadPhase = Number(item.bytesReceived) > 0 ? 'transfer' : 'chooser';
+          throw cancelled;
+        }
         throw tagDownloadError(new Error(`Download interrupted: ${item.error || 'unknown reason'}`), 'transfer');
       }
     } else if (++missingCount >= missingLimit) {
-      throw makeDownloadCancelledError('Download item was removed before completion');
+      const cancelled = makeDownloadCancelledError('Download item was removed before completion');
+      cancelled.downloadPhase = 'transfer';
+      throw cancelled;
     }
 
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, pollMs)));
@@ -1965,42 +2479,76 @@ async function startAndConfirmBrowserDownload(downloadOptions, waitOptions) {
 
 async function saveGeneratedArchive({
   url, revoke, base64, zip, filename, originTabId, onSaveProgress,
+  cancelRetryCount = 1, cancelRetryDelayMs = SAVE_DIALOG_AUTO_RETRY_DELAY_MS,
+  preserveOnCancel = false, forceSaveAs = false,
 }) {
   const reportSave = typeof onSaveProgress === 'function'
     ? (item) => { try { onSaveProgress(item || {}); } catch (_) {} }
     : null;
-  if (reportSave) reportSave({ state: 'starting', bytesReceived: 0, totalBytes: -1 });
-  try {
-    const item = await startAndConfirmBrowserDownload(
-      { url, filename, saveAs: false },
-      reportSave ? { onProgress: reportSave } : undefined
-    );
-    revoke();
-    return { confirmed: true, fallback: false, downloadId: item.id };
-  } catch (error) {
-    if (isDownloadCancelledError(error)) {
-      revoke();
-      throw makeDownloadCancelledError(error);
-    }
+  const retryLimit = Math.max(0, Math.floor(Number(cancelRetryCount) || 0));
+  const retryDelay = Math.max(0, Number(cancelRetryDelayMs) || 0);
+  let cancelledAttempts = 0;
+  let startOrTransferError = null;
 
-    // Firefox Android can reject the downloads API before creating an item.
-    // Its page-context fallback cannot expose the OS save result, so it is never
-    // treated as a confirmed local download for manifest bookkeeping.
-    const canFallback = _IS_FIREFOX && originTabId != null && error.downloadPhase === 'start';
-    if (!canFallback) {
-      revoke();
-      throw error;
+  while (true) {
+    if (reportSave) {
+      reportSave({
+        state: 'starting',
+        saveAttempt: cancelledAttempts + 1,
+        bytesReceived: 0,
+        totalBytes: -1,
+      });
     }
+    try {
+      const item = await startAndConfirmBrowserDownload(
+        { url, filename, saveAs: forceSaveAs || cancelledAttempts > 0 },
+        reportSave ? { onProgress: reportSave } : undefined
+      );
+      revoke();
+      return { confirmed: true, fallback: false, downloadId: item.id };
+    } catch (error) {
+      if (!isDownloadCancelledError(error)) {
+        startOrTransferError = error;
+        break;
+      }
+      if (!isRetryableSaveCancellation(error) || cancelledAttempts >= retryLimit) {
+        if (!preserveOnCancel) revoke();
+        throw makeDownloadCancelledError(error);
+      }
 
-    revoke();
-    const payload = base64 || await zip.generateAsync({ type: 'base64', compression: 'STORE' });
-    const response = await chrome.tabs.sendMessage(originTabId, {
-      action: 'triggerDownload', base64: payload, filename,
-    });
-    if (response && response.ok === false) throw new Error(response.error || 'Browser download fallback failed');
-    if (reportSave) reportSave({ state: 'fallback', bytesReceived: 0, totalBytes: -1 });
-    return { confirmed: false, fallback: true, downloadId: null };
+      cancelledAttempts++;
+      if (reportSave) {
+        reportSave({
+          state: 'retrying',
+          retryAttempt: cancelledAttempts,
+          nextSaveAttempt: cancelledAttempts + 1,
+          bytesReceived: 0,
+          totalBytes: -1,
+        });
+      }
+      if (retryDelay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      }
+    }
   }
+
+  // Firefox Android can reject the downloads API before creating an item.
+  // Its page-context fallback cannot expose the OS save result, so it is never
+  // treated as a confirmed local download for manifest bookkeeping.
+  const canFallback = _IS_FIREFOX && originTabId != null && startOrTransferError.downloadPhase === 'start';
+  if (!canFallback) {
+    revoke();
+    throw startOrTransferError;
+  }
+
+  revoke();
+  const payload = base64 || await zip.generateAsync({ type: 'base64', compression: 'STORE' });
+  const response = await chrome.tabs.sendMessage(originTabId, {
+    action: 'triggerDownload', base64: payload, filename,
+  });
+  if (response && response.ok === false) throw new Error(response.error || 'Browser download fallback failed');
+  if (reportSave) reportSave({ state: 'fallback', bytesReceived: 0, totalBytes: -1 });
+  return { confirmed: false, fallback: true, downloadId: null };
 }
 
 function sanitizeFilename(name, ext) {
@@ -2268,10 +2816,33 @@ async function extractFromTab(url, cfg) {
 // on the ZIP object, while a window (= concurrency) bounds how many finished but
 // not-yet-packed chapters are held in memory. concurrency === 1 reproduces the
 // original strictly-sequential behavior.
-async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabId, options) {
+async function handleDownloadAllRequest(
+  chapters, mangaName, zipName, originTabId, options, resumeState = null
+) {
+  const resumeData = createDownloadAllResumeData({
+    chapters, mangaName, zipName, options, resumeState,
+  });
+  const totalChapters = resumeData.totalChapters;
+  const chapterOffset = resumeState ? resumeData.checkpointIndex : 0;
+  if (!totalChapters || !chapters.length || chapterOffset + chapters.length !== totalChapters) {
+    throw new Error('The selected chapter list is empty or no longer valid.');
+  }
+
+  startDownloadAllSession({
+    originTabId,
+    mangaName: resumeData.mangaName,
+    zipName: resumeData.zipName,
+    totalChapters,
+    completed: chapterOffset,
+    resumeData,
+    logItems: resumeState && resumeState.logItems,
+    startedAt: resumeState && resumeState.startedAt,
+  });
+  persistDownloadAllSession(true, true);
+
   const cfg = await loadCfg();
   const opts = resolveOutputOptions(cfg, options);
-  if (!opts.totalCount) opts.totalCount = chapters.length;
+  if (!opts.totalCount) opts.totalCount = totalChapters;
   // Push finished .cbz files to the library server, only when enabled + CBZ format.
   if (opts.format === 'cbz') {
     const libCfg = await getLibraryConfig();
@@ -2286,28 +2857,64 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   const maxChapters = splitMode === 'single' ? Infinity : (cfg['download.chaptersPerPart'] || ZIP_PART_MAX_CHAPTERS);
   const maxBytes = splitMode === 'single' ? Infinity : (cfg['download.mbPerPart'] || 300) * 1024 * 1024;
 
-  startDownloadAllSession({ originTabId, mangaName, zipName, totalChapters: chapters.length });
-  persistDownloadAllSession(true);
-  cdlLog('info', `Download All started: "${mangaName}" — ${chapters.length} chapters${concurrency > 1 ? ` (${concurrency} at a time)` : ''}`);
+  cdlLog('info', `${chapterOffset ? 'Download All resumed' : 'Download All started'}: "${mangaName}" - ${chapters.length} remaining of ${totalChapters} chapters${concurrency > 1 ? ` (${concurrency} at a time)` : ''}`);
 
   let zip = new JSZip();
-  let zipPart = 1;
+  let zipPart = resumeData.nextZipPart;
   let zipPartChapters = 0;
   let zipPartBytes = 0;
-  const savedZipNames = [];
+  const savedZipNames = resumeData.savedZipNames.slice();
   let zipPartChapterRecords = [];
   let unconfirmedZipParts = 0;
-  const terminalCounts = { done: 0, skipped: 0, error: 0 };
-  let firstChapterError = '';
+  const terminalCounts = { ...resumeData.terminalCounts };
+  let firstChapterError = resumeData.firstChapterError;
 
   // finishedCount (chapters reaching a terminal state: done/skipped/error) drives
   // the monotonic progress bar/counter. Injected into every progress message so
   // the popup never depends on which of the concurrent chapters reported last.
-  let finishedCount = 0;
-  const notify = (extra) => notifyDownloadAllProgress(originTabId, { completed: finishedCount, concurrency, ...extra });
+  let finishedCount = chapterOffset;
+  const chapterProgressPhases = new Set(['extracting', 'downloading', 'done', 'error', 'skipped']);
+  const archiveProgressPhases = new Set(['zipping', 'saving', 'savingPart']);
+  let archivePresentationActive = false;
+  let archiveCompletedSnapshot = 0;
+  let deferredProgressSequence = 0;
+  const deferredChapterProgress = new Map();
 
-  const saveCurrentZipPart = async (isFinal = false) => {
+  const notify = (extra) => {
+    const phase = extra && extra.phase;
+    const completed = archivePresentationActive && archiveProgressPhases.has(phase)
+      ? archiveCompletedSnapshot
+      : finishedCount;
+    const progress = { completed, concurrency, ...extra };
+
+    // A concurrent worker may already be fetching the next chapter while the
+    // in-order packer builds/saves the current ZIP part. Keep that useful work,
+    // but do not let its events visually replace the archive stage.
+    if (archivePresentationActive && chapterProgressPhases.has(phase)) {
+      const key = `${progress.chapterIndex || 0}:${progress.chapterLabel || ''}`;
+      deferredChapterProgress.set(key, {
+        sequence: ++deferredProgressSequence,
+        progress,
+      });
+      return;
+    }
+    notifyDownloadAllProgress(originTabId, progress);
+  };
+
+  const flushDeferredChapterProgress = () => {
+    const buffered = [...deferredChapterProgress.values()]
+      .sort((a, b) => a.sequence - b.sequence);
+    deferredChapterProgress.clear();
+    for (const entry of buffered) {
+      notifyDownloadAllProgress(originTabId, { ...entry.progress, completed: finishedCount });
+    }
+    return buffered.length;
+  };
+
+  const saveCurrentZipPart = async (isFinal = false, checkpointIndex = chapterOffset) => {
     if (zipPartChapters === 0) return true;
+    archivePresentationActive = true;
+    archiveCompletedSnapshot = checkpointIndex;
     const partName = zipPart === 1 && isFinal ? zipName : getZipPartName(zipName, zipPart);
 
     let lastZipPercent = -1;
@@ -2321,8 +2928,8 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       lastZipPercent = Math.max(lastZipPercent, wholePercent);
       notify({
         phase: 'zipping',
-        chapterIndex: chapters.length,
-        totalChapters: chapters.length,
+        chapterIndex: totalChapters,
+        totalChapters,
         chapterLabel: '',
         imagesDone: 0,
         imagesTotal: 0,
@@ -2347,8 +2954,8 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       lastSaveReportAt = now;
       notify({
         phase: 'saving',
-        chapterIndex: chapters.length,
-        totalChapters: chapters.length,
+        chapterIndex: totalChapters,
+        totalChapters,
         chapterLabel: '',
         imagesDone: 0,
         imagesTotal: 0,
@@ -2371,10 +2978,15 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       finalPart: isFinal,
       onZipProgress,
       onSaveProgress,
+      notifyDone: false,
     };
     _pendingZip = pending;
-    const saved = await _doZipAndSave({ ...pending, notifyDone: false });
-    if (!saved) return false;
+    const saved = await _doZipAndSave(pending);
+    if (!saved) {
+      archivePresentationActive = false;
+      deferredChapterProgress.clear();
+      return false;
+    }
 
     savedZipNames.push(saved.filename);
     if (!saved.confirmed) unconfirmedZipParts++;
@@ -2385,6 +2997,33 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     zipPartChapters = 0;
     zipPartBytes = 0;
     zipPartChapterRecords = [];
+    if (saved.confirmed && !resumeData.checkpointBlocked) {
+      updateDownloadAllResumeCheckpoint({
+        checkpointIndex,
+        nextZipPart: zipPart,
+        savedZipNames,
+        terminalCounts,
+        firstChapterError,
+      });
+    } else if (!saved.confirmed) {
+      // Without browser confirmation, a later part cannot form a safe resume
+      // boundary because this part may not exist on disk.
+      resumeData.checkpointBlocked = true;
+      resumeData.updatedAt = Date.now();
+      persistDownloadAllSession(true, true);
+    }
+    archivePresentationActive = false;
+    if (!isFinal) {
+      notify({
+        phase: 'resuming',
+        chapterIndex: checkpointIndex,
+        totalChapters,
+        chapterLabel: '',
+        imagesDone: 0,
+        imagesTotal: 0,
+      });
+    }
+    flushDeferredChapterProgress();
     return true;
   };
 
@@ -2400,8 +3039,9 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   // progress; returns a result the packer can add to the ZIP. Never throws.
   const downloadChapter = async (i) => {
     const { chapterUrl, chapterLabel } = chapters[i];
+    const globalIndex = chapterOffset + i + 1;
 
-    notify({ phase: 'extracting', chapterIndex: i + 1, totalChapters: chapters.length,
+    notify({ phase: 'extracting', chapterIndex: globalIndex, totalChapters,
              chapterLabel, imagesDone: 0, imagesTotal: 0 });
 
     let images = null, extractErr = null;
@@ -2444,7 +3084,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
           firstImageError = fetched.error;
         }
         imagesProcessed++;
-        notify({ phase: 'downloading', chapterIndex: i + 1, totalChapters: chapters.length,
+        notify({ phase: 'downloading', chapterIndex: globalIndex, totalChapters,
                  chapterLabel, imagesDone: imagesProcessed, imagesTotal: ordered.length });
       }));
     }
@@ -2493,20 +3133,19 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       const result = await downloadChapter(i);
       results[i] = result;
       finishedCount++;   // bump before the terminal message so the bar advances
-      terminalCounts[result.status]++;
+      const globalIndex = chapterOffset + i + 1;
 
       if (result.status === 'done') {
-        notify({ phase: 'done', chapterIndex: i + 1, totalChapters: chapters.length,
+        notify({ phase: 'done', chapterIndex: globalIndex, totalChapters,
                  chapterLabel: result.chapterLabel, imagesDone: result.imagesSaved, imagesTotal: result.imagesTotal });
         cdlLog('ok', `${result.chapterLabel}: done (${result.imagesSaved} images)`);
         if (rateMode === 'dynamic') rateDelay = Math.max(MIN_DELAY, rateDelay - 100); // success → slightly faster
       } else if (result.status === 'skipped') {
-        notify({ phase: 'skipped', chapterIndex: i + 1, totalChapters: chapters.length,
+        notify({ phase: 'skipped', chapterIndex: globalIndex, totalChapters,
                  chapterLabel: result.chapterLabel, imagesDone: 0, imagesTotal: 0 });
       } else {
-        notify({ phase: 'error', chapterIndex: i + 1, totalChapters: chapters.length,
+        notify({ phase: 'error', chapterIndex: globalIndex, totalChapters,
                  chapterLabel: result.chapterLabel, imagesDone: result.imagesSaved || 0, imagesTotal: result.imagesTotal || 0 });
-        if (!firstChapterError && result.error) firstChapterError = result.error;
         if (rateMode === 'dynamic') rateDelay = Math.min(MAX_DELAY, Math.round(rateDelay * 1.5)); // failure → back off
       }
       resolvers[i]();   // hand this chapter to the in-order packer
@@ -2526,13 +3165,18 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
       const r = results[i];
       results[i] = null;   // release buffers as soon as they're packed
 
+      if (r && Object.prototype.hasOwnProperty.call(terminalCounts, r.status)) {
+        terminalCounts[r.status]++;
+        if (r.status === 'error' && !firstChapterError && r.error) firstChapterError = r.error;
+      }
+
       if (r && r.status === 'done' && r.files.length) {
         const added = await addChapterToOuter(zip, r, opts, mangaName);
         zipPartChapters++;
         zipPartBytes += added;
         zipPartChapterRecords.push({ chapterLabel: r.chapterLabel });
         if (i < chapters.length - 1 && (zipPartChapters >= maxChapters || zipPartBytes >= maxBytes)) {
-          const ok = await saveCurrentZipPart(false);
+          const ok = await saveCurrentZipPart(false, chapterOffset + i + 1);
           if (!ok) { packFailed = true; _signalDownloadAllAbort(); return; }
         }
       }
@@ -2545,7 +3189,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   };
 
   // Series cover + series.json go in first (so they land in ZIP part 1).
-  await addSeriesMetaToOuter(zip, opts, mangaName);
+  if (zipPart === 1) await addSeriesMetaToOuter(zip, opts, mangaName);
 
   const workers = [];
   for (let w = 0; w < concurrency; w++) workers.push(worker());
@@ -2563,7 +3207,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   }
 
   // Final ZIP part.
-  const saved = await saveCurrentZipPart(true);
+  const saved = await saveCurrentZipPart(true, totalChapters);
   if (!saved) return;
 
   // Let queued library pushes drain before reporting done (also keeps the MV3
@@ -2574,7 +3218,7 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   const incompleteCount = terminalCounts.error + terminalCounts.skipped;
   const warnings = [];
   if (incompleteCount) {
-    warnings.push(`${incompleteCount} of ${chapters.length} chapters could not be included. Retry the failed or skipped chapters.`);
+    warnings.push(`${incompleteCount} of ${totalChapters} chapters could not be included. Retry the failed or skipped chapters.`);
   }
   if (unconfirmedZipParts) {
     warnings.push(`${unconfirmedZipParts} ZIP part${unconfirmedZipParts === 1 ? '' : 's'} could not be verified and its chapters were not marked as downloaded.`);
@@ -2584,29 +3228,74 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
   notifyDownloadAllDone(originTabId, doneName, warning);
 }
 
-async function _doZipAndSave({
-  zip, zipName, originTabId, notifyDone = true,
-  chapterRecords = [], slug = '', mangaName = '',
-  onZipProgress = null, onSaveProgress = null,
-}) {
+async function _doZipAndSave(pending) {
+  const {
+    zip, zipName, originTabId,
+    chapterRecords = [], slug = '', mangaName = '',
+    onZipProgress = null, onSaveProgress = null,
+  } = pending;
+  const notifyDone = pending.notifyDone !== false;
+  const filename = sanitizeFilename(zipName);
   try {
-    if (typeof onZipProgress === 'function') {
-      try { onZipProgress({ percent: 0, currentFile: '', reset: true }); } catch (_) {}
+    let generated = pending.generatedArchive;
+    if (!generated) {
+      if (typeof onZipProgress === 'function') {
+        try { onZipProgress({ percent: 0, currentFile: '', reset: true }); } catch (_) {}
+      }
+      const result = await _zipToDownloadUrl(zip, onZipProgress);
+      if (typeof onZipProgress === 'function') {
+        try { onZipProgress({ percent: 100, currentFile: '' }); } catch (_) {}
+      }
+      generated = {
+        url: result.url,
+        revoke: result.revoke,
+        base64: result.base64,
+      };
+      pending.generatedArchive = generated;
     }
-    const { url, revoke, base64: urlBase64 } = await _zipToDownloadUrl(zip, onZipProgress);
-    if (typeof onZipProgress === 'function') {
-      try { onZipProgress({ percent: 100, currentFile: '' }); } catch (_) {}
+
+    let delivery = null;
+    let manualSaveAttempt = false;
+    while (!delivery) {
+      try {
+        delivery = await saveGeneratedArchive({
+          url: generated.url,
+          revoke: generated.revoke,
+          base64: generated.base64,
+          zip,
+          filename,
+          originTabId,
+          onSaveProgress,
+          cancelRetryCount: manualSaveAttempt ? 0 : 1,
+          preserveOnCancel: true,
+          forceSaveAs: manualSaveAttempt,
+        });
+        pending.generatedArchive = null;
+      } catch (error) {
+        if (!isDownloadCancelledError(error)) throw error;
+
+        cdlLog('info', `Download All save dialog cancelled: ${filename}`);
+        const decision = waitForPendingArchiveSaveDecision(pending);
+        notifyDownloadAllSaveCancelled(originTabId, filename, pending.zipPart, pending.finalPart);
+        const shouldRetry = await decision;
+        if (!shouldRetry) {
+          const dismissAfterAbandon = !!pending.dismissAfterAbandon;
+          releasePendingGeneratedArchive(pending);
+          if (_pendingZip === pending) _pendingZip = null;
+          notifyDownloadAllCancelled(originTabId);
+          if (dismissAfterAbandon) dismissDownloadAllSessionForTab(originTabId);
+          return null;
+        }
+        manualSaveAttempt = true;
+      }
     }
-    const filename = sanitizeFilename(zipName);
-    const delivery = await saveGeneratedArchive({
-      url, revoke, base64: urlBase64, zip, filename, originTabId, onSaveProgress,
-    });
+
     if (delivery.confirmed) {
       for (const record of chapterRecords) {
         if (record && record.chapterLabel) recordChapterDownloaded(slug, record.chapterLabel, mangaName);
       }
     }
-    _pendingZip = null;
+    if (_pendingZip === pending) _pendingZip = null;
     if (notifyDone) {
       const warning = delivery.confirmed
         ? ''
@@ -2616,11 +3305,15 @@ async function _doZipAndSave({
     }
     return { filename, confirmed: delivery.confirmed };
   } catch (err) {
+    releasePendingGeneratedArchive(pending);
     if (isDownloadCancelledError(err)) {
       cdlLog('info', `Download All save cancelled: ${sanitizeFilename(zipName)}`);
       notifyDownloadAllCancelled(originTabId);
       return null;
     }
+    // A subsequent Retry ZIP action is a standalone recovery after this caller
+    // has unwound, so it must report its own terminal result.
+    pending.notifyDone = true;
     cdlLog('error', `Download All ZIP error: ${err.message}`);
     notifyDownloadAllError(originTabId, err.message, true);
     return null;

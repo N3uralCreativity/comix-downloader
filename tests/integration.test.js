@@ -29,9 +29,31 @@ function refsIn(src, varName) {
 }
 
 // 1. background.js (service worker) settings keys
-const bgKeys = refsIn(read('background.js'), 'cfg');
+const backgroundSource = read('background.js');
+const bgKeys = refsIn(backgroundSource, 'cfg');
 check('background.js reads a meaningful number of settings', bgKeys.length >= 15);
 bgKeys.forEach((k) => check('background.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
+check('browser Save cancellation gets exactly one automatic retry by default',
+  backgroundSource.includes('cancelRetryCount = 1') &&
+  backgroundSource.includes('saveAs: forceSaveAs || cancelledAttempts > 0'));
+check('Download All retains a prepared archive for an explicit Save retry',
+  backgroundSource.includes('waitForPendingArchiveSaveDecision') &&
+  backgroundSource.includes("message.action === 'retryArchiveSave'"));
+check('Download All keeps concurrent chapter events behind the active archive stage',
+  backgroundSource.includes('archivePresentationActive') &&
+  backgroundSource.includes('deferredChapterProgress') &&
+  backgroundSource.includes("phase: 'resuming'"));
+check('Download All persists a lightweight confirmed ZIP checkpoint',
+  backgroundSource.includes("const DL_RESUME_KEY = 'cdlDownloadAllResume'") &&
+  backgroundSource.includes('updateDownloadAllResumeCheckpoint') &&
+  backgroundSource.includes('if (saved.confirmed && !resumeData.checkpointBlocked)'));
+check('Download All exposes a checkpoint resume message without persisting archive bytes',
+  backgroundSource.includes("message.action === 'resumeDownloadAll'") &&
+  backgroundSource.includes('remainingChapters = resumeData.chapters.slice(checkpointIndex)') &&
+  !backgroundSource.includes('generatedArchive: generated'));
+check('a new Download All request reattaches to an existing durable operation',
+  backgroundSource.includes('existing.status === \'awaiting_save\'') &&
+  backgroundSource.includes('existing: true, session: _serializeSession(existing)'));
 
 // 2. content_title.js (content script) settings keys
 const contentTitleSource = read('content/content_title.js');
@@ -49,6 +71,22 @@ check('Download All frame no longer substitutes a fake 99 percent ZIP state',
   !contentTitleSource.includes("style.width = '99%'"));
 check('active Download All sessions do not expose a duplicate-work Retry timer',
   !contentTitleSource.includes('allowFullRetry ? setTimeout'));
+check('cancelled Save state offers an explicit Save again action',
+  contentTitleSource.includes('<span>Save again</span>') &&
+  contentTitleSource.includes("action: 'retryArchiveSave'"));
+check('Download All frame handles the post-archive resuming state',
+  contentTitleSource.includes("phase === 'resuming'"));
+check('interrupted Download All sessions expose Resume download and Discard actions',
+  contentTitleSource.includes('<span>Resume download</span>') &&
+  contentTitleSource.includes("action: 'resumeDownloadAll'") &&
+  contentTitleSource.includes("discardBtn.textContent = 'Discard'"));
+check('Download All restoration retries transient service-worker wake failures',
+  contentTitleSource.includes('restoreDownloadAllPopupFromBackground(attempt = 0)') &&
+  contentTitleSource.includes('attempt >= 4') &&
+  contentTitleSource.includes('250 * (2 ** attempt)'));
+check('a refresh-time duplicate start response restores the existing frame',
+  contentTitleSource.includes('if (!err && response?.session)') &&
+  contentTitleSource.includes('restoreDownloadAllPopupFromSession(response.session)'));
 
 // 2b. content_features.js (content script) feature-flag keys
 const cfKeys = refsIn(read('content/content_features.js'), 'cfg');

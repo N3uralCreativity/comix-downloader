@@ -85,12 +85,17 @@ vm.runInContext(`${extractFunction('_zipToDownloadUrl')}\n globalThis.zipToDownl
 
 let archiveDelivery = { confirmed: true, fallback: false, downloadId: 17 };
 let archiveError = null;
+let archiveErrors = [];
+let archiveDownloadOptions = [];
 let fallbackCalls = 0;
 let revokeCalls = 0;
 const archiveContext = {
   _IS_FIREFOX: true,
-  startAndConfirmBrowserDownload: async (_options, waitOptions) => {
-    if (archiveError) throw archiveError;
+  SAVE_DIALOG_AUTO_RETRY_DELAY_MS: 0,
+  startAndConfirmBrowserDownload: async (options, waitOptions) => {
+    archiveDownloadOptions.push(options);
+    const nextError = archiveErrors.length ? archiveErrors.shift() : archiveError;
+    if (nextError) throw nextError;
     if (waitOptions && waitOptions.onProgress) {
       waitOptions.onProgress({ id: 17, state: 'in_progress', bytesReceived: 50, totalBytes: 100 });
       waitOptions.onProgress({ id: 17, state: 'complete', bytesReceived: 100, totalBytes: 100 });
@@ -103,11 +108,13 @@ const archiveContext = {
     },
   },
   console,
+  setTimeout,
 };
 vm.createContext(archiveContext);
 vm.runInContext(`
   ${extractFunction('downloadErrorText')}
   ${extractFunction('isDownloadCancelledError')}
+  ${extractFunction('isRetryableSaveCancellation')}
   ${extractFunction('makeDownloadCancelledError')}
   ${extractFunction('saveGeneratedArchive')}
   globalThis.saveGeneratedArchive = saveGeneratedArchive;
@@ -116,27 +123,48 @@ vm.runInContext(`
 const zipEvents = { records: [], done: [], errors: [], cancelled: 0 };
 let zipDelivery = archiveDelivery;
 let zipDeliveryError = null;
+let zipDeliverySequence = [];
+let zipGenerationCalls = 0;
+let zipSaveOptions = [];
+let zipSaveCancellationDecision = false;
 const zipContext = {
   _pendingZip: {},
-  _zipToDownloadUrl: async () => ({ url: 'blob:test', revoke() {}, base64: null }),
+  _zipToDownloadUrl: async () => {
+    zipGenerationCalls++;
+    return { url: 'blob:test', revoke() {}, base64: null };
+  },
   sanitizeFilename: (name) => name.endsWith('.zip') ? name : `${name}.zip`,
-  saveGeneratedArchive: async () => {
-    if (zipDeliveryError) throw zipDeliveryError;
+  saveGeneratedArchive: async (options) => {
+    zipSaveOptions.push(options);
+    const next = zipDeliverySequence.length ? zipDeliverySequence.shift() : zipDeliveryError;
+    if (next) throw next;
     return zipDelivery;
   },
   recordChapterDownloaded: (_slug, label) => zipEvents.records.push(label),
   cdlLog() {},
   notifyDownloadAllDone: (_tabId, filename, warning) => zipEvents.done.push({ filename, warning }),
   notifyDownloadAllError: (_tabId, error) => zipEvents.errors.push(error),
+  notifyDownloadAllSaveCancelled: () => {
+    zipEvents.saveCancelled++;
+    setTimeout(() => zipContext.resolvePendingArchiveSaveDecision(zipSaveCancellationDecision), 0);
+  },
   notifyDownloadAllCancelled: () => { zipEvents.cancelled++; },
   console,
+  setTimeout,
 };
 vm.createContext(zipContext);
 vm.runInContext(`
   ${extractFunction('downloadErrorText')}
   ${extractFunction('isDownloadCancelledError')}
+  ${extractFunction('releasePendingGeneratedArchive')}
+  ${extractFunction('waitForPendingArchiveSaveDecision')}
+  ${extractFunction('resolvePendingArchiveSaveDecision')}
   ${extractFunction('_doZipAndSave')}
-  globalThis.doZipAndSave = _doZipAndSave;
+  globalThis.resolvePendingArchiveSaveDecision = resolvePendingArchiveSaveDecision;
+  globalThis.doZipAndSave = (pending) => {
+    _pendingZip = pending;
+    return _doZipAndSave(pending);
+  };
 `, zipContext);
 
 function resetZipEvents() {
@@ -144,7 +172,12 @@ function resetZipEvents() {
   zipEvents.done.length = 0;
   zipEvents.errors.length = 0;
   zipEvents.cancelled = 0;
+  zipEvents.saveCancelled = 0;
   zipDeliveryError = null;
+  zipDeliverySequence = [];
+  zipGenerationCalls = 0;
+  zipSaveOptions = [];
+  zipSaveCancellationDecision = false;
 }
 
 async function run() {
@@ -163,6 +196,8 @@ async function run() {
     zipOptions.compression === 'STORE' && zipUpdates.join(',') === '12.5,100');
 
   archiveError = null;
+  archiveErrors = [];
+  archiveDownloadOptions = [];
   const saveUpdates = [];
   const confirmedArchive = await archiveContext.saveGeneratedArchive({
     url: 'blob:test', revoke() {}, base64: null,
@@ -170,7 +205,24 @@ async function run() {
     onSaveProgress: (item) => saveUpdates.push(item.state),
   });
   check('archive delivery reports browser start, transfer, and completion states',
-    confirmedArchive.confirmed === true && saveUpdates.join(',') === 'starting,in_progress,complete');
+    confirmedArchive.confirmed === true && saveUpdates.join(',') === 'starting,in_progress,complete' &&
+    archiveDownloadOptions.length === 1 && archiveDownloadOptions[0].saveAs === false);
+
+  archiveError = null;
+  archiveErrors = [Object.assign(new Error('Download cancelled.'), { code: 'DOWNLOAD_CANCELLED' }), null];
+  archiveDownloadOptions = [];
+  revokeCalls = 0;
+  const automaticRetryUpdates = [];
+  const retriedArchive = await archiveContext.saveGeneratedArchive({
+    url: 'blob:test', revoke: () => { revokeCalls++; }, base64: null,
+    zip: { generateAsync: async () => 'AA==' }, filename: 'chapter.zip', originTabId: 4,
+    cancelRetryDelayMs: 0,
+    onSaveProgress: (item) => automaticRetryUpdates.push(item.state),
+  });
+  check('an accidentally closed Save dialog is opened one more time automatically',
+    retriedArchive.confirmed === true && archiveDownloadOptions.length === 2 &&
+    archiveDownloadOptions[0].saveAs === false && archiveDownloadOptions[1].saveAs === true &&
+    automaticRetryUpdates.includes('retrying') && revokeCalls === 1);
 
   startError = null;
   searchResults = [
@@ -216,6 +268,8 @@ async function run() {
     interruption.downloadPhase === 'transfer' && interruption.message.includes('FILE_NO_SPACE'));
 
   archiveError = Object.assign(new Error('Download cancelled.'), { code: 'DOWNLOAD_CANCELLED' });
+  archiveErrors = [];
+  archiveDownloadOptions = [];
   fallbackCalls = 0;
   revokeCalls = 0;
   let archiveCancellation = null;
@@ -223,12 +277,42 @@ async function run() {
     await archiveContext.saveGeneratedArchive({
       url: 'data:test', revoke: () => { revokeCalls++; }, base64: 'AA==',
       zip: { generateAsync: async () => 'AA==' }, filename: 'chapter.zip', originTabId: 4,
+      cancelRetryDelayMs: 0,
     });
   } catch (error) { archiveCancellation = error; }
-  check('user cancellation never falls through to the Firefox page fallback',
-    archiveCancellation && archiveCancellation.code === 'DOWNLOAD_CANCELLED' && fallbackCalls === 0 && revokeCalls === 1);
+  check('two user cancellations never fall through to the Firefox page fallback',
+    archiveCancellation && archiveCancellation.code === 'DOWNLOAD_CANCELLED' &&
+    archiveDownloadOptions.length === 2 && fallbackCalls === 0 && revokeCalls === 1);
+
+  archiveDownloadOptions = [];
+  revokeCalls = 0;
+  let preservedCancellation = null;
+  try {
+    await archiveContext.saveGeneratedArchive({
+      url: 'data:test', revoke: () => { revokeCalls++; }, base64: 'AA==',
+      zip: { generateAsync: async () => 'AA==' }, filename: 'chapter.zip', originTabId: 4,
+      cancelRetryDelayMs: 0, preserveOnCancel: true,
+    });
+  } catch (error) { preservedCancellation = error; }
+  check('Download All can retain the prepared archive after both Save dialogs are closed',
+    preservedCancellation && preservedCancellation.code === 'DOWNLOAD_CANCELLED' &&
+    archiveDownloadOptions.length === 2 && revokeCalls === 0);
+
+  archiveError = Object.assign(new Error('Browser shutdown.'), {
+    code: 'DOWNLOAD_CANCELLED', reason: 'USER_SHUTDOWN',
+  });
+  archiveDownloadOptions = [];
+  try {
+    await archiveContext.saveGeneratedArchive({
+      url: 'data:test', revoke() {}, base64: 'AA==',
+      zip: { generateAsync: async () => 'AA==' }, filename: 'chapter.zip', originTabId: 4,
+      cancelRetryDelayMs: 0,
+    });
+  } catch (_) {}
+  check('browser shutdown cancellation does not reopen a Save dialog', archiveDownloadOptions.length === 1);
 
   archiveError = Object.assign(new Error('downloads API unavailable'), { downloadPhase: 'start' });
+  archiveDownloadOptions = [];
   const fallback = await archiveContext.saveGeneratedArchive({
     url: 'data:test', revoke() {}, base64: 'AA==',
     zip: { generateAsync: async () => 'AA==' }, filename: 'chapter.zip', originTabId: 4,
@@ -261,13 +345,30 @@ async function run() {
     unconfirmedZip.confirmed === false && zipEvents.records.length === 0);
 
   resetZipEvents();
+  zipDelivery = { confirmed: true, fallback: false, downloadId: 19 };
+  zipDeliverySequence = [
+    Object.assign(new Error('Download cancelled.'), { code: 'DOWNLOAD_CANCELLED' }),
+    null,
+  ];
+  zipSaveCancellationDecision = true;
+  const recoveredZip = await zipContext.doZipAndSave({
+    zip: {}, zipName: 'series.zip', originTabId: 4, notifyDone: false,
+    chapterRecords: [{ chapterLabel: 'Ch4' }], slug: 'series', mangaName: 'Series',
+  });
+  check('Save again reuses the prepared archive and records chapters only after success',
+    recoveredZip.confirmed === true && zipEvents.saveCancelled === 1 &&
+    zipGenerationCalls === 1 && zipSaveOptions.length === 2 &&
+    zipSaveOptions[1].forceSaveAs === true && zipEvents.records.join(',') === 'Ch4');
+
+  resetZipEvents();
   zipDeliveryError = Object.assign(new Error('Download cancelled.'), { code: 'DOWNLOAD_CANCELLED' });
   const cancelledZip = await zipContext.doZipAndSave({
     zip: {}, zipName: 'series.zip', originTabId: 4,
-    chapterRecords: [{ chapterLabel: 'Ch4' }], slug: 'series', mangaName: 'Series',
+    chapterRecords: [{ chapterLabel: 'Ch5' }], slug: 'series', mangaName: 'Series',
   });
-  check('cancelled multipart Save dialog reports cancellation and records nothing',
-    cancelledZip === null && zipEvents.cancelled === 1 && zipEvents.records.length === 0 && zipEvents.errors.length === 0);
+  check('closing the recovery state abandons the pending archive and records nothing',
+    cancelledZip === null && zipEvents.saveCancelled === 1 && zipEvents.cancelled === 1 &&
+    zipEvents.records.length === 0 && zipEvents.errors.length === 0);
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);

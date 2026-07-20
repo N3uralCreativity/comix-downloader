@@ -68,7 +68,10 @@ const zipGeneration = singleChapterFunction.indexOf('await _zipToDownloadUrl(zip
 check('single-chapter download rejects incomplete image sets before ZIP generation',
   incompleteGuard !== -1 && zipGeneration !== -1 && incompleteGuard < zipGeneration);
 
-const allEvents = { progress: [], errors: [], done: [], saves: [], recorded: [], logs: [] };
+const allEvents = {
+  progress: [], errors: [], done: [], saves: [], recorded: [], logs: [],
+  checkpoints: [], sessions: [], extracted: [],
+};
 let fetchMode = 'fail';
 let chaptersPerPart = 30;
 const allContext = {
@@ -84,7 +87,26 @@ const allContext = {
   resolveOutputOptions: (_cfg, options) => ({ format: 'zip', slug: 'series', ...(options || {}) }),
   getLibraryConfig: async () => null,
   chapterConcurrencyLimit: () => 2,
-  startDownloadAllSession() {},
+  createDownloadAllResumeData({ chapters, mangaName, zipName, options, resumeState }) {
+    const source = resumeState || {};
+    const allChapters = source.chapters || chapters;
+    return {
+      version: 1,
+      chapters: allChapters,
+      mangaName: source.mangaName || mangaName,
+      zipName: source.zipName || zipName,
+      options: source.options || options || {},
+      totalChapters: allChapters.length,
+      checkpointIndex: source.checkpointIndex || 0,
+      nextZipPart: source.nextZipPart || 1,
+      savedZipNames: (source.savedZipNames || []).slice(),
+      terminalCounts: { done: 0, skipped: 0, error: 0, ...(source.terminalCounts || {}) },
+      firstChapterError: source.firstChapterError || '',
+      checkpointBlocked: false,
+    };
+  },
+  updateDownloadAllResumeCheckpoint(checkpoint) { allEvents.checkpoints.push(checkpoint); },
+  startDownloadAllSession(session) { allEvents.sessions.push(session); },
   persistDownloadAllSession() {},
   cdlLog(level, message) { allEvents.logs.push({ level, message }); },
   notifyDownloadAllProgress(_tabId, message) { allEvents.progress.push(message); },
@@ -95,6 +117,8 @@ const allContext = {
     allEvents.saves.push(zipName);
     if (onZipProgress) {
       onZipProgress({ percent: 0, currentFile: '', reset: true });
+      // Let the next concurrent chapter emit progress while this ZIP owns the UI.
+      await new Promise((resolve) => setTimeout(resolve, 0));
       onZipProgress({ percent: 37, currentFile: 'page-001.webp' });
       onZipProgress({ percent: 100, currentFile: '' });
     }
@@ -106,10 +130,13 @@ const allContext = {
     chapterRecords.forEach((record) => allEvents.recorded.push(record.chapterLabel));
     return { filename: zipName, confirmed: true };
   },
-  extractFromTab: async (url) => [
-    { index: 1, src: `${url}/image-1` },
-    { index: 2, src: `${url}/image-2` },
-  ],
+  extractFromTab: async (url) => {
+    allEvents.extracted.push(url);
+    return [
+      { index: 1, src: `${url}/image-1` },
+      { index: 2, src: `${url}/image-2` },
+    ];
+  },
   verifyEnumeratedImages: async (images) => images,
   fetchImageToFile: async (index, src) => {
     if (fetchMode === 'pass' || (fetchMode === 'mixed' && src.includes('/good/'))) {
@@ -133,6 +160,7 @@ const allContext = {
   notifyDownloadAllDone: (_tabId, zipName, warning) => allEvents.done.push({ zipName, warning }),
   _libPushChain: Promise.resolve(),
   console,
+  setTimeout,
 };
 vm.createContext(allContext);
 vm.runInContext(`
@@ -201,6 +229,72 @@ async function run() {
     const savedParts = new Set(allEvents.progress.filter((event) => event.phase === 'saving').map((event) => event.zipPart));
     return zippedParts.size === 2 && savedParts.size === 2 && zippedParts.has(1) && zippedParts.has(2);
   })());
+  check('concurrent chapter events cannot visually replace an active ZIP or Save stage', (() => {
+    const firstZip = allEvents.progress.findIndex((event) => event.phase === 'zipping' && event.zipPart === 1);
+    const firstSaveEnd = allEvents.progress.findIndex((event) =>
+      event.phase === 'saving' && event.zipPart === 1 && event.saveState === 'complete');
+    const chapterPhases = new Set(['extracting', 'downloading', 'done', 'error', 'skipped']);
+    return firstZip >= 0 && firstSaveEnd > firstZip &&
+      !allEvents.progress.slice(firstZip, firstSaveEnd + 1).some((event) => chapterPhases.has(event.phase));
+  })());
+  check('the frame resumes with buffered chapter progress after a ZIP part is saved', (() => {
+    const firstSaveEnd = allEvents.progress.findIndex((event) =>
+      event.phase === 'saving' && event.zipPart === 1 && event.saveState === 'complete');
+    const resumed = allEvents.progress.findIndex((event, index) => index > firstSaveEnd && event.phase === 'resuming');
+    const chapterThree = allEvents.progress.findIndex((event, index) =>
+      index > resumed && event.chapterLabel === 'Ch3' && event.phase === 'done');
+    return firstSaveEnd >= 0 && resumed > firstSaveEnd && chapterThree > resumed &&
+      allEvents.progress[resumed].completed === allEvents.progress[chapterThree].completed;
+  })());
+  check('the visible chapter count stays frozen throughout a ZIP part save', (() => {
+    const firstZip = allEvents.progress.findIndex((event) => event.phase === 'zipping' && event.zipPart === 1);
+    const firstSaveEnd = allEvents.progress.findIndex((event) =>
+      event.phase === 'saving' && event.zipPart === 1 && event.saveState === 'complete');
+    const counts = new Set(allEvents.progress.slice(firstZip, firstSaveEnd + 1).map((event) => event.completed));
+    return firstZip >= 0 && firstSaveEnd > firstZip && counts.size === 1 && counts.has(2);
+  })());
+
+  resetAllEvents();
+  fetchMode = 'pass';
+  chaptersPerPart = 2;
+  const allChapters = [
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },
+    { chapterUrl: 'https://comix.to/title/series/good/3', chapterLabel: 'Ch3' },
+    { chapterUrl: 'https://comix.to/title/series/good/4', chapterLabel: 'Ch4' },
+  ];
+  await allContext.handleDownloadAllRequest(
+    allChapters.slice(2), 'Series', 'series.zip', 7, { slug: 'series' }, {
+      version: 1,
+      chapters: allChapters,
+      mangaName: 'Series',
+      zipName: 'series.zip',
+      options: { slug: 'series' },
+      checkpointIndex: 2,
+      nextZipPart: 2,
+      savedZipNames: ['series.zip.part1'],
+      terminalCounts: { done: 2, skipped: 0, error: 0 },
+      firstChapterError: '',
+      logItems: [{ id: 'Ch1', cls: 'done', text: 'Ch1 done' }],
+      startedAt: 100,
+    }
+  );
+  check('checkpoint resume fetches only chapters after the confirmed ZIP part',
+    allEvents.extracted.length === 2 &&
+    allEvents.extracted.every((url) => /\/good\/[34]$/.test(url)));
+  check('checkpoint resume continues ZIP part numbering',
+    JSON.stringify(allEvents.saves) === JSON.stringify(['series.zip.part2']));
+  check('checkpoint resume preserves global chapter indexes and totals', (() => {
+    const chapterEvents = allEvents.progress.filter((event) => event.chapterLabel);
+    return chapterEvents.length > 0 && chapterEvents.every((event) =>
+      event.totalChapters === 4 && event.chapterIndex >= 3 && event.chapterIndex <= 4);
+  })());
+  check('checkpoint resume reports all previously and newly saved ZIP parts',
+    allEvents.done.length === 1 && allEvents.done[0].zipName === '2 ZIP parts');
+  check('checkpoint resume advances persistence through the final chapter',
+    allEvents.checkpoints.some((checkpoint) =>
+      checkpoint.checkpointIndex === 4 && checkpoint.nextZipPart === 3 &&
+      checkpoint.terminalCounts.done === 4));
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
