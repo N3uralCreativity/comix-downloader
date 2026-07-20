@@ -34,9 +34,21 @@ check('background.js reads a meaningful number of settings', bgKeys.length >= 15
 bgKeys.forEach((k) => check('background.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
 
 // 2. content_title.js (content script) settings keys
-const ctKeys = refsIn(read('content/content_title.js'), 'CFG');
+const contentTitleSource = read('content/content_title.js');
+const ctKeys = refsIn(contentTitleSource, 'CFG');
 check('content_title.js reads a meaningful number of settings', ctKeys.length >= 9);
 ctKeys.forEach((k) => check('content_title.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
+check('Download All frame exposes Download, ZIP, and Save stages',
+  contentTitleSource.includes('data-stage="download"') &&
+  contentTitleSource.includes('data-stage="zip"') &&
+  contentTitleSource.includes('data-stage="save"'));
+check('Download All frame consumes real ZIP and browser save percentages',
+  contentTitleSource.includes('msg.zipPercent') && contentTitleSource.includes('msg.savePercent'));
+check('Download All frame no longer substitutes a fake 99 percent ZIP state',
+  !contentTitleSource.includes("style.width            = '99%'") &&
+  !contentTitleSource.includes("style.width = '99%'"));
+check('active Download All sessions do not expose a duplicate-work Retry timer',
+  !contentTitleSource.includes('allowFullRetry ? setTimeout'));
 
 // 2b. content_features.js (content script) feature-flag keys
 const cfKeys = refsIn(read('content/content_features.js'), 'cfg');

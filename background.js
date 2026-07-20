@@ -1855,17 +1855,20 @@ function makeScramblePermutation(seed, count, initConst = 0xe42f) {
  *   resolved by the Firefox downloads API (they are scoped to the SW context).
  * Retourne { url, revoke, base64? } — appeler revoke() après téléchargement.
  */
-async function _zipToDownloadUrl(zip) {
+async function _zipToDownloadUrl(zip, onUpdate) {
+  const report = typeof onUpdate === 'function'
+    ? (metadata) => { try { onUpdate(metadata || {}); } catch (_) {} }
+    : undefined;
   if (!_IS_FIREFOX) {
     // Chrome: blob URL (no size limit, memory-efficient)
     try {
-      const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' }, report);
       const url  = URL.createObjectURL(blob);
       return { url, revoke: () => URL.revokeObjectURL(url) };
     } catch (_) {}
   }
   // Firefox (or fallback): base64 data URL
-  const base64 = await zip.generateAsync({ type: 'base64', compression: 'STORE' });
+  const base64 = await zip.generateAsync({ type: 'base64', compression: 'STORE' }, report);
   return { url: `data:application/zip;base64,${base64}`, revoke: () => {}, base64 };
 }
 
@@ -1904,10 +1907,20 @@ function tagDownloadError(error, phase) {
   return tagged;
 }
 
+function downloadItemProgressPercent(item) {
+  if (!item) return null;
+  if (item.state === 'complete') return 100;
+  const received = Number(item.bytesReceived);
+  const total = Number(item.totalBytes);
+  if (!Number.isFinite(received) || !Number.isFinite(total) || total <= 0) return null;
+  return Math.max(0, Math.min(100, received / total * 100));
+}
+
 async function waitForBrowserDownload(downloadId, options = {}) {
   const pollMs = options.pollMs ?? DOWNLOAD_CONFIRM_POLL_MS;
   const timeoutMs = options.timeoutMs ?? DOWNLOAD_CONFIRM_TIMEOUT_MS;
   const missingLimit = options.missingLimit ?? 10;
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
   const startedAt = Date.now();
   let missingCount = 0;
 
@@ -1919,6 +1932,7 @@ async function waitForBrowserDownload(downloadId, options = {}) {
     const item = Array.isArray(items) ? items[0] : null;
     if (item) {
       missingCount = 0;
+      if (onProgress) { try { onProgress(item); } catch (_) {} }
       if (item.state === 'complete') return item;
       if (item.state === 'interrupted') {
         if (isDownloadCancelledError(item.error)) throw makeDownloadCancelledError(item.error);
@@ -1949,9 +1963,18 @@ async function startAndConfirmBrowserDownload(downloadOptions, waitOptions) {
   return waitForBrowserDownload(downloadId, waitOptions);
 }
 
-async function saveGeneratedArchive({ url, revoke, base64, zip, filename, originTabId }) {
+async function saveGeneratedArchive({
+  url, revoke, base64, zip, filename, originTabId, onSaveProgress,
+}) {
+  const reportSave = typeof onSaveProgress === 'function'
+    ? (item) => { try { onSaveProgress(item || {}); } catch (_) {} }
+    : null;
+  if (reportSave) reportSave({ state: 'starting', bytesReceived: 0, totalBytes: -1 });
   try {
-    const item = await startAndConfirmBrowserDownload({ url, filename, saveAs: false });
+    const item = await startAndConfirmBrowserDownload(
+      { url, filename, saveAs: false },
+      reportSave ? { onProgress: reportSave } : undefined
+    );
     revoke();
     return { confirmed: true, fallback: false, downloadId: item.id };
   } catch (error) {
@@ -1975,6 +1998,7 @@ async function saveGeneratedArchive({ url, revoke, base64, zip, filename, origin
       action: 'triggerDownload', base64: payload, filename,
     });
     if (response && response.ok === false) throw new Error(response.error || 'Browser download fallback failed');
+    if (reportSave) reportSave({ state: 'fallback', bytesReceived: 0, totalBytes: -1 });
     return { confirmed: false, fallback: true, downloadId: null };
   }
 }
@@ -2286,19 +2310,67 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
     if (zipPartChapters === 0) return true;
     const partName = zipPart === 1 && isFinal ? zipName : getZipPartName(zipName, zipPart);
 
-    notify({ phase: isFinal ? 'zipping' : 'savingPart',
-             chapterIndex: chapters.length,
-             totalChapters: chapters.length,
-             chapterLabel: '',
-             imagesDone: 0,
-             imagesTotal: 0,
-             zipPart });
+    let lastZipPercent = -1;
+    const onZipProgress = (metadata = {}) => {
+      if (metadata.reset) lastZipPercent = -1;
+      const raw = Number(metadata.percent);
+      const percent = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0;
+      const wholePercent = Math.floor(percent);
+      if (wholePercent <= lastZipPercent) return;
+      if (wholePercent < 100 && lastZipPercent >= 0 && wholePercent - lastZipPercent < 2) return;
+      lastZipPercent = Math.max(lastZipPercent, wholePercent);
+      notify({
+        phase: 'zipping',
+        chapterIndex: chapters.length,
+        totalChapters: chapters.length,
+        chapterLabel: '',
+        imagesDone: 0,
+        imagesTotal: 0,
+        zipPart,
+        finalPart: isFinal,
+        zipPercent: Math.max(lastZipPercent, Math.round(percent)),
+      });
+    };
+
+    let lastSavePercent = -1;
+    let lastSaveState = '';
+    let lastSaveReportAt = 0;
+    const onSaveProgress = (item = {}) => {
+      const savePercent = downloadItemProgressPercent(item);
+      const state = item.state || 'starting';
+      const wholePercent = savePercent == null ? null : Math.round(savePercent);
+      if (state === lastSaveState && wholePercent != null && wholePercent === lastSavePercent) return;
+      const now = Date.now();
+      if (state === lastSaveState && wholePercent == null && now - lastSaveReportAt < 750) return;
+      lastSaveState = state;
+      if (wholePercent != null) lastSavePercent = wholePercent;
+      lastSaveReportAt = now;
+      notify({
+        phase: 'saving',
+        chapterIndex: chapters.length,
+        totalChapters: chapters.length,
+        chapterLabel: '',
+        imagesDone: 0,
+        imagesTotal: 0,
+        zipPart,
+        finalPart: isFinal,
+        zipPercent: 100,
+        savePercent: wholePercent,
+        saveState: state,
+        bytesReceived: Number.isFinite(Number(item.bytesReceived)) ? Number(item.bytesReceived) : 0,
+        totalBytes: Number.isFinite(Number(item.totalBytes)) ? Number(item.totalBytes) : -1,
+      });
+    };
 
     const pending = {
       zip, zipName: partName, originTabId,
       chapterRecords: zipPartChapterRecords.slice(),
       slug: opts.slug,
       mangaName,
+      zipPart,
+      finalPart: isFinal,
+      onZipProgress,
+      onSaveProgress,
     };
     _pendingZip = pending;
     const saved = await _doZipAndSave({ ...pending, notifyDone: false });
@@ -2515,12 +2587,19 @@ async function handleDownloadAllRequest(chapters, mangaName, zipName, originTabI
 async function _doZipAndSave({
   zip, zipName, originTabId, notifyDone = true,
   chapterRecords = [], slug = '', mangaName = '',
+  onZipProgress = null, onSaveProgress = null,
 }) {
   try {
-    const { url, revoke, base64: urlBase64 } = await _zipToDownloadUrl(zip);
+    if (typeof onZipProgress === 'function') {
+      try { onZipProgress({ percent: 0, currentFile: '', reset: true }); } catch (_) {}
+    }
+    const { url, revoke, base64: urlBase64 } = await _zipToDownloadUrl(zip, onZipProgress);
+    if (typeof onZipProgress === 'function') {
+      try { onZipProgress({ percent: 100, currentFile: '' }); } catch (_) {}
+    }
     const filename = sanitizeFilename(zipName);
     const delivery = await saveGeneratedArchive({
-      url, revoke, base64: urlBase64, zip, filename, originTabId,
+      url, revoke, base64: urlBase64, zip, filename, originTabId, onSaveProgress,
     });
     if (delivery.confirmed) {
       for (const record of chapterRecords) {

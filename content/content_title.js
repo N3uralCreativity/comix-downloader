@@ -116,7 +116,7 @@ function applyDynamicStyles() {
     .${DOWNLOAD_BTN_CLASS}[data-state="idle"]:hover { color:${accent}; filter:brightness(1.25); }
     .cdl-dl-all-btn, .cdl-dl-all-btn svg { color:${accent}!important; }
     ` : ''}
-    ${noAnim ? `.${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg{animation:none!important;} #cdl-all-popup{animation:none!important;} .${DOWNLOAD_BTN_CLASS},.cdl-ap-bar,.cdl-ap-close{transition:none!important;}` : ''}
+    ${noAnim ? `.${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg{animation:none!important;} #cdl-all-popup{animation:none!important;} .${DOWNLOAD_BTN_CLASS},.cdl-ap-bar,.cdl-ap-zip-fill,.cdl-ap-close{transition:none!important;} .cdl-ap-activity-indicator,.cdl-ap-bar::after,.cdl-ap-zip-fill::after,.cdl-ap-stage.is-active .cdl-ap-stage-dot,.cdl-ap-log-item.active::before{animation:none!important;}` : ''}
   `;
   document.head.appendChild(style);
 }
@@ -262,7 +262,7 @@ function injectStyles() {
       width: 380px;
       background: var(--cdl-bg);
       border: 1px solid var(--cdl-border);
-      border-radius: 14px;
+      border-radius: 8px;
       box-shadow: var(--cdl-shadow);
       z-index: 2147483647;
       font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
@@ -330,7 +330,7 @@ function injectStyles() {
       padding: 14px 15px;
       display: flex;
       flex-direction: column;
-      gap: 9px;
+      gap: 10px;
     }
     .cdl-ap-manga-name {
       font-weight: 600;
@@ -340,11 +340,47 @@ function injectStyles() {
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .cdl-ap-activity {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      min-height: 34px;
+    }
+    .cdl-ap-activity-copy { min-width: 0; }
+    .cdl-ap-activity-indicator {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      color: var(--cdl-accent);
+      background: color-mix(in srgb, var(--cdl-accent) 10%, transparent);
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1;
+      box-sizing: border-box;
+    }
+    .cdl-ap-activity-indicator:not(.is-terminal)::before {
+      content: '';
+      width: 14px;
+      height: 14px;
+      border: 2px solid color-mix(in srgb, var(--cdl-accent) 24%, transparent);
+      border-top-color: var(--cdl-accent);
+      border-radius: 50%;
+      box-sizing: border-box;
+      animation: cdl-spin .8s linear infinite;
+    }
+    .cdl-ap-activity-indicator.is-done { color: var(--cdl-ok); background: var(--cdl-ok-bg); }
+    .cdl-ap-activity-indicator.is-error { color: var(--cdl-err); background: var(--cdl-err-bg); }
+    .cdl-ap-activity-indicator.is-cancelled { color: var(--cdl-muted); background: var(--cdl-hover); }
     .cdl-ap-status-chapter {
       font-size: 13px;
       font-weight: 500;
       color: var(--cdl-text);
       min-height: 18px;
+      overflow-wrap: anywhere;
     }
     .cdl-ap-status-chapter.error { color: var(--cdl-err); }
     .cdl-ap-status-chapter.warning { color: var(--cdl-skip); }
@@ -353,8 +389,52 @@ function injectStyles() {
       color: var(--cdl-muted);
       min-height: 16px;
     }
+    .cdl-ap-stages {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
+      padding: 1px 0 0;
+    }
+    .cdl-ap-stage {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      color: var(--cdl-faint);
+      font-size: 10px;
+      line-height: 1.2;
+      text-align: center;
+    }
+    .cdl-ap-stage:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 5px;
+      left: calc(50% + 8px);
+      width: calc(100% - 16px);
+      height: 1px;
+      background: var(--cdl-track);
+    }
+    .cdl-ap-stage-dot {
+      width: 10px;
+      height: 10px;
+      border: 2px solid var(--cdl-track);
+      border-radius: 50%;
+      background: var(--cdl-bg);
+      box-sizing: border-box;
+      z-index: 1;
+    }
+    .cdl-ap-stage.is-active { color: var(--cdl-text-strong); }
+    .cdl-ap-stage.is-active .cdl-ap-stage-dot {
+      border-color: var(--cdl-accent);
+      background: var(--cdl-accent);
+      animation: cdl-ap-pulse 1.25s ease-in-out infinite;
+    }
+    .cdl-ap-stage.is-done { color: var(--cdl-ok); }
+    .cdl-ap-stage.is-done .cdl-ap-stage-dot { border-color: var(--cdl-ok); background: var(--cdl-ok); }
     .cdl-ap-bar-wrap {
-      height: 6px;
+      height: 7px;
       background: var(--cdl-track);
       border-radius: 4px;
       overflow: hidden;
@@ -365,6 +445,19 @@ function injectStyles() {
       background: var(--cdl-accent);
       border-radius: 4px;
       transition: width .5s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .cdl-ap-bar::after, .cdl-ap-zip-fill::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.38), transparent);
+    }
+    #cdl-all-popup[data-progress-mode="active"] .cdl-ap-bar::after,
+    .cdl-ap-archive.is-active .cdl-ap-zip-fill::after {
+      animation: cdl-ap-shimmer 1.45s ease-in-out infinite;
     }
     .cdl-ap-counter {
       font-size: 11px;
@@ -372,13 +465,52 @@ function injectStyles() {
       text-align: right;
       font-variant-numeric: tabular-nums;
     }
+    .cdl-ap-archive {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      padding: 2px 0 1px;
+    }
+    .cdl-ap-archive.is-visible { display: flex; }
+    .cdl-ap-archive-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--cdl-muted);
+      font-size: 11px;
+    }
+    .cdl-ap-archive-percent {
+      color: var(--cdl-text-strong);
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+    .cdl-ap-zip-track {
+      height: 5px;
+      overflow: hidden;
+      border-radius: 3px;
+      background: var(--cdl-track);
+    }
+    .cdl-ap-zip-fill {
+      width: 0;
+      height: 100%;
+      border-radius: 3px;
+      background: var(--cdl-accent);
+      position: relative;
+      overflow: hidden;
+      transition: width .2s linear;
+    }
+    .cdl-ap-archive.is-indeterminate .cdl-ap-zip-fill {
+      width: 34% !important;
+      animation: cdl-ap-indeterminate 1.25s ease-in-out infinite;
+    }
     .cdl-ap-log {
       overflow-y: auto;
       max-height: 150px;
       min-height: 56px;
       background: var(--cdl-log-bg);
       border: 1px solid var(--cdl-border-soft);
-      border-radius: 9px;
+      border-radius: 6px;
       padding: 8px 10px;
       display: flex;
       flex-direction: column;
@@ -387,6 +519,18 @@ function injectStyles() {
       scrollbar-color: var(--cdl-faint) transparent;
     }
     .cdl-ap-log-item { font-size: 11px; padding: 1px 0; color: var(--cdl-muted); font-variant-numeric: tabular-nums; }
+    .cdl-ap-log-item.active::before {
+      content: '';
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      margin-right: 6px;
+      border: 1.5px solid color-mix(in srgb, var(--cdl-accent) 25%, transparent);
+      border-top-color: var(--cdl-accent);
+      border-radius: 50%;
+      box-sizing: border-box;
+      animation: cdl-spin .8s linear infinite;
+    }
     .cdl-ap-log-item.done    { color: var(--cdl-ok); }
     .cdl-ap-log-item.active  { color: var(--cdl-accent); }
     .cdl-ap-log-item.error   { color: var(--cdl-err); }
@@ -425,6 +569,32 @@ function injectStyles() {
       color: var(--cdl-warn);
     }
     .cdl-ap-retry-btn:hover { background: var(--cdl-warn-bgh); border-color: var(--cdl-warn); }
+    @keyframes cdl-ap-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--cdl-accent) 30%, transparent); }
+      50% { box-shadow: 0 0 0 5px transparent; }
+    }
+    @keyframes cdl-ap-shimmer {
+      0% { transform: translateX(-100%); }
+      65%, 100% { transform: translateX(130%); }
+    }
+    @keyframes cdl-ap-indeterminate {
+      0% { transform: translateX(-105%); }
+      50% { transform: translateX(95%); }
+      100% { transform: translateX(295%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #cdl-all-popup, .cdl-ap-activity-indicator, .cdl-ap-bar::after,
+      .cdl-ap-zip-fill, .cdl-ap-zip-fill::after, .cdl-ap-stage-dot,
+      .cdl-ap-log-item.active::before { animation: none !important; transition: none !important; }
+    }
+    @media (max-width: 640px) {
+      #cdl-all-popup {
+        left: 12px !important;
+        right: 12px !important;
+        width: auto !important;
+        max-height: calc(100vh - 48px);
+      }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -1645,7 +1815,6 @@ function exportChapterList(mangaName, chapters, meta) {
 }
 
 function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
-  const allowFullRetry = options.allowFullRetry !== false;
   document.getElementById('cdl-all-popup')?.remove();
 
   const popup = document.createElement('div');
@@ -1653,15 +1822,29 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
   popup.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
   _setHTML(popup, `
     <div class="cdl-ap-header">
-      <div class="cdl-ap-title">${ICON_DOWNLOAD}&nbsp;Downloading All Chapters</div>
+      <div class="cdl-ap-title">${ICON_DOWNLOAD}&nbsp;Download All</div>
       <button class="cdl-ap-close" title="Minimize">−</button>
     </div>
     <div class="cdl-ap-body">
       <div class="cdl-ap-manga-name">${escapeHtml(mangaName)}</div>
-      <div class="cdl-ap-status-chapter" id="cdl-ap-chapter-status">Preparing…</div>
-      <div class="cdl-ap-status-line"    id="cdl-ap-img-status">Starting…</div>
-      <div class="cdl-ap-bar-wrap"><div class="cdl-ap-bar" id="cdl-ap-bar" style="width:0%"></div></div>
+      <div class="cdl-ap-activity">
+        <span class="cdl-ap-activity-indicator" id="cdl-ap-activity-indicator" aria-hidden="true"></span>
+        <div class="cdl-ap-activity-copy" role="status" aria-live="polite">
+          <div class="cdl-ap-status-chapter" id="cdl-ap-chapter-status">Preparing…</div>
+          <div class="cdl-ap-status-line" id="cdl-ap-img-status">Starting…</div>
+        </div>
+      </div>
+      <div class="cdl-ap-stages" aria-label="Download progress stages">
+        <div class="cdl-ap-stage is-active" data-stage="download"><span class="cdl-ap-stage-dot"></span><span>Download</span></div>
+        <div class="cdl-ap-stage" data-stage="zip"><span class="cdl-ap-stage-dot"></span><span>ZIP</span></div>
+        <div class="cdl-ap-stage" data-stage="save"><span class="cdl-ap-stage-dot"></span><span>Save</span></div>
+      </div>
+      <div class="cdl-ap-bar-wrap" id="cdl-ap-main-progress" role="progressbar" aria-label="Chapters downloaded" aria-valuemin="0" aria-valuemax="${totalChapters}" aria-valuenow="0"><div class="cdl-ap-bar" id="cdl-ap-bar" style="width:0%"></div></div>
       <div class="cdl-ap-counter" id="cdl-ap-counter">0 / ${totalChapters} chapters</div>
+      <div class="cdl-ap-archive" id="cdl-ap-archive" aria-hidden="true">
+        <div class="cdl-ap-archive-head"><span id="cdl-ap-archive-label">Building ZIP</span><strong class="cdl-ap-archive-percent" id="cdl-ap-archive-percent">0%</strong></div>
+        <div class="cdl-ap-zip-track" id="cdl-ap-zip-progress" role="progressbar" aria-label="ZIP progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="cdl-ap-zip-fill" id="cdl-ap-zip-fill"></div></div>
+      </div>
       <div class="cdl-ap-log" id="cdl-ap-log"></div>
     </div>
     <div class="cdl-ap-footer">
@@ -1686,23 +1869,9 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
       document.getElementById('cdl-ap-cancel-btn').disabled = true;
     } catch (_) {}
   });
-  // Apr\u00e8s 20s : ajouter un bouton Retry dans le footer m\u00eame sans erreur
-  popup._cdlRetryTimer = allowFullRetry ? setTimeout(() => {
-    if (!_lastDlAllParams) return;
-    const footer = popup.querySelector('.cdl-ap-footer');
-    if (!footer || footer.querySelector('.cdl-ap-retry-btn')) return;
-    const btn = document.createElement('button');
-    btn.className = 'cdl-ap-retry-btn';
-    btn.textContent = '\u21ba Retry';
-    btn.addEventListener('click', () => {
-      clearTimeout(popup._cdlRetryTimer);
-      popup.remove();
-      const { mangaName, chapters } = _lastDlAllParams;
-      showDownloadAllPopup(mangaName, chapters.length);
-      _launchDownloadAll();
-    });
-    footer.insertBefore(btn, footer.firstChild);
-  }, 20000) : null;
+  // Retry is offered only after a real error. Starting a second run while the
+  // current one is active doubles network and ZIP work.
+  popup._cdlRetryTimer = null;
 }
 
 function dismissDownloadAllSession() {
@@ -1723,9 +1892,90 @@ function _dlAllSetFooterClose(popup) {
   });
 }
 
+function _dlAllSetStage(popup, stage, terminal = '') {
+  if (!popup) return;
+  const order = ['download', 'zip', 'save'];
+  const activeIndex = Math.max(0, order.indexOf(stage));
+  popup.dataset.stage = stage;
+  popup.dataset.progressMode = terminal ? 'idle' : 'active';
+
+  popup.querySelectorAll('.cdl-ap-stage').forEach((node, index) => {
+    node.classList.toggle('is-active', !terminal && index === activeIndex);
+    node.classList.toggle('is-done', terminal === 'done' || (terminal !== 'done' && index < activeIndex));
+  });
+
+  const indicator = document.getElementById('cdl-ap-activity-indicator');
+  if (!indicator) return;
+  indicator.className = 'cdl-ap-activity-indicator';
+  indicator.textContent = '';
+  if (terminal) {
+    indicator.classList.add('is-terminal', `is-${terminal}`);
+    indicator.textContent = terminal === 'done' ? '✓' : terminal === 'error' ? '!' : '×';
+  }
+}
+
+function _dlAllSetChapterProgress(completed, totalChapters) {
+  const total = Math.max(0, Number(totalChapters) || 0);
+  const done = Math.max(0, Math.min(total, Number(completed) || 0));
+  const percent = total > 0 ? Math.round(done / total * 100) : 0;
+  const bar = document.getElementById('cdl-ap-bar');
+  if (bar) bar.style.width = `${percent}%`;
+  const counter = document.getElementById('cdl-ap-counter');
+  if (counter) counter.textContent = `${done} / ${total} chapters`;
+  const progress = document.getElementById('cdl-ap-main-progress');
+  if (progress) {
+    progress.setAttribute('aria-valuemax', String(total));
+    progress.setAttribute('aria-valuenow', String(done));
+  }
+  return percent;
+}
+
+function _dlAllSetArchiveProgress({ stage, percent, zipPart, finalPart, indeterminate = false }) {
+  const panel = document.getElementById('cdl-ap-archive');
+  if (!panel) return;
+  const value = Number(percent);
+  const hasPercent = percent !== null && percent !== undefined && percent !== '' && Number.isFinite(value);
+  const safePercent = hasPercent ? Math.max(0, Math.min(100, Math.round(value))) : 0;
+  const partText = zipPart > 1 || !finalPart ? ` part ${zipPart || 1}` : '';
+  const isSaving = stage === 'save';
+
+  panel.classList.add('is-visible', 'is-active');
+  panel.classList.toggle('is-indeterminate', indeterminate || !hasPercent);
+  panel.setAttribute('aria-hidden', 'false');
+  const label = document.getElementById('cdl-ap-archive-label');
+  if (label) label.textContent = `${isSaving ? 'Saving ZIP' : 'Building ZIP'}${partText}`;
+  const percentNode = document.getElementById('cdl-ap-archive-percent');
+  if (percentNode) percentNode.textContent = hasPercent ? `${safePercent}%` : 'Waiting…';
+  const fill = document.getElementById('cdl-ap-zip-fill');
+  if (fill && !panel.classList.contains('is-indeterminate')) fill.style.width = `${safePercent}%`;
+  const progress = document.getElementById('cdl-ap-zip-progress');
+  if (progress) {
+    progress.setAttribute('aria-label', isSaving ? 'Browser save progress' : 'ZIP creation progress');
+    if (hasPercent) progress.setAttribute('aria-valuenow', String(safePercent));
+    else progress.removeAttribute('aria-valuenow');
+  }
+}
+
+function _dlAllHideArchiveProgress() {
+  const panel = document.getElementById('cdl-ap-archive');
+  if (!panel) return;
+  panel.classList.remove('is-visible', 'is-active', 'is-indeterminate');
+  panel.setAttribute('aria-hidden', 'true');
+}
+
+function _dlAllFormatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return '';
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function updateDownloadAllPopupDone(zipName, warning = '') {
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
+  _dlAllSetStage(popup, 'save', 'done');
+  _dlAllHideArchiveProgress();
   const bar = document.getElementById('cdl-ap-bar');
   if (bar) bar.style.width = '100%';
   const s = document.getElementById('cdl-ap-chapter-status');
@@ -1743,6 +1993,8 @@ function updateDownloadAllPopupDone(zipName, warning = '') {
 function updateDownloadAllPopupCancelled() {
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
+  _dlAllSetStage(popup, popup.dataset.stage || 'download', 'cancelled');
+  _dlAllHideArchiveProgress();
   const s = document.getElementById('cdl-ap-chapter-status');
   if (s) {
     s.textContent = 'Download cancelled.';
@@ -1758,94 +2010,101 @@ function updateDownloadAllPopup(msg) {
   const { phase, chapterIndex, totalChapters, chapterLabel, imagesDone, imagesTotal } = msg;
 
   const el = (id) => document.getElementById(id);
-  // `completed` (chapters finished: done/skipped/error) drives a monotonic bar +
-  // counter, so it never jumps backwards when several chapters run at once. Older
-  // background builds didn't send it — fall back to the single-chapter formula.
   const completed = (typeof msg.completed === 'number')
     ? msg.completed
     : Math.max(0, (chapterIndex || 0) - 1);
   const concurrency = msg.concurrency || 1;
-  const pct = totalChapters > 0 ? Math.round(completed / totalChapters * 100) : 0;
-  const counterText = `${completed} / ${totalChapters || 0} chapters`;
-  // With >1 chapter in flight the per-chapter log rows carry the live detail, so
-  // the single headline/sub-line show a stable overall summary instead of flipping
-  // between the concurrent chapters.
   const headline = concurrency > 1
     ? `Downloading ${totalChapters} chapters (${concurrency} at a time)…`
     : null;
   const overall = `${completed} / ${totalChapters} chapters done`;
+  const status = el('cdl-ap-chapter-status');
+  if (status) status.classList.remove('error', 'warning');
 
   if (phase === 'preparing') {
-    el('cdl-ap-chapter-status').textContent = 'Preparing...';
-    el('cdl-ap-img-status').textContent     = 'Starting...';
-    el('cdl-ap-bar').style.width            = '0%';
-    el('cdl-ap-counter').textContent        = `0 / ${totalChapters || 0} chapters`;
+    _dlAllSetStage(popup, 'download');
+    _dlAllHideArchiveProgress();
+    status.textContent = 'Preparing chapters…';
+    el('cdl-ap-img-status').textContent = 'Starting download…';
+    _dlAllSetChapterProgress(0, totalChapters);
 
   } else if (phase === 'cancelling') {
-    el('cdl-ap-chapter-status').textContent = 'Cancelling...';
-    el('cdl-ap-img-status').textContent     = 'Stopping after the current step...';
+    popup.dataset.progressMode = 'active';
+    status.textContent = 'Cancelling…';
+    el('cdl-ap-img-status').textContent = 'Stopping after the current step…';
 
   } else if (phase === 'extracting') {
-    el('cdl-ap-chapter-status').textContent = headline || `Chapter ${chapterIndex} / ${totalChapters} — ${chapterLabel}`;
-    el('cdl-ap-img-status').textContent     = headline ? overall : 'Opening chapter…';
-    el('cdl-ap-bar').style.width            = `${pct}%`;
-    el('cdl-ap-counter').textContent        = counterText;
-    _dlAllAddLog(chapterLabel, 'active', `⟳ ${chapterLabel} — opening…`);
+    _dlAllSetStage(popup, 'download');
+    _dlAllHideArchiveProgress();
+    status.textContent = headline || `Chapter ${chapterIndex} / ${totalChapters} — ${chapterLabel}`;
+    el('cdl-ap-img-status').textContent = headline ? overall : 'Opening chapter…';
+    _dlAllSetChapterProgress(completed, totalChapters);
+    _dlAllAddLog(chapterLabel, 'active', `${chapterLabel} — opening…`);
 
   } else if (phase === 'downloading') {
-    el('cdl-ap-chapter-status').textContent = headline || `Chapter ${chapterIndex} / ${totalChapters} — ${chapterLabel}`;
-    el('cdl-ap-img-status').textContent     = headline ? overall : `Images : ${imagesDone} / ${imagesTotal}`;
-    el('cdl-ap-bar').style.width            = `${pct}%`;
-    el('cdl-ap-counter').textContent        = counterText;
-    _dlAllAddLog(chapterLabel, 'active', `⟳ ${chapterLabel} — ${imagesDone}/${imagesTotal} images`);
+    _dlAllSetStage(popup, 'download');
+    _dlAllHideArchiveProgress();
+    status.textContent = headline || `Chapter ${chapterIndex} / ${totalChapters} — ${chapterLabel}`;
+    el('cdl-ap-img-status').textContent = headline ? overall : `Downloading images: ${imagesDone} / ${imagesTotal}`;
+    _dlAllSetChapterProgress(completed, totalChapters);
+    _dlAllAddLog(chapterLabel, 'active', `${chapterLabel} — ${imagesDone}/${imagesTotal} images`);
 
   } else if (phase === 'done') {
-    el('cdl-ap-bar').style.width     = `${pct}%`;
-    el('cdl-ap-counter').textContent = counterText;
+    _dlAllSetStage(popup, 'download');
+    _dlAllHideArchiveProgress();
+    _dlAllSetChapterProgress(completed, totalChapters);
     if (headline) el('cdl-ap-img-status').textContent = overall;
     _dlAllAddLog(chapterLabel, 'done', `✓ ${chapterLabel} (${imagesDone}/${imagesTotal} images)`);
 
   } else if (phase === 'error') {
-    el('cdl-ap-bar').style.width     = `${pct}%`;
-    el('cdl-ap-counter').textContent = counterText;
+    _dlAllSetStage(popup, 'download');
+    _dlAllHideArchiveProgress();
+    _dlAllSetChapterProgress(completed, totalChapters);
     const imageCount = imagesTotal ? ` (${imagesDone}/${imagesTotal} images saved)` : '';
     _dlAllAddLog(chapterLabel, 'error', `✗ ${chapterLabel} — failed${imageCount}`);
 
   } else if (phase === 'skipped') {
-    el('cdl-ap-bar').style.width     = `${pct}%`;
-    el('cdl-ap-counter').textContent = counterText;
+    _dlAllSetStage(popup, 'download');
+    _dlAllHideArchiveProgress();
+    _dlAllSetChapterProgress(completed, totalChapters);
     _dlAllAddLog(chapterLabel, 'skipped', `— ${chapterLabel} — skipped`);
 
   } else if (phase === 'zipping') {
-    el('cdl-ap-chapter-status').textContent = 'Building ZIP file…';
-    el('cdl-ap-img-status').textContent     = 'Please wait — this may take a moment…';
-    el('cdl-ap-bar').style.width            = '99%';
-    // Afficher immédiatement le bouton Retry dans le footer dès la phase ZIP
+    const percent = Number.isFinite(Number(msg.zipPercent)) ? Number(msg.zipPercent) : 0;
+    const partText = msg.zipPart > 1 || !msg.finalPart ? ` part ${msg.zipPart || 1}` : '';
+    _dlAllSetStage(popup, 'zip');
+    _dlAllSetChapterProgress(completed, totalChapters);
+    _dlAllSetArchiveProgress({
+      stage: 'zip', percent, zipPart: msg.zipPart, finalPart: msg.finalPart,
+    });
+    status.textContent = `Building ZIP${partText}…`;
+    el('cdl-ap-img-status').textContent = `Packing archive: ${Math.round(percent)}%`;
     clearTimeout(popup._cdlRetryTimer);
-    const footer = popup.querySelector('.cdl-ap-footer');
-    if (footer && !footer.querySelector('.cdl-ap-retry-btn')) {
-      const retryBtn = document.createElement('button');
-      retryBtn.className   = 'cdl-ap-retry-btn';
-      retryBtn.textContent = '↺ Retry';
-      retryBtn.addEventListener('click', () => {
-        // Relance uniquement le ZIP — ne touche pas au popup ni aux chapitres
-        retryBtn.disabled    = true;
-        retryBtn.textContent = '↺ Retrying…';
-        el('cdl-ap-chapter-status').textContent = 'Building ZIP file…';
-        el('cdl-ap-img-status').textContent     = 'Please wait — this may take a moment…';
-        el('cdl-ap-bar').style.width            = '99%';
-        try {
-          chrome.runtime.sendMessage({ action: 'retryZip' }, (res) => {
-            if (chrome.runtime.lastError) updateDownloadAllPopupError('Connection to the extension failed');
-            else { retryBtn.disabled = false; retryBtn.textContent = '↺ Retry'; }
-          });
-        } catch (_) { updateDownloadAllPopupError('Extension reloaded — refresh the page'); }
-      });
-      footer.insertBefore(retryBtn, footer.firstChild);
+
+  } else if (phase === 'saving' || phase === 'savingPart') {
+    const hasPercent = msg.savePercent !== null && msg.savePercent !== undefined &&
+      msg.savePercent !== '' && Number.isFinite(Number(msg.savePercent));
+    const percent = hasPercent ? Number(msg.savePercent) : null;
+    const partText = msg.zipPart > 1 || !msg.finalPart ? ` part ${msg.zipPart || 1}` : '';
+    _dlAllSetStage(popup, 'save');
+    _dlAllSetChapterProgress(completed, totalChapters);
+    _dlAllSetArchiveProgress({
+      stage: 'save', percent, zipPart: msg.zipPart, finalPart: msg.finalPart,
+      indeterminate: !hasPercent,
+    });
+    status.textContent = `Saving ZIP${partText}…`;
+    const received = _dlAllFormatBytes(msg.bytesReceived);
+    const total = _dlAllFormatBytes(msg.totalBytes);
+    if (msg.saveState === 'starting' || phase === 'savingPart') {
+      el('cdl-ap-img-status').textContent = 'Waiting for the browser save location…';
+    } else if (msg.saveState === 'fallback') {
+      el('cdl-ap-img-status').textContent = 'File handed to the browser; completion cannot be verified.';
+    } else if (hasPercent) {
+      const bytes = received && total ? ` (${received} / ${total})` : '';
+      el('cdl-ap-img-status').textContent = `Saving file: ${Math.round(percent)}%${bytes}`;
+    } else {
+      el('cdl-ap-img-status').textContent = 'Saving file in the browser…';
     }
-  } else if (phase === 'savingPart') {
-    el('cdl-ap-chapter-status').textContent = `Saving ZIP part ${msg.zipPart || ''}...`;
-    el('cdl-ap-img-status').textContent     = 'Continuing after this part is saved...';
   }
 }
 
@@ -1867,6 +2126,8 @@ function updateDownloadAllPopupError(errMsg, options = {}) {
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
   clearTimeout(popup._cdlRetryTimer);
+  _dlAllSetStage(popup, popup.dataset.stage || 'download', 'error');
+  _dlAllHideArchiveProgress();
   const s = document.getElementById('cdl-ap-chapter-status');
   if (s) { s.textContent = `Error: ${errMsg}`; s.classList.add('error'); }
 
@@ -1883,9 +2144,13 @@ function updateDownloadAllPopupError(errMsg, options = {}) {
       retryBtn.textContent = 'Retrying...';
       const status = document.getElementById('cdl-ap-chapter-status');
       if (status) {
-        status.textContent = 'Building ZIP file...';
+        status.textContent = 'Building ZIP file…';
         status.classList.remove('error');
       }
+      _dlAllSetStage(popup, 'zip');
+      _dlAllSetArchiveProgress({ stage: 'zip', percent: 0, zipPart: 1, finalPart: true });
+      const detail = document.getElementById('cdl-ap-img-status');
+      if (detail) detail.textContent = 'Packing archive: 0%';
       try {
         chrome.runtime.sendMessage({ action: 'retryZip' }, () => {
           if (chrome.runtime.lastError) updateDownloadAllPopupError('Connection to the extension failed');

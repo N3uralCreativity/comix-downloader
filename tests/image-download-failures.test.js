@@ -89,8 +89,20 @@ const allContext = {
   cdlLog(level, message) { allEvents.logs.push({ level, message }); },
   notifyDownloadAllProgress(_tabId, message) { allEvents.progress.push(message); },
   getZipPartName: (name, part) => `${name}.part${part}`,
-  _doZipAndSave: async ({ zipName, chapterRecords = [] }) => {
+  _doZipAndSave: async ({
+    zipName, chapterRecords = [], onZipProgress, onSaveProgress,
+  }) => {
     allEvents.saves.push(zipName);
+    if (onZipProgress) {
+      onZipProgress({ percent: 0, currentFile: '', reset: true });
+      onZipProgress({ percent: 37, currentFile: 'page-001.webp' });
+      onZipProgress({ percent: 100, currentFile: '' });
+    }
+    if (onSaveProgress) {
+      onSaveProgress({ state: 'starting', bytesReceived: 0, totalBytes: -1 });
+      onSaveProgress({ state: 'in_progress', bytesReceived: 50, totalBytes: 100 });
+      onSaveProgress({ state: 'complete', bytesReceived: 100, totalBytes: 100 });
+    }
     chapterRecords.forEach((record) => allEvents.recorded.push(record.chapterLabel));
     return { filename: zipName, confirmed: true };
   },
@@ -107,6 +119,11 @@ const allContext = {
   },
   downloadAllAbortFlag: false,
   _downloadAllAbortPromise: () => new Promise(() => {}),
+  downloadItemProgressPercent(item) {
+    if (!item) return null;
+    if (item.state === 'complete') return 100;
+    return item.totalBytes > 0 ? item.bytesReceived / item.totalBytes * 100 : null;
+  },
   recordChapterDownloaded: (_slug, label) => allEvents.recorded.push(label),
   addChapterToOuter: async (_zip, result) => result.bytes,
   _signalDownloadAllAbort() {},
@@ -156,6 +173,16 @@ async function run() {
     allEvents.done[0].warning.includes('1 of 2 chapters could not be included'));
   check('only the complete chapter is marked as downloaded',
     allEvents.recorded.length === 1 && allEvents.recorded[0] === 'Ch1');
+  check('Download All exposes real ZIP generation percentages', (() => {
+    const values = allEvents.progress.filter((event) => event.phase === 'zipping').map((event) => event.zipPercent);
+    return values.includes(0) && values.includes(37) && values.includes(100);
+  })());
+  check('Download All exposes browser save progress after ZIP generation', (() => {
+    const events = allEvents.progress.filter((event) => event.phase === 'saving');
+    return events.some((event) => event.saveState === 'starting' && event.savePercent === null) &&
+      events.some((event) => event.saveState === 'in_progress' && event.savePercent === 50) &&
+      events.some((event) => event.saveState === 'complete' && event.savePercent === 100);
+  })());
 
   resetAllEvents();
   fetchMode = 'pass';
@@ -169,6 +196,11 @@ async function run() {
     JSON.stringify(allEvents.saves) === JSON.stringify(['series.zip.part1', 'series.zip.part2']));
   check('multi-part success reports the number of ZIP parts',
     allEvents.done.length === 1 && allEvents.done[0].zipName === '2 ZIP parts' && !allEvents.done[0].warning);
+  check('each multipart archive reports ZIP and save stages', (() => {
+    const zippedParts = new Set(allEvents.progress.filter((event) => event.phase === 'zipping').map((event) => event.zipPart));
+    const savedParts = new Set(allEvents.progress.filter((event) => event.phase === 'saving').map((event) => event.zipPart));
+    return zippedParts.size === 2 && savedParts.size === 2 && zippedParts.has(1) && zippedParts.has(2);
+  })());
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
