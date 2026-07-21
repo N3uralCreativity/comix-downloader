@@ -54,6 +54,13 @@ check('Download All exposes a checkpoint resume message without persisting archi
 check('a new Download All request reattaches to an existing durable operation',
   backgroundSource.includes('existing.status === \'awaiting_save\'') &&
   backgroundSource.includes('existing: true, session: _serializeSession(existing)'));
+check('Download All persistence is isolated by title slug',
+  backgroundSource.includes("const DL_SESSION_PREFIX = 'cdlDownloadAllSession:'") &&
+  backgroundSource.includes("const DL_RESUME_PREFIX = 'cdlDownloadAllResume:'") &&
+  backgroundSource.includes('downloadAllStorageKeys(sessionOrSlug)'));
+check('an inactive checkpoint cannot block Download All on another title',
+  backgroundSource.includes('if (downloadAllSession && downloadAllSession.active)') &&
+  !backgroundSource.includes('is waiting to be resumed or discarded'));
 
 // 2. content_title.js (content script) settings keys
 const contentTitleSource = read('content/content_title.js');

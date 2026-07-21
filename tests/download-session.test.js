@@ -48,12 +48,19 @@ const context = { Date, JSON, Math, Number, String, Array, Set };
 vm.createContext(context);
 vm.runInContext(`
   const DOWNLOAD_ALL_RESUME_VERSION = 1;
+  const DL_SESSION_KEY = 'cdlDownloadAllSession';
+  const DL_RESUME_KEY = 'cdlDownloadAllResume';
+  const DL_SESSION_PREFIX = 'cdlDownloadAllSession:';
+  const DL_RESUME_PREFIX = 'cdlDownloadAllResume:';
   ${extractFunction('cloneDownloadAllOptions')}
   ${extractFunction('normalizeDownloadAllResumeChapters')}
   ${extractFunction('createDownloadAllResumeData')}
   ${extractFunction('isValidDownloadAllResumeData')}
   ${extractFunction('isCompletedDownloadAllResumeData')}
   ${extractFunction('downloadAllResumeSlug')}
+  ${extractFunction('downloadAllTabSlug')}
+  ${extractFunction('downloadAllSessionSlug')}
+  ${extractFunction('downloadAllStorageKeys')}
   ${extractFunction('downloadAllSessionMatchesUrl')}
   ${extractFunction('_serializeSession')}
   ${extractFunction('prepareInterruptedDownloadAllSession')}
@@ -62,6 +69,7 @@ vm.runInContext(`
     isValidDownloadAllResumeData,
     isCompletedDownloadAllResumeData,
     downloadAllSessionMatchesUrl,
+    downloadAllStorageKeys,
     serialize: _serializeSession,
     prepareInterruptedDownloadAllSession,
   };
@@ -88,6 +96,12 @@ check('resume data derives title matching from its slug',
   context.api.downloadAllSessionMatchesUrl({ resumeData: resume }, 'https://comix.to/title/series'));
 check('resume data rejects a different title URL',
   !context.api.downloadAllSessionMatchesUrl({ resumeData: resume }, 'https://comix.to/title/other'));
+check('persisted Download All slots are isolated by normalized title slug', (() => {
+  const first = context.api.downloadAllStorageKeys('Series');
+  const second = context.api.downloadAllStorageKeys('other');
+  return first.session === 'cdlDownloadAllSession:series' &&
+    first.resume === 'cdlDownloadAllResume:series' && first.session !== second.session;
+})());
 
 const session = {
   active: true,
@@ -152,16 +166,27 @@ async function runAsyncSessionChecks() {
     seriesSlug: 'series',
     updatedAt: Date.now(),
   };
+  const storageData = {
+    cdlDownloadAllSession: { ...storedSession },
+    cdlDownloadAllResume: { ...storedResume },
+  };
   const asyncContext = {
     Date, JSON, Math, Number, String, Array, Set,
+    storageData,
     chrome: {
       storage: {
         local: {
-          async get() {
-            return {
-              cdlDownloadAllSession: { ...storedSession },
-              cdlDownloadAllResume: { ...storedResume },
-            };
+          async get(names) {
+            const out = {};
+            for (const name of names) {
+              if (Object.prototype.hasOwnProperty.call(storageData, name)) {
+                out[name] = JSON.parse(JSON.stringify(storageData[name]));
+              }
+            }
+            return out;
+          },
+          remove(names) {
+            for (const name of Array.isArray(names) ? names : [names]) delete storageData[name];
           },
         },
       },
@@ -173,17 +198,39 @@ async function runAsyncSessionChecks() {
     const DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS = 120000;
     const DL_SESSION_KEY = 'cdlDownloadAllSession';
     const DL_RESUME_KEY = 'cdlDownloadAllResume';
+    const DL_SESSION_PREFIX = 'cdlDownloadAllSession:';
+    const DL_RESUME_PREFIX = 'cdlDownloadAllResume:';
     let downloadAllSession = null;
     let persistCount = 0;
-    function persistDownloadAllSession() { persistCount++; }
-    function clearPersistedDownloadAllResume() {
-      if (downloadAllSession) downloadAllSession.resumeData = null;
+    function persistDownloadAllSession(_force, includeResumeData) {
+      persistCount++;
+      const keys = downloadAllStorageKeys(downloadAllSession);
+      const snapshot = JSON.parse(JSON.stringify(downloadAllSession));
+      delete snapshot.resumeData;
+      storageData[keys.session] = snapshot;
+      if (includeResumeData && downloadAllSession.resumeData) {
+        storageData[keys.resume] = JSON.parse(JSON.stringify(downloadAllSession.resumeData));
+      }
+    }
+    function clearPersistedSession(session = downloadAllSession) {
+      const keys = downloadAllStorageKeys(session);
+      delete storageData[keys.session];
+      delete storageData[keys.resume];
+    }
+    function clearPersistedDownloadAllResume(session = downloadAllSession) {
+      const keys = downloadAllStorageKeys(session);
+      if (session) session.resumeData = null;
+      delete storageData[keys.resume];
     }
     ${extractFunction('isValidDownloadAllResumeData')}
     ${extractFunction('isCompletedDownloadAllResumeData')}
     ${extractFunction('downloadAllResumeSlug')}
+    ${extractFunction('downloadAllTabSlug')}
+    ${extractFunction('downloadAllSessionSlug')}
+    ${extractFunction('downloadAllStorageKeys')}
     ${extractFunction('downloadAllSessionMatchesUrl')}
     ${extractFunction('prepareInterruptedDownloadAllSession')}
+    ${extractFunction('clearLegacyPersistedDownloadAllSession')}
     ${extractFunction('loadPersistedSession')}
     ${extractFunction('getDownloadAllSessionForTab')}
     ${extractFunction('getDownloadAllSessionForTabAsync')}
@@ -197,8 +244,8 @@ async function runAsyncSessionChecks() {
   const wrongTitle = await asyncContext.api.getDownloadAllSessionForTabAsync(
     9, 'https://comix.to/title/other'
   );
-  check('a different title cannot claim or display a persisted checkpoint',
-    wrongTitle === null && asyncContext.api.getState().originTabId === 5);
+  check('a legacy checkpoint cannot claim or display a different title',
+    wrongTitle === null && asyncContext.api.getState() === null);
 
   const matchingTitle = await asyncContext.api.getDownloadAllSessionForTabAsync(
     10, 'https://comix.to/title/series'
@@ -206,8 +253,55 @@ async function runAsyncSessionChecks() {
   check('the matching title rebinds an interrupted checkpoint after browser restart',
     matchingTitle && matchingTitle.status === 'interrupted' &&
     matchingTitle.originTabId === 10 && matchingTitle.resumeChapterLabel === 'Ch2');
-  check('restoring and rebinding the checkpoint persists the repaired session',
-    asyncContext.api.getPersistCount() >= 2);
+  check('legacy checkpoints migrate into a title-scoped storage slot',
+    !!storageData['cdlDownloadAllSession:series'] &&
+    !!storageData['cdlDownloadAllResume:series'] && !storageData.cdlDownloadAllSession);
+
+  const otherResume = {
+    ...storedResume,
+    chapters: storedResume.chapters.map((chapter) => ({
+      ...chapter,
+      chapterUrl: chapter.chapterUrl.replace('/series/', '/other/'),
+    })),
+    mangaName: 'Other',
+    options: { ...storedResume.options, slug: 'other' },
+    checkpointIndex: 0,
+    nextZipPart: 1,
+    savedZipNames: [],
+  };
+  storageData['cdlDownloadAllSession:other'] = {
+    active: false,
+    status: 'interrupted',
+    originTabId: 4,
+    mangaName: 'Other',
+    totalChapters: 3,
+    seriesSlug: 'other',
+    canResumeDownload: true,
+    updatedAt: Date.now(),
+  };
+  storageData['cdlDownloadAllResume:other'] = otherResume;
+
+  const otherTitle = await asyncContext.api.getDownloadAllSessionForTabAsync(
+    11, 'https://comix.to/title/other'
+  );
+  check('each title restores only its own interrupted Download All session',
+    otherTitle && otherTitle.mangaName === 'Other' && otherTitle.seriesSlug === 'other' &&
+    otherTitle.originTabId === 11);
+
+  const firstTitleAgain = await asyncContext.api.getDownloadAllSessionForTabAsync(
+    12, 'https://comix.to/title/series'
+  );
+  check('switching titles preserves the earlier title checkpoint independently',
+    firstTitleAgain && firstTitleAgain.mangaName === 'Series' &&
+    firstTitleAgain.seriesSlug === 'series' && firstTitleAgain.originTabId === 12);
+
+  const cleanTitle = await asyncContext.api.getDownloadAllSessionForTabAsync(
+    13, 'https://comix.to/title/clean-title'
+  );
+  check('a title without a checkpoint starts with clean Download All state',
+    cleanTitle === null && asyncContext.api.getState() === null);
+  check('restoring and rebinding scoped checkpoints persists repaired sessions',
+    asyncContext.api.getPersistCount() >= 4);
 }
 
 runAsyncSessionChecks().then(() => {

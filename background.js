@@ -523,6 +523,8 @@ function recordDownloadAllTerminal(status, patch = {}) {
 // refresh rebuild the progress popup even after the worker was torn down mid-download.
 const DL_SESSION_KEY = 'cdlDownloadAllSession';
 const DL_RESUME_KEY = 'cdlDownloadAllResume';
+const DL_SESSION_PREFIX = 'cdlDownloadAllSession:';
+const DL_RESUME_PREFIX = 'cdlDownloadAllResume:';
 const DOWNLOAD_ALL_RESUME_VERSION = 1;
 let _dlPersistTimer = null;
 
@@ -600,10 +602,34 @@ function downloadAllResumeSlug(data) {
   return (String(firstUrl || '').match(/\/title\/([^/]+)/i) || [])[1] || '';
 }
 
-function downloadAllSessionMatchesUrl(session, tabUrl) {
-  const expected = String(session && session.seriesSlug || '') ||
+function downloadAllTabSlug(tabUrl) {
+  return (String(tabUrl || '').match(/\/title\/([^/?#]+)/i) || [])[1] || '';
+}
+
+function downloadAllSessionSlug(session) {
+  return String(session && session.seriesSlug || '').trim() ||
     downloadAllResumeSlug(session && session.resumeData);
-  const actual = (String(tabUrl || '').match(/\/title\/([^/?#]+)/i) || [])[1] || '';
+}
+
+function downloadAllStorageKeys(sessionOrSlug) {
+  const rawSlug = typeof sessionOrSlug === 'string'
+    ? sessionOrSlug
+    : downloadAllSessionSlug(sessionOrSlug);
+  const slug = String(rawSlug || '').trim().toLowerCase();
+  return slug ? {
+    session: `${DL_SESSION_PREFIX}${slug}`,
+    resume: `${DL_RESUME_PREFIX}${slug}`,
+    slug,
+  } : {
+    session: DL_SESSION_KEY,
+    resume: DL_RESUME_KEY,
+    slug: '',
+  };
+}
+
+function downloadAllSessionMatchesUrl(session, tabUrl) {
+  const expected = downloadAllSessionSlug(session);
+  const actual = downloadAllTabSlug(tabUrl);
   return !!expected && !!actual && expected.toLowerCase() === actual.toLowerCase();
 }
 
@@ -644,9 +670,10 @@ function persistDownloadAllSession(force = false, includeResumeData = false) {
   const write = () => {
     _dlPersistTimer = null;
     try {
-      const values = { [DL_SESSION_KEY]: _serializeSession(downloadAllSession) };
+      const keys = downloadAllStorageKeys(downloadAllSession);
+      const values = { [keys.session]: _serializeSession(downloadAllSession) };
       if (includeResumeData && downloadAllSession && downloadAllSession.resumeData) {
-        values[DL_RESUME_KEY] = downloadAllSession.resumeData;
+        values[keys.resume] = downloadAllSession.resumeData;
       }
       chrome.storage.local.set(values);
     } catch (_) {}
@@ -655,19 +682,37 @@ function persistDownloadAllSession(force = false, includeResumeData = false) {
   if (_dlPersistTimer) return; // throttle live progress writes to ~1/sec
   _dlPersistTimer = setTimeout(write, 1000);
 }
-function clearPersistedSession() {
+function clearPersistedSession(session = downloadAllSession) {
   if (_dlPersistTimer) { clearTimeout(_dlPersistTimer); _dlPersistTimer = null; }
+  const keys = downloadAllStorageKeys(session);
+  try { chrome.storage.local.remove([keys.session, keys.resume]); } catch (_) {}
+}
+function clearPersistedDownloadAllResume(session = downloadAllSession) {
+  const keys = downloadAllStorageKeys(session);
+  if (session) session.resumeData = null;
+  try { chrome.storage.local.remove(keys.resume); } catch (_) {}
+}
+function clearLegacyPersistedDownloadAllSession() {
   try { chrome.storage.local.remove([DL_SESSION_KEY, DL_RESUME_KEY]); } catch (_) {}
 }
-function clearPersistedDownloadAllResume() {
-  if (downloadAllSession) downloadAllSession.resumeData = null;
-  try { chrome.storage.local.remove(DL_RESUME_KEY); } catch (_) {}
-}
-async function loadPersistedSession() {
+async function loadPersistedSession(tabUrl = '') {
   try {
-    const r = await chrome.storage.local.get([DL_SESSION_KEY, DL_RESUME_KEY]);
-    const session = (r && r[DL_SESSION_KEY]) || null;
-    if (session && r && r[DL_RESUME_KEY]) session.resumeData = r[DL_RESUME_KEY];
+    const requestedSlug = downloadAllTabSlug(tabUrl);
+    const keys = downloadAllStorageKeys(requestedSlug);
+    const names = [...new Set([keys.session, keys.resume, DL_SESSION_KEY, DL_RESUME_KEY])];
+    const r = await chrome.storage.local.get(names);
+    let session = (r && r[keys.session]) || null;
+    if (session && r && r[keys.resume]) session.resumeData = r[keys.resume];
+
+    if (!session && requestedSlug) {
+      const legacy = (r && r[DL_SESSION_KEY]) || null;
+      const legacyResume = (r && r[DL_RESUME_KEY]) || null;
+      if (legacy && legacyResume) legacy.resumeData = legacyResume;
+      if (legacy && downloadAllSessionSlug(legacy).toLowerCase() === requestedSlug.toLowerCase()) {
+        legacy._loadedFromLegacyStorage = true;
+        session = legacy;
+      }
+    }
     return session;
   } catch (_) {
     return null;
@@ -759,11 +804,19 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
 }
 
 async function getDownloadAllSessionForTabAsync(tabId, tabUrl = '') {
-  if (!downloadAllSession) {
-    const stored = await loadPersistedSession();
+  const requestedSlug = downloadAllTabSlug(tabUrl);
+  const currentSlug = downloadAllSessionSlug(downloadAllSession);
+  const currentMatchesTitle = !downloadAllSession || !requestedSlug || !currentSlug ||
+    currentSlug.toLowerCase() === requestedSlug.toLowerCase();
+
+  // An inactive session from another title must not become global state for this
+  // page. Swap to this title's persisted slot while leaving the other checkpoint
+  // available under its own slug. A genuinely active run stays in memory because
+  // the downloader currently supports one active Download All operation at a time.
+  if (!downloadAllSession || (!downloadAllSession.active && !currentMatchesTitle)) {
+    const stored = await loadPersistedSession(tabUrl);
     if (stored) {
-      const expectedSlug = String(stored.seriesSlug || '') || downloadAllResumeSlug(stored.resumeData);
-      const requestedSlug = (String(tabUrl || '').match(/\/title\/([^/?#]+)/i) || [])[1] || '';
+      const expectedSlug = downloadAllSessionSlug(stored);
       const sameTitle = expectedSlug && requestedSlug
         ? expectedSlug.toLowerCase() === requestedSlug.toLowerCase()
         : stored.originTabId == null || tabId == null || stored.originTabId === tabId;
@@ -773,17 +826,20 @@ async function getDownloadAllSessionForTabAsync(tabId, tabUrl = '') {
       if (lostRuntimeState) {
         prepareInterruptedDownloadAllSession(stored, sameTitle ? tabId : stored.originTabId);
       }
+      const migratedFromLegacy = !!stored._loadedFromLegacyStorage;
+      delete stored._loadedFromLegacyStorage;
       downloadAllSession = stored;
-      persistDownloadAllSession(true);
+      persistDownloadAllSession(true, migratedFromLegacy);
+      if (migratedFromLegacy) clearLegacyPersistedDownloadAllSession();
       if (stored.status === 'done' && isCompletedDownloadAllResumeData(stored.resumeData)) {
         clearPersistedDownloadAllResume();
       }
+    } else if (!downloadAllSession || !downloadAllSession.active) {
+      downloadAllSession = null;
     }
   }
 
-  const expectedSlug = String(downloadAllSession && downloadAllSession.seriesSlug || '') ||
-    downloadAllResumeSlug(downloadAllSession && downloadAllSession.resumeData);
-  const requestedSlug = (String(tabUrl || '').match(/\/title\/([^/?#]+)/i) || [])[1] || '';
+  const expectedSlug = downloadAllSessionSlug(downloadAllSession);
   if (expectedSlug && requestedSlug && expectedSlug.toLowerCase() !== requestedSlug.toLowerCase()) {
     return null;
   }
@@ -799,7 +855,15 @@ async function getDownloadAllSessionForTabAsync(tabId, tabUrl = '') {
     downloadAllSession.updatedAt = Date.now();
     persistDownloadAllSession(true);
   }
-  return getDownloadAllSessionForTab(tabId);
+  const session = getDownloadAllSessionForTab(tabId);
+  if (!session && downloadAllSession && !downloadAllSession.active &&
+      !downloadAllSession.canResumeDownload &&
+      Date.now() - (downloadAllSession.updatedAt || 0) > DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS) {
+    const expired = downloadAllSession;
+    downloadAllSession = null;
+    clearPersistedSession(expired);
+  }
+  return session;
 }
 
 function getDownloadAllSessionForTab(tabId) {
@@ -821,8 +885,12 @@ function getDownloadAllSessionForTab(tabId) {
   return downloadAllSession;
 }
 
-function dismissDownloadAllSessionForTab(tabId) {
+function dismissDownloadAllSessionForTab(tabId, tabUrl = '') {
   if (!downloadAllSession) return;
+  if (downloadAllSessionSlug(downloadAllSession) && downloadAllTabSlug(tabUrl) &&
+      !downloadAllSessionMatchesUrl(downloadAllSession, tabUrl)) {
+    return;
+  }
   if (
     downloadAllSession.originTabId != null &&
     tabId != null &&
@@ -830,7 +898,11 @@ function dismissDownloadAllSessionForTab(tabId) {
   ) {
     return;
   }
-  if (!downloadAllSession.active) { downloadAllSession = null; clearPersistedSession(); }
+  if (!downloadAllSession.active) {
+    const dismissed = downloadAllSession;
+    downloadAllSession = null;
+    clearPersistedSession(dismissed);
+  }
 }
 
 function notifyDownloadAllProgress(originTabId, progress) {
@@ -1053,15 +1125,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: false, existing: true, session: _serializeSession(existing) });
           return;
         }
-        if (downloadAllSession && (
-          downloadAllSession.active || downloadAllSession.canResumeDownload
-        )) {
-          const interrupted = downloadAllSession.canResumeDownload && !downloadAllSession.active;
+        if (downloadAllSession && downloadAllSession.active) {
           sendResponse({
             ok: false,
-            error: interrupted
-              ? `An interrupted download for "${downloadAllSession.mangaName || 'another title'}" is waiting to be resumed or discarded.`
-              : 'Another Download All operation is already running.',
+            error: 'Another Download All operation is already running.',
           });
           return;
         }
@@ -1159,7 +1226,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === 'dismissDownloadAllSession') {
     const originTabId = sender.tab?.id ?? null;
-    dismissDownloadAllSessionForTab(originTabId);
+    dismissDownloadAllSessionForTab(originTabId, sender.tab?.url || '');
     sendResponse({ ok: true });
     return true;
   }
