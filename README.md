@@ -4,11 +4,13 @@
 
 ### Download your mangas from [comix.to](https://comix.to) 
 
-[![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp)
-[![Firefox Add-on](https://img.shields.io/badge/Firefox-Add--on-FF7139?logo=firefox-browser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-4285F4?logo=googlechrome\&logoColor=white)](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp)
+[![Firefox Add-on](https://img.shields.io/badge/Firefox-Add--on-FF7139?logo=firefox-browser\&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
+[![Opera](https://img.shields.io/badge/Opera-Extension-FF1B2D?logo=opera\&logoColor=white)](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/N3uralCreativity/comix-downloader?logo=github&label=Star%20to%20stay%20updated&color=f5c518)](https://github.com/N3uralCreativity/comix-downloader)
+[![GitHub stars](https://img.shields.io/github/stars/N3uralCreativity/comix-downloader?logo=github\&label=Star%20to%20stay%20updated\&color=f5c518)](https://github.com/N3uralCreativity/comix-downloader)
+
 
 
 
