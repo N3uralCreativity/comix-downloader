@@ -1,0 +1,26 @@
+{
+  "extensionName": {
+    "message": "Comix Downloader",
+    "description": "Nama ekstensi."
+  },
+  "extensionDescription": {
+    "message": "Simpan bab comix.to sebagai ZIP atau CBZ dengan unduh semua, pelacakan progres, pemulihan, dan pemblokiran pop-up.",
+    "description": "Deskripsi singkat yang ditampilkan browser dan toko."
+  },
+  "reviewPromptTitle": {
+    "message": "Comix Downloader berguna bagi Anda?",
+    "description": "Judul permintaan ulasan satu kali."
+  },
+  "reviewPromptMessage": {
+    "message": "Bagikan ulasan jujur untuk membantu pembaca lain memilih.",
+    "description": "Isi permintaan ulasan satu kali."
+  },
+  "reviewPromptAction": {
+    "message": "Tulis ulasan",
+    "description": "Tautan ke halaman ulasan toko."
+  },
+  "reviewPromptDismiss": {
+    "message": "Tutup",
+    "description": "Label aksesibel untuk tombol tutup."
+  }
+}

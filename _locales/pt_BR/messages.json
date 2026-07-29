@@ -1,0 +1,26 @@
+{
+  "extensionName": {
+    "message": "Comix Downloader",
+    "description": "Nome da extensão."
+  },
+  "extensionDescription": {
+    "message": "Salve capítulos do comix.to em ZIP ou CBZ com download completo, progresso, recuperação e bloqueio de pop-ups invasivos.",
+    "description": "Descrição curta exibida pelo navegador e pelas lojas."
+  },
+  "reviewPromptTitle": {
+    "message": "O Comix Downloader está sendo útil?",
+    "description": "Título do pedido único de avaliação."
+  },
+  "reviewPromptMessage": {
+    "message": "Compartilhe uma avaliação sincera para ajudar outros leitores a decidir.",
+    "description": "Texto do pedido único de avaliação."
+  },
+  "reviewPromptAction": {
+    "message": "Deixar uma avaliação",
+    "description": "Link para a página de avaliações da loja."
+  },
+  "reviewPromptDismiss": {
+    "message": "Fechar",
+    "description": "Rótulo acessível do botão de fechar."
+  }
+}

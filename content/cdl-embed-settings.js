@@ -21,11 +21,23 @@
   var NAV_ID = 'cdl-nav-item';
   var VIEW_ID = 'cdl-uview';
   var STYLE_ID = 'cdl-embed-style';
+  var OUTRO_ID = 'cdl-settings-outro';
+  var OUTRO_MEDIA = [
+    { file: 'dance-tina.gif', className: 'cdl-dancer--tina' },
+    { file: 'dance-stick.gif', className: 'cdl-dancer--stick' },
+    { file: 'dance-cat.gif', className: 'cdl-dancer--cat' },
+    { file: 'dance-yellow.gif', className: 'cdl-dancer--yellow' },
+    { file: 'dance-man.gif', className: 'cdl-dancer--man' },
+    { file: 'dance-shaggy.gif', className: 'cdl-dancer--shaggy' },
+    { file: 'dance-flamingo.gif', className: 'cdl-dancer--flamingo' },
+  ];
   var hiddenComixView = null;
   var pollTimer = null;
   var observer = null;
   var autoChecked = false;
   var savedToast = null, savedTimer = null;
+  var outroController = null;
+  var outroAudio = null;
   // Scroll persistence: keep the reader's scroll position while our panel is open, across
   // comix's React re-renders (which wipe + re-inject our panel) and across page refreshes.
   var OPEN_KEY = 'cdlExtSettingsOpen';   // sessionStorage flag: our panel is open
@@ -109,6 +121,15 @@
   }
   function setLocal(key, val) { var o = {}; o[key] = val; try { chrome.storage.local.set(o); } catch (_) {} }
   function send(msg) { return new Promise(function (res) { try { chrome.runtime.sendMessage(msg, function (r) { res(chrome.runtime.lastError ? null : r); }); } catch (_) { res(null); } }); }
+  function extensionAsset(name) {
+    try { return chrome.runtime.getURL('assets/settings-outro/' + name); }
+    catch (_) { return ''; }
+  }
+
+  function outroProximity(distance, startAt, fullAt) {
+    var span = Math.max(1, startAt - fullAt);
+    return Math.max(0, Math.min(1, (startAt - distance) / span));
+  }
 
   // Settings save instantly (like comix's own toggles); flash a brief confirmation.
   function flashSaved(msg) {
@@ -178,6 +199,19 @@
       '#' + VIEW_ID + ' .cdl-sec-move:disabled{opacity:.3;cursor:default;}' +
       '#' + VIEW_ID + ' .cdl-sec-main{display:flex;align-items:center;gap:9px;cursor:pointer;flex:1;min-width:0;}' +
       '#' + VIEW_ID + ' .cdl-sec-name{font-size:13px;font-weight:600;color:var(--text,#d4d4d4);}' +
+      // Final thank-you band: all supplied animations stay on one responsive row.
+      '#' + VIEW_ID + ' .cdl-outro{position:relative;margin-top:18px;padding:34px 0 10px;border-top:1px solid rgba(255,255,255,.08);' +
+        'overflow:hidden;opacity:.2;transform:translateY(12px);will-change:opacity,transform;}' +
+      '#' + VIEW_ID + ' .cdl-outro-head{display:flex;align-items:center;justify-content:center;gap:10px;min-height:32px;}' +
+      '#' + VIEW_ID + ' .cdl-outro-brand{display:flex;align-items:center;gap:9px;color:var(--accent,#8765eb);}' +
+      '#' + VIEW_ID + ' .cdl-outro-title{margin:0;font-size:15px;font-weight:700;color:var(--text-emphasis,#f5f5f5);text-align:center;}' +
+      '#' + VIEW_ID + ' .cdl-outro-media{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));' +
+        'align-items:end;gap:clamp(1px,.55vw,8px);margin-top:18px;overflow:visible;pointer-events:none;}' +
+      '#' + VIEW_ID + ' .cdl-outro-dancer{display:block;width:100%;height:auto;min-width:0;aspect-ratio:5/4;' +
+        'object-fit:contain;object-position:center bottom;}' +
+      '#' + VIEW_ID + ' .cdl-outro-audio{display:none;}' +
+      '@media (prefers-reduced-motion:reduce){#' + VIEW_ID + ' .cdl-outro{opacity:1!important;transform:none!important;will-change:auto;}' +
+        '#' + VIEW_ID + ' .cdl-outro-media{display:none;}}' +
       '#cdl-saved-toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,8px);z-index:2147483647;' +
         'background:var(--surface-2,#282c30);color:var(--text-emphasis,#f5f5f5);border:1px solid rgba(255,255,255,.12);' +
         'border-radius:8px;padding:8px 16px;font:600 13px/1 system-ui,sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.45);' +
@@ -458,6 +492,275 @@
     ]);
   }
 
+  function getOutroAudio() {
+    if (outroAudio) return outroAudio;
+    outroAudio = el('audio', {
+      class: 'cdl-outro-audio',
+      src: extensionAsset('outro.mp3'),
+      preload: 'auto',
+    });
+    outroAudio.loop = true;
+    outroAudio.muted = false;
+    outroAudio.volume = 0;
+    return outroAudio;
+  }
+
+  // Start the real audio element during the settings-menu click while the browser
+  // still considers playback user-initiated. It stays silent until the footer.
+  function primeOutroAudio() {
+    var audio = getOutroAudio();
+    if (!audio.paused || audio.__cdlUnlockPending) return;
+    try {
+      audio.muted = false;
+      audio.volume = 0.0001;
+      audio.__cdlBlocked = false;
+      var result = audio.play();
+      if (result && result.then) {
+        audio.__cdlUnlockPending = true;
+        result.then(function () {
+          audio.__cdlUnlockPending = false;
+          audio.__cdlUnlocked = true;
+          audio.__cdlBlocked = false;
+          audio.volume = 0;
+          if (outroController && outroController.playbackStateChanged) outroController.playbackStateChanged();
+        }).catch(function () {
+          audio.__cdlUnlockPending = false;
+          audio.__cdlUnlocked = false;
+          audio.__cdlBlocked = true;
+          if (outroController && outroController.playbackStateChanged) outroController.playbackStateChanged();
+        });
+      } else {
+        audio.__cdlUnlocked = true;
+      }
+    } catch (_) {
+      audio.__cdlUnlockPending = false;
+      audio.__cdlUnlocked = false;
+      audio.__cdlBlocked = true;
+    }
+  }
+
+  function makeOutroSection() {
+    var media = el('div', { class: 'cdl-outro-media', 'aria-hidden': 'true' });
+    OUTRO_MEDIA.forEach(function (item) {
+      var image = el('img', {
+        class: 'cdl-outro-dancer ' + item.className,
+        src: extensionAsset(item.file),
+        alt: '',
+        loading: 'eager',
+        decoding: 'async',
+      });
+      image.draggable = false;
+      media.appendChild(image);
+    });
+
+    var audio = getOutroAudio();
+
+    return el('section', {
+      class: 'cdl-outro',
+      id: OUTRO_ID,
+      'aria-labelledby': 'cdl-outro-title',
+    }, [
+      el('div', { class: 'cdl-outro-head' }, [
+        el('div', { class: 'cdl-outro-brand' }, [
+          markSvg(20),
+          el('h3', {
+            class: 'cdl-outro-title',
+            id: 'cdl-outro-title',
+            text: 'Thanks for using my extension.',
+          }),
+        ]),
+      ]),
+      media,
+      audio,
+    ]);
+  }
+
+  function stopOutro() {
+    if (!outroController) return;
+    try { outroController.destroy(); } catch (_) {}
+    outroController = null;
+  }
+
+  function setupOutro(view) {
+    stopOutro();
+    var root = view && view.querySelector('#' + OUTRO_ID);
+    if (!root) return;
+    var audio = root.querySelector('.cdl-outro-audio');
+    if (!audio) return;
+
+    var reduced = false;
+    try { reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) {}
+    if (reduced) {
+      root.style.opacity = '1';
+      root.style.transform = 'none';
+      try { audio.pause(); audio.currentTime = 0; audio.volume = 0; } catch (_) {}
+      outroController = { destroy: function () {} };
+      return;
+    }
+
+    var MAX_VOLUME = 0.32;
+    var AUDIO_START_PX = 180;
+    var AUDIO_FULL_PX = 18;
+    var REVEAL_START_PX = 360;
+    var REVEAL_FULL_PX = 50;
+    var targetVolume = 0;
+    var currentVolume = 0;
+    var proximity = 0;
+    var blocked = !!audio.__cdlBlocked;
+    var playPending = !!audio.__cdlUnlockPending;
+    var destroyed = false;
+    var frame = 0;
+
+    function canKeepSilentPlayback() {
+      return !document.hidden &&
+        (!!audio.__cdlUnlocked || !!audio.__cdlUnlockPending || !audio.paused);
+    }
+
+    function pauseAndReset(force) {
+      if (!force && canKeepSilentPlayback()) {
+        try {
+          audio.volume = 0;
+          audio.muted = false;
+        } catch (_) {}
+        currentVolume = 0;
+        return;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = 0;
+        audio.muted = false;
+      } catch (_) {}
+      currentVolume = 0;
+    }
+
+    function startPlayback(force, allowSilent) {
+      if (destroyed || (!allowSilent && proximity <= 0) || document.hidden || playPending) return;
+      if (blocked && !force) return;
+      if (force) blocked = false;
+      if (!audio.paused) {
+        audio.__cdlUnlocked = true;
+        audio.__cdlBlocked = false;
+        audio.muted = false;
+        return;
+      }
+      try {
+        audio.muted = false;
+        audio.volume = targetVolume > 0 ? Math.max(0.01, targetVolume) : (allowSilent ? 0.0001 : 0);
+        var result = audio.play();
+        if (result && result.then) {
+          playPending = true;
+          audio.__cdlUnlockPending = true;
+          result.then(function () {
+            playPending = false;
+            audio.__cdlUnlockPending = false;
+            audio.__cdlUnlocked = true;
+            audio.__cdlBlocked = false;
+            if (destroyed) return;
+            blocked = false;
+            if (proximity <= 0) audio.volume = 0;
+            audio.muted = document.hidden;
+            animateVolume();
+          }).catch(function () {
+            playPending = false;
+            audio.__cdlUnlockPending = false;
+            audio.__cdlUnlocked = false;
+            audio.__cdlBlocked = true;
+            blocked = true;
+          });
+        } else {
+          audio.__cdlUnlocked = true;
+          audio.__cdlBlocked = false;
+          audio.muted = false;
+        }
+      } catch (_) {
+        audio.__cdlUnlocked = false;
+        audio.__cdlBlocked = true;
+        blocked = true;
+      }
+    }
+
+    function animateVolume() {
+      if (destroyed || frame) return;
+      frame = requestAnimationFrame(function step() {
+        frame = 0;
+        if (destroyed) return;
+        var delta = targetVolume - currentVolume;
+        currentVolume += delta * 0.16;
+        if (Math.abs(delta) < 0.001) currentVolume = targetVolume;
+        try { audio.volume = Math.max(0, Math.min(1, currentVolume)); } catch (_) {}
+
+        if (currentVolume === 0 && targetVolume === 0) {
+          pauseAndReset(false);
+          return;
+        }
+        if (!document.hidden && !audio.paused) audio.muted = false;
+        if (currentVolume !== targetVolume) frame = requestAnimationFrame(step);
+      });
+    }
+
+    function pageDistanceFromBottom() {
+      var doc = document.documentElement;
+      var body = document.body;
+      var height = Math.max(
+        doc ? doc.scrollHeight : 0,
+        body ? body.scrollHeight : 0
+      );
+      return Math.max(0, height - (window.scrollY + window.innerHeight));
+    }
+
+    function updateProximity() {
+      if (destroyed || !root.isConnected) return;
+      var distance = pageDistanceFromBottom();
+      proximity = outroProximity(distance, AUDIO_START_PX, AUDIO_FULL_PX);
+      var reveal = outroProximity(distance, REVEAL_START_PX, REVEAL_FULL_PX);
+      root.style.opacity = String(0.2 + (0.8 * reveal));
+      root.style.transform = 'translateY(' + (12 * (1 - reveal)).toFixed(2) + 'px)';
+      targetVolume = !document.hidden ? proximity * MAX_VOLUME : 0;
+      if (targetVolume > 0) startPlayback();
+      animateVolume();
+    }
+
+    function retryFromGesture() {
+      if (audio.paused) startPlayback(true, true);
+    }
+
+    function onVisibilityChange() {
+      if (document.hidden) {
+        targetVolume = 0;
+        pauseAndReset(true);
+      }
+      updateProximity();
+      if (!document.hidden && proximity > 0) startPlayback();
+    }
+
+    window.addEventListener('scroll', updateProximity, { passive: true });
+    window.addEventListener('resize', updateProximity, { passive: true });
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    document.addEventListener('pointerdown', retryFromGesture, true);
+    document.addEventListener('keydown', retryFromGesture, true);
+
+    updateProximity();
+    outroController = {
+      destroy: function () {
+        if (destroyed) return;
+        destroyed = true;
+        window.removeEventListener('scroll', updateProximity);
+        window.removeEventListener('resize', updateProximity);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        document.removeEventListener('pointerdown', retryFromGesture, true);
+        document.removeEventListener('keydown', retryFromGesture, true);
+        if (frame) cancelAnimationFrame(frame);
+        frame = 0;
+        pauseAndReset(true);
+      },
+      playbackStateChanged: function () {
+        playPending = !!audio.__cdlUnlockPending;
+        blocked = !!audio.__cdlBlocked;
+      },
+    };
+  }
+
   // ── build the whole extension settings view ─────────────────────────────────
   function buildView(cur, lib, subs) {
     var draft = Object.assign({}, S.DEFAULTS, cur);
@@ -490,6 +793,7 @@
       }
     });
     view.appendChild(makeBackupSection(activate));
+    view.appendChild(makeOutroSection());
     applyDeps();
     return view;
   }
@@ -532,11 +836,16 @@
     injectStyle();
     var box = contentBox(); if (!box) return;
     var cv = comixView(); if (cv) { hiddenComixView = cv; cv.style.display = 'none'; }
+    stopOutro();
+    if (userInitiated === true) primeOutroAudio();
     var old = document.getElementById(VIEW_ID); if (old) old.remove();
     Promise.all([S.getSettings(), getLocal('cdlLibrary'), getLocal('cdlSubscriptions')]).then(function (r) {
       if (!document.getElementById(NAV_ID)) return;
+      stopOutro();
       var existing = document.getElementById(VIEW_ID); if (existing) existing.remove();
-      contentBox().appendChild(buildView(r[0] || {}, r[1] || {}, r[2] || {}));
+      var nextView = buildView(r[0] || {}, r[1] || {}, r[2] || {});
+      contentBox().appendChild(nextView);
+      setupOutro(nextView);
       setActiveNav(true);
       try { sessionStorage.setItem(OPEN_KEY, '1'); } catch (_) {}
       startScrollTracking();
@@ -545,6 +854,7 @@
   }
 
   function deactivate() {
+    stopOutro();
     var v = document.getElementById(VIEW_ID); if (v) v.remove();
     if (hiddenComixView) { try { hiddenComixView.style.display = ''; } catch (_) {} hiddenComixView = null; }
     setActiveNav(false);

@@ -1,0 +1,26 @@
+{
+  "extensionName": {
+    "message": "Comix Downloader",
+    "description": "拡張機能の名前です。"
+  },
+  "extensionDescription": {
+    "message": "comix.toのチャプターをZIP/CBZで保存。全話ダウンロード、進行表示、再開、迷惑ポップアップのブロックに対応。",
+    "description": "ブラウザーとストアに表示される短い説明です。"
+  },
+  "reviewPromptTitle": {
+    "message": "Comix Downloaderは役立っていますか？",
+    "description": "一度だけ表示するレビュー依頼のタイトルです。"
+  },
+  "reviewPromptMessage": {
+    "message": "率直なレビューで、ほかの読者の選択にご協力ください。",
+    "description": "一度だけ表示するレビュー依頼の本文です。"
+  },
+  "reviewPromptAction": {
+    "message": "レビューを書く",
+    "description": "ストアのレビューページを開くリンクです。"
+  },
+  "reviewPromptDismiss": {
+    "message": "閉じる",
+    "description": "レビュー依頼を閉じるボタンのラベルです。"
+  }
+}

@@ -70,7 +70,7 @@ check('single-chapter download rejects incomplete image sets before ZIP generati
 
 const allEvents = {
   progress: [], errors: [], done: [], saves: [], recorded: [], logs: [],
-  checkpoints: [], sessions: [], extracted: [],
+  checkpoints: [], sessions: [], extracted: [], reviews: [],
 };
 let fetchMode = 'fail';
 let chaptersPerPart = 30;
@@ -158,6 +158,7 @@ const allContext = {
   notifyDownloadAllCancelled() {},
   notifyDownloadAllError: (_tabId, error, canRetryZip) => allEvents.errors.push({ error, canRetryZip }),
   notifyDownloadAllDone: (_tabId, zipName, warning) => allEvents.done.push({ zipName, warning }),
+  recordSuccessfulDownloadForReview: async () => { allEvents.reviews.push('recorded'); },
   _libPushChain: Promise.resolve(),
   console,
   setTimeout,
@@ -186,6 +187,7 @@ async function run() {
   check('zero-image Download All never invokes the ZIP downloader', allEvents.saves.length === 0);
   check('zero-image Download All never emits a done event', allEvents.done.length === 0);
   check('failed chapters are not marked as downloaded', allEvents.recorded.length === 0);
+  check('failed Download All does not count toward the review request', allEvents.reviews.length === 0);
   check('failed chapter rows report zero saved images',
     allEvents.progress.filter((event) => event.phase === 'error').every((event) => event.imagesDone === 0 && event.imagesTotal === 2));
 
@@ -201,6 +203,7 @@ async function run() {
     allEvents.done[0].warning.includes('1 of 2 chapters could not be included'));
   check('only the complete chapter is marked as downloaded',
     allEvents.recorded.length === 1 && allEvents.recorded[0] === 'Ch1');
+  check('partial Download All does not count toward the review request', allEvents.reviews.length === 0);
   check('Download All exposes real ZIP generation percentages', (() => {
     const values = allEvents.progress.filter((event) => event.phase === 'zipping').map((event) => event.zipPercent);
     return values.includes(0) && values.includes(37) && values.includes(100);
@@ -224,6 +227,8 @@ async function run() {
     JSON.stringify(allEvents.saves) === JSON.stringify(['series.zip.part1', 'series.zip.part2']));
   check('multi-part success reports the number of ZIP parts',
     allEvents.done.length === 1 && allEvents.done[0].zipName === '2 ZIP parts' && !allEvents.done[0].warning);
+  check('a successful multi-part Download All counts as one review-eligible use',
+    allEvents.reviews.length === 1);
   check('each multipart archive reports ZIP and save stages', (() => {
     const zippedParts = new Set(allEvents.progress.filter((event) => event.phase === 'zipping').map((event) => event.zipPart));
     const savedParts = new Set(allEvents.progress.filter((event) => event.phase === 'saving').map((event) => event.zipPart));

@@ -1,0 +1,26 @@
+{
+  "extensionName": {
+    "message": "Comix Downloader",
+    "description": "Extension name."
+  },
+  "extensionDescription": {
+    "message": "Save comix.to chapters as ZIP or CBZ with Download All, progress tracking, recovery, and intrusive popup blocking.",
+    "description": "Short extension description shown by the browser and stores."
+  },
+  "reviewPromptTitle": {
+    "message": "Finding Comix Downloader useful?",
+    "description": "Title of the one-time review request."
+  },
+  "reviewPromptMessage": {
+    "message": "Share an honest review to help other readers decide.",
+    "description": "Body of the one-time review request."
+  },
+  "reviewPromptAction": {
+    "message": "Leave a review",
+    "description": "Link that opens the browser store review page."
+  },
+  "reviewPromptDismiss": {
+    "message": "Dismiss",
+    "description": "Accessible label for dismissing the review request."
+  }
+}

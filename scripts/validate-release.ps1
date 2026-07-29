@@ -82,10 +82,27 @@ function Assert-MapsEqual($Expected, $Actual, [string]$Context) {
 function Assert-ChromiumManifest($Manifest, [string]$Target, [string]$ExpectedVersion) {
   Assert-Release ($Manifest.manifest_version -eq 3) "$Target must use Manifest V3."
   Assert-Release ($Manifest.version -eq $ExpectedVersion) "$target manifest version is $($Manifest.version); expected $ExpectedVersion."
+  Assert-Release ($Manifest.default_locale -eq 'en') "$target must declare the English fallback locale."
+  Assert-Release ($Manifest.name -eq '__MSG_extensionName__') "$target name must use localized metadata."
+  Assert-Release ($Manifest.description -eq '__MSG_extensionDescription__') "$target description must use localized metadata."
   Assert-Release (Has-Property $Manifest.background 'service_worker') "$target must use a background service worker."
   Assert-Release ($Manifest.background.service_worker -eq 'background.js') "$target has the wrong service worker."
   Assert-Release (-not (Has-Property $Manifest.background 'scripts')) "$target unexpectedly contains Firefox background scripts."
   Assert-Release (-not (Has-Property $Manifest 'browser_specific_settings')) "$target unexpectedly contains browser-specific Firefox settings."
+  $outroResources = @(
+    'assets/settings-outro/dance-tina.gif',
+    'assets/settings-outro/dance-stick.gif',
+    'assets/settings-outro/dance-cat.gif',
+    'assets/settings-outro/dance-yellow.gif',
+    'assets/settings-outro/dance-man.gif',
+    'assets/settings-outro/dance-shaggy.gif',
+    'assets/settings-outro/dance-flamingo.gif',
+    'assets/settings-outro/outro.mp3'
+  )
+  $accessible = @($Manifest.web_accessible_resources | ForEach-Object { $_.resources })
+  Assert-Release ((($accessible | Sort-Object) -join "`n") -eq (($outroResources | Sort-Object) -join "`n")) "$target has the wrong settings-outro resources."
+  $outroMatches = @($Manifest.web_accessible_resources | ForEach-Object { $_.matches })
+  Assert-Release (($outroMatches -join ',') -eq '*://comix.to/*') "$target exposes settings-outro resources beyond comix.to."
 }
 
 $rootManifest = Get-Content -LiteralPath (Join-Path $Root 'manifest.json') -Raw | ConvertFrom-Json
@@ -109,6 +126,17 @@ $referenceDir = Join-Path $stagingFull 'chrome'
 Assert-Release (Test-Path -LiteralPath $referenceDir -PathType Container) "Missing Chrome staging directory."
 $referenceMap = Get-DirectoryFileMap $referenceDir
 Assert-Release ($referenceMap.Contains('manifest.json')) "Chrome package is missing manifest.json."
+$expectedLocales = @('en', 'es', 'fr', 'id', 'ja', 'pt_BR', 'th', 'vi')
+foreach ($locale in $expectedLocales) {
+  Assert-Release ($referenceMap.Contains("_locales/$locale/messages.json")) "Chrome package is missing locale $locale."
+}
+$expectedOutroFiles = @(
+  'dance-tina.gif', 'dance-stick.gif', 'dance-cat.gif', 'dance-yellow.gif',
+  'dance-man.gif', 'dance-shaggy.gif', 'dance-flamingo.gif', 'outro.mp3'
+)
+foreach ($file in $expectedOutroFiles) {
+  Assert-Release ($referenceMap.Contains("assets/settings-outro/$file")) "Chrome package is missing settings outro asset $file."
+}
 
 foreach ($target in $chromiumTargets) {
   $targetDir = Join-Path $stagingFull $target
@@ -131,9 +159,12 @@ foreach ($path in $referenceMap.Keys) {
 }
 
 $firefoxManifest = Get-Content -LiteralPath (Join-Path $firefoxDir 'manifest.json') -Raw | ConvertFrom-Json
-$expectedFirefoxScripts = @('lib/jszip.min.js', 'core/settings.js', 'core/cdl-features-core.js', 'core/cdl-comicinfo.js', 'background.js')
+$expectedFirefoxScripts = @('lib/jszip.min.js', 'core/settings.js', 'core/cdl-features-core.js', 'core/cdl-comicinfo.js', 'core/review-prompt.js', 'background.js')
 Assert-Release ($firefoxManifest.manifest_version -eq 3) "Firefox must use Manifest V3."
 Assert-Release ($firefoxManifest.version -eq $Version) "Firefox manifest has the wrong version."
+Assert-Release ($firefoxManifest.default_locale -eq 'en') "Firefox must declare the English fallback locale."
+Assert-Release ($firefoxManifest.name -eq '__MSG_extensionName__') "Firefox name must use localized metadata."
+Assert-Release ($firefoxManifest.description -eq '__MSG_extensionDescription__') "Firefox description must use localized metadata."
 Assert-Release ((@($firefoxManifest.background.scripts) -join "`n") -eq ($expectedFirefoxScripts -join "`n")) "Firefox background script order is incorrect."
 Assert-Release ($firefoxManifest.browser_specific_settings.gecko.id -eq 'comix-downloader@n3uralcreativity.github.io') "Firefox extension ID is missing or incorrect."
 Assert-Release ((@($firefoxManifest.browser_specific_settings.gecko.data_collection_permissions.required) -join ',') -eq 'none') "Firefox data collection declaration must be required: none."

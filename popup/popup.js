@@ -2,6 +2,9 @@
 'use strict';
 
 const GITHUB_URL = 'https://github.com/N3uralCreativity/comix-downloader';
+const CHROME_REVIEW_URL = 'https://chrome.google.com/webstore/detail/nojjjpmicodkodnnllbdolpglhlclpdp/reviews';
+const FIREFOX_REVIEW_URL = 'https://addons.mozilla.org/firefox/addon/comix-chapter-downloader/reviews/';
+const OPERA_REVIEW_URL = 'https://addons.opera.com/extensions/details/comix-downloader/';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -14,6 +17,63 @@ function formatTs(ts) {
 
 function badgeLabel(level) {
   return { info: 'INFO', ok: 'OK', warn: 'WARN', error: 'ERR' }[level] || level.toUpperCase();
+}
+
+function i18n(messageName, fallback) {
+  try {
+    const translated = chrome.i18n.getMessage(messageName);
+    if (translated) return translated;
+  } catch (_) {}
+  return fallback;
+}
+
+function reviewUrlForBrowser() {
+  const ua = navigator.userAgent || '';
+  if (/Firefox\//i.test(ua)) return FIREFOX_REVIEW_URL;
+  if (/OPR\//i.test(ua)) return OPERA_REVIEW_URL;
+  return CHROME_REVIEW_URL;
+}
+
+function sendRuntimeMessage(message) {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        void chrome.runtime.lastError;
+        resolve(response || null);
+      });
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+async function showReviewPromptWhenEligible() {
+  const prompt = document.getElementById('review-prompt');
+  if (!prompt) return;
+
+  const response = await sendRuntimeMessage({ action: 'claimReviewPrompt' });
+  if (!response || !response.ok || !response.show) return;
+
+  document.getElementById('review-title').textContent =
+    i18n('reviewPromptTitle', 'Finding Comix Downloader useful?');
+  document.getElementById('review-message').textContent =
+    i18n('reviewPromptMessage', 'Share an honest review to help other readers decide.');
+
+  const action = document.getElementById('review-action');
+  action.textContent = i18n('reviewPromptAction', 'Leave a review');
+  action.href = reviewUrlForBrowser();
+  action.addEventListener('click', (event) => {
+    event.preventDefault();
+    chrome.tabs.create({ url: action.href });
+    window.close();
+  });
+
+  const dismiss = document.getElementById('review-dismiss');
+  const dismissLabel = i18n('reviewPromptDismiss', 'Dismiss');
+  dismiss.title = dismissLabel;
+  dismiss.setAttribute('aria-label', dismissLabel);
+  dismiss.addEventListener('click', () => { prompt.hidden = true; });
+  prompt.hidden = false;
 }
 
 // ── Logs rendering ──────────────────────────────────────────────────────────
@@ -123,21 +183,7 @@ async function init() {
     chrome.tabs.create({ url: GITHUB_URL });
   });
 
-  // Star CTA → repo (keeps users in the loop on new releases). Shown until the
-  // user clicks it once, then dismissed for good — they've starred, so the
-  // prompt has done its job.
-  const btnStar = document.getElementById('btn-star');
-  if (btnStar) {
-    const { cdlStarDismissed } = await chrome.storage.local.get('cdlStarDismissed');
-    if (!cdlStarDismissed) btnStar.hidden = false;
-    btnStar.href = GITHUB_URL;
-    btnStar.addEventListener('click', (e) => {
-      e.preventDefault();
-      btnStar.hidden = true;
-      chrome.storage.local.set({ cdlStarDismissed: true });
-      chrome.tabs.create({ url: GITHUB_URL });
-    });
-  }
+  await showReviewPromptWhenEligible();
 
   // Load and render logs
   const { cdlLogs = [] } = await chrome.storage.local.get('cdlLogs');

@@ -29,6 +29,9 @@ if (typeof importScripts === 'function' && typeof CDLFeaturesCore === 'undefined
 if (typeof importScripts === 'function' && typeof CDLComicInfo === 'undefined') {
   importScripts('core/cdl-comicinfo.js');
 }
+if (typeof importScripts === 'function' && typeof CDLReviewPrompt === 'undefined') {
+  importScripts('core/review-prompt.js');
+}
 
 'use strict';
 
@@ -372,6 +375,11 @@ function cdlLog(level, msg) {
     if (cdlLogs.length > MAX_LOG_ENTRIES) cdlLogs.splice(0, cdlLogs.length - MAX_LOG_ENTRIES);
     chrome.storage.local.set({ cdlLogs });
   }).catch(() => {});
+}
+
+function recordSuccessfulDownloadForReview() {
+  if (typeof CDLReviewPrompt === 'undefined') return Promise.resolve();
+  return CDLReviewPrompt.recordSuccessfulDownload(chrome.storage.local).catch(() => {});
 }
 
 function startDownloadAllSession({
@@ -1231,6 +1239,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'claimReviewPrompt') {
+    const version = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || '';
+    CDLReviewPrompt.claimPrompt(chrome.storage.local, version)
+      .then((result) => sendResponse({ ok: true, show: result.show }))
+      .catch(() => sendResponse({ ok: false, show: false }));
+    return true;
+  }
+
   // ── Phase 2: subscriptions + library ──
   if (message.action === 'subscribe') {
     subscribeSeries(message.slug, message.mangaName).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
@@ -2080,6 +2096,7 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
 
   cdlLog(delivery.confirmed ? 'ok' : 'warn',
     `${ext.toUpperCase()} ${delivery.confirmed ? 'saved' : 'handed to browser'}: ${outName} (${images.length} images)`);
+  if (delivery.confirmed) await recordSuccessfulDownloadForReview();
   notifyTab(originTabId, { action: 'downloadDone', chapterUrl });
 
   // Same bookkeeping as Download All gives each chapter: mark it downloaded in
@@ -2933,6 +2950,7 @@ async function handleDownloadAllRequest(
   const savedZipNames = resumeData.savedZipNames.slice();
   let zipPartChapterRecords = [];
   let unconfirmedZipParts = 0;
+  let confirmedZipParts = 0;
   const terminalCounts = { ...resumeData.terminalCounts };
   let firstChapterError = resumeData.firstChapterError;
 
@@ -3056,7 +3074,8 @@ async function handleDownloadAllRequest(
     }
 
     savedZipNames.push(saved.filename);
-    if (!saved.confirmed) unconfirmedZipParts++;
+    if (saved.confirmed) confirmedZipParts++;
+    else unconfirmedZipParts++;
     cdlLog(saved.confirmed ? 'ok' : 'warn',
       `Download All ZIP part ${saved.confirmed ? 'saved' : 'handed to browser'}: ${saved.filename}`);
     zip = new JSZip();
@@ -3292,6 +3311,9 @@ async function handleDownloadAllRequest(
   }
   const warning = warnings.join(' ');
   cdlLog(warning ? 'warn' : 'ok', `Download All complete: ${doneName}${warning ? ` (${warning})` : ''}`);
+  if (confirmedZipParts > 0 && unconfirmedZipParts === 0 && incompleteCount === 0) {
+    await recordSuccessfulDownloadForReview();
+  }
   notifyDownloadAllDone(originTabId, doneName, warning);
 }
 

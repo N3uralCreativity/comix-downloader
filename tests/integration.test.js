@@ -61,6 +61,12 @@ check('Download All persistence is isolated by title slug',
 check('an inactive checkpoint cannot block Download All on another title',
   backgroundSource.includes('if (downloadAllSession && downloadAllSession.active)') &&
   !backgroundSource.includes('is waiting to be resumed or discarded'));
+check('review requests are counted only after confirmed archive saves',
+  backgroundSource.includes('if (delivery.confirmed) await recordSuccessfulDownloadForReview()') &&
+  backgroundSource.includes('confirmedZipParts > 0 && unconfirmedZipParts === 0 && incompleteCount === 0'));
+check('review prompt eligibility is claimed through the serialized background worker',
+  backgroundSource.includes("message.action === 'claimReviewPrompt'") &&
+  backgroundSource.includes('CDLReviewPrompt.claimPrompt(chrome.storage.local, version)'));
 
 // 2. content_title.js (content script) settings keys
 const contentTitleSource = read('content/content_title.js');
@@ -135,6 +141,10 @@ check('default chapter folder keeps decimal suffix',
 // 5. manifest wiring sanity
 const mf = JSON.parse(read('manifest.json'));
 check('manifest version is 4.x', /^4\./.test(mf.version));
+check('manifest metadata uses WebExtension localization',
+  mf.default_locale === 'en' &&
+  mf.name === '__MSG_extensionName__' &&
+  mf.description === '__MSG_extensionDescription__');
 const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/content_title.js'));
 check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['core/settings.js', 'content/content_notices.js', 'core/cdl-features-core.js', 'core/cdl-home-core.js', 'core/cdl-badge-core.js', 'content/content_title.js', 'content/content_features.js', 'content/content_home.js', 'content/content_profile.js']));
 // The title/features bundle must match ALL of comix.to (not just /title/*) so it
@@ -171,6 +181,8 @@ check('image CDN rule removes Origin and supplies the comix.to referrer', (() =>
 const releaseScript = read('scripts/build-release.ps1');
 check('release packages both ad blocker scripts', releaseScript.includes('content/adblock-main.js') && releaseScript.includes('content/adblock-control.js'));
 check('release packages declarative request rules', releaseScript.includes('"rules"'));
+check('release packages all locales and the review state helper',
+  releaseScript.includes('"_locales"') && releaseScript.includes('"core/review-prompt.js"'));
 check('release emits dedicated Chromium-store packages',
   ['chrome', 'opera', 'chromium'].every((target) => releaseScript.includes(`"${target}"`)));
 const releaseValidator = read('scripts/validate-release.ps1');
@@ -178,6 +190,9 @@ check('release validator enforces Chromium package parity',
   releaseValidator.includes('Assert-MapsEqual $referenceMap $targetMap') && releaseValidator.includes("@('chrome', 'opera', 'chromium')"));
 check('release validator audits ZIP contents',
   releaseValidator.includes('Get-ArchiveFileMap') && releaseValidator.includes('Assert-MapsEqual $stagedMap $archiveMap'));
+check('release validator enforces localized metadata and locale inventory',
+  releaseValidator.includes("$expectedLocales = @('en', 'es', 'fr', 'id', 'ja', 'pt_BR', 'th', 'vi')") &&
+  releaseValidator.includes("name -eq '__MSG_extensionName__'"));
 const adblockMain = read('content/adblock-main.js');
 check('ad blocker observes cross-world setting changes', adblockMain.includes('new win.MutationObserver(syncState)') && adblockMain.includes('attributeFilter: [STATE_ATTR]'));
 
