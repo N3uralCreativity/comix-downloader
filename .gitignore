@@ -9,6 +9,10 @@ Thumbs.db
 # Editor
 .vscode/
 *.swp
+*.code-workspace
+
+# Browser-generated unpacked-extension metadata
+_metadata/
 
 # Claude Code per-machine local settings (permission allowlist etc. — not shared)
 .claude/settings.local.json

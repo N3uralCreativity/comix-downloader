@@ -16,9 +16,9 @@
 
 **by [N3uralCreativity](https://github.com/N3uralCreativity)**
 
-**[Checkout the Site for a more User-Friendly interface](https://n3uralcreativity.github.io/comix-downloader/index.html)**
+**[Checkout the Site for a more User-Friendly interface](https://n3uralcreativity.top/comix-downloader/)**
 
-**[Access Documentation here](https://n3uralcreativity.github.io/comix-downloader/Documentation.html)**
+**[Access Documentation here](https://n3uralcreativity.top/comix-downloader/Documentation.html)**
 
 
 If the download buttons aren't showing up, just refresh the page. Your browser tends to load pages from cache sometimes, which can prevent the extension from being triggered properly. Not really much I can do about that unfortunately.
