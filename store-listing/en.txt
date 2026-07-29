@@ -1,0 +1,25 @@
+SUMMARY
+Save comix.to chapters as ZIP or CBZ with Download All, progress tracking, recovery, and intrusive popup blocking.
+
+DETAILED DESCRIPTION
+Comix Downloader is an unofficial, open-source browser extension for comix.to.
+
+It adds download controls directly to title and chapter lists so you can save one chapter or a complete series as ZIP or CBZ.
+
+Key features:
+- Individual and full-series downloads
+- Concurrent chapter fetching with live progress
+- Separate download, ZIP creation, and save-confirmation stages
+- Recovery checkpoints and clear handling of canceled saves
+- Configurable filenames, chapter folders, archive splitting, and ComicInfo metadata
+- Blocking for comix.to's intrusive click ads, popunders, and transparent overlays, enabled by default and configurable in Settings
+- Optional reading statistics, resume tools, subscriptions, and push-to-library support
+
+Core downloads, settings, history, and reading statistics are processed locally in your browser. Built-in profile badges, community chapter flags, and extension notices contact the project's Cloudflare service using hashed identifiers or the extension version. Push-to-library sends files only to the server you configure. See the privacy policy for complete details.
+
+Comix Downloader is not affiliated with comix.to. Only save content that you are authorized to download.
+
+SCREENSHOT DESCRIPTIONS
+1. Download All is added directly to every comix.to title page.
+2. Download individual chapters from the chapter list, with concurrent downloads supported.
+3. Live progress clearly separates chapter downloading, ZIP creation, and browser save confirmation.

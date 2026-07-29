@@ -1,0 +1,25 @@
+RINGKASAN
+Simpan bab comix.to sebagai ZIP atau CBZ dengan unduh semua, pelacakan progres, pemulihan, dan pemblokiran pop-up.
+
+DESKRIPSI LENGKAP
+Comix Downloader adalah ekstensi browser sumber terbuka tidak resmi untuk comix.to.
+
+Ekstensi ini menambahkan kontrol unduhan langsung ke halaman judul dan daftar bab agar Anda dapat menyimpan satu bab atau seluruh seri sebagai ZIP atau CBZ.
+
+Fitur utama:
+- Unduhan satu bab atau seluruh seri
+- Pengunduhan bab secara bersamaan dengan progres langsung
+- Tahap terpisah untuk mengunduh, membuat ZIP, dan mengonfirmasi penyimpanan
+- Titik pemulihan dan penanganan yang jelas saat penyimpanan dibatalkan
+- Nama file, folder, pemisahan arsip, dan metadata ComicInfo yang dapat diatur
+- Pemblokiran iklan klik, pop-under, dan lapisan transparan yang mengganggu di comix.to, aktif secara bawaan dan dapat diatur
+- Statistik membaca, lanjut membaca, langganan, dan kirim ke pustaka sebagai fitur opsional
+
+Unduhan utama, pengaturan, riwayat, dan statistik membaca diproses secara lokal di browser. Lencana profil, laporan bab komunitas, dan pemberitahuan ekstensi menghubungi layanan Cloudflare proyek dengan pengenal hash atau versi ekstensi. Kirim ke pustaka hanya mengirim file ke server yang Anda atur. Lihat kebijakan privasi untuk informasi lengkap.
+
+Comix Downloader tidak berafiliasi dengan comix.to. Simpan hanya konten yang memang boleh Anda unduh.
+
+DESKRIPSI TANGKAPAN LAYAR
+1. Tombol Unduh Semua ditambahkan langsung ke setiap halaman judul comix.to.
+2. Unduh bab dari daftar, dengan dukungan beberapa unduhan bersamaan.
+3. Progres memisahkan tahap unduhan, pembuatan ZIP, dan konfirmasi penyimpanan dengan jelas.

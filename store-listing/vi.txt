@@ -1,0 +1,25 @@
+TÓM TẮT
+Lưu chương comix.to dưới dạng ZIP hoặc CBZ, tải tất cả, theo dõi tiến trình, khôi phục và chặn cửa sổ bật lên.
+
+MÔ TẢ CHI TIẾT
+Comix Downloader là tiện ích trình duyệt mã nguồn mở, không chính thức dành cho comix.to.
+
+Tiện ích thêm nút tải xuống trực tiếp vào trang truyện và danh sách chương để bạn lưu một chương hoặc toàn bộ bộ truyện dưới dạng ZIP hay CBZ.
+
+Tính năng chính:
+- Tải từng chương hoặc toàn bộ bộ truyện
+- Tải đồng thời nhiều chương với tiến trình trực tiếp
+- Tách rõ các giai đoạn tải xuống, tạo ZIP và xác nhận lưu
+- Điểm khôi phục và xử lý rõ ràng khi hủy hộp thoại lưu
+- Tùy chỉnh tên tệp, thư mục, chia tệp nén và metadata ComicInfo
+- Chặn quảng cáo khi nhấp, cửa sổ pop-under và lớp phủ trong suốt gây phiền trên comix.to; bật mặc định và có thể tùy chỉnh
+- Thống kê đọc, tiếp tục đọc, theo dõi truyện và gửi tới thư viện là các tính năng tùy chọn
+
+Quá trình tải chính, cài đặt, lịch sử và thống kê đọc được xử lý cục bộ trong trình duyệt. Huy hiệu hồ sơ, báo cáo chương từ cộng đồng và thông báo của tiện ích liên hệ dịch vụ Cloudflare của dự án bằng mã định danh đã băm hoặc phiên bản tiện ích. Tính năng gửi tới thư viện chỉ chuyển tệp tới máy chủ do bạn cấu hình. Xem chính sách quyền riêng tư để biết đầy đủ chi tiết.
+
+Comix Downloader không liên kết với comix.to. Chỉ lưu nội dung mà bạn được phép tải xuống.
+
+MÔ TẢ ẢNH CHỤP MÀN HÌNH
+1. Nút Tải tất cả được thêm trực tiếp vào mỗi trang truyện trên comix.to.
+2. Tải từng chương trong danh sách, có hỗ trợ nhiều lượt tải đồng thời.
+3. Tiến trình phân biệt rõ tải chương, tạo ZIP và xác nhận lưu của trình duyệt.
