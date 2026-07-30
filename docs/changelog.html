@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Changelog - Comix Downloader</title>
+<meta name="description" content="The complete Comix Downloader development history, loaded directly from the public GitHub repository.">
+<meta name="theme-color" content="#774fd0">
+<link rel="canonical" href="https://n3uralcreativity.top/comix-downloader/changelog.html">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Comix Downloader">
+<meta property="og:title" content="Changelog - Comix Downloader">
+<meta property="og:description" content="Browse every Comix Downloader change, patch, addition, removal, and release.">
+<meta property="og:url" content="https://n3uralcreativity.top/comix-downloader/changelog.html">
+<meta property="og:image" content="https://n3uralcreativity.top/comix-downloader/assets/screenshot-title.jpg">
+<meta property="og:image:width" content="1125">
+<meta property="og:image:height" content="780">
+<meta property="og:image:alt" content="Comix Downloader on a comix.to title page">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Changelog - Comix Downloader">
+<meta name="twitter:description" content="Browse every Comix Downloader change, patch, addition, removal, and release.">
+<meta name="twitter:image" content="https://n3uralcreativity.top/comix-downloader/assets/screenshot-title.jpg">
+<link rel="icon" type="image/png" href="assets/icon128.png?v=2">
+<link rel="stylesheet" href="site.css">
+<style>
+  .changelog-shell {
+    width: min(100%, 920px);
+    margin: 0 auto;
+    padding: 58px 28px 12px;
+  }
+
+  .changelog-head {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 28px;
+  }
+  .changelog-head .eyebrow { display: inline-block; margin-bottom: 16px; letter-spacing: 0; }
+  .changelog-head h1 {
+    font-size: 40px;
+    line-height: 1.08;
+    font-weight: 800;
+    letter-spacing: 0;
+  }
+  .changelog-head .lede {
+    max-width: 60ch;
+    margin-top: 12px;
+    color: var(--ink-soft);
+    font-size: 16.5px;
+  }
+  .repo-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    min-height: 40px;
+    padding: 9px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    background: var(--surface);
+    font-weight: 600;
+    font-size: 13.5px;
+    transition: border-color .15s, background .15s, color .15s;
+  }
+  .repo-link:hover {
+    border-color: var(--accent-line);
+    background: var(--accent-wash);
+    color: var(--accent-deep);
+  }
+  .repo-link svg { width: 16px; height: 16px; flex: none; }
+
+  .repo-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-top: 30px;
+    min-height: 46px;
+    padding: 11px 14px;
+    border: 1px solid oklch(30% 0.018 290);
+    border-radius: var(--radius-sm);
+    background: oklch(20% 0.018 290);
+    color: oklch(92% 0.008 290);
+    font: 500 12px/1.4 var(--mono);
+  }
+  .repo-path {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+  .repo-path svg { width: 16px; height: 16px; color: oklch(76% 0.12 293); flex: none; }
+  .repo-path span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sync-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    color: oklch(74% 0.014 290);
+  }
+  .sync-state::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: oklch(67% 0.17 150);
+    box-shadow: 0 0 7px oklch(67% 0.17 150 / .55);
+  }
+  .sync-state.loading::before {
+    background: oklch(75% 0.15 75);
+    animation: sync-pulse 1s ease-in-out infinite;
+  }
+  .sync-state.error::before {
+    background: oklch(62% 0.2 25);
+    box-shadow: 0 0 7px oklch(62% 0.2 25 / .45);
+  }
+  @keyframes sync-pulse {
+    50% { opacity: .35; }
+  }
+
+  .changelog-tools {
+    margin-top: 28px;
+    padding: 18px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .tool-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+  .search-field { position: relative; }
+  .search-field svg {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    width: 17px;
+    height: 17px;
+    color: var(--muted);
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+  .search-field input {
+    width: 100%;
+    height: 42px;
+    padding: 0 14px 0 40px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font: 500 14px/1 var(--font);
+    letter-spacing: 0;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .search-field input::placeholder { color: var(--muted); opacity: 1; }
+  .search-field input:hover { border-color: var(--faint); }
+  .search-field input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-wash);
+  }
+  .refresh-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 106px;
+    height: 42px;
+    padding: 0 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font: 600 13.5px/1 var(--font);
+    letter-spacing: 0;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, color .15s;
+  }
+  .refresh-button:hover:not(:disabled) {
+    border-color: var(--accent-line);
+    background: var(--accent-wash);
+    color: var(--accent-deep);
+  }
+  .refresh-button:disabled { cursor: wait; color: var(--muted); }
+  .refresh-button svg { width: 16px; height: 16px; flex: none; }
+  .refresh-button.loading svg { animation: refresh-spin .8s linear infinite; }
+  @keyframes refresh-spin { to { transform: rotate(360deg); } }
+
+  .category-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 13px;
+  }
+  .filter-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 30px;
+    padding: 6px 9px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--ink-soft);
+    font: 600 11px/1 var(--mono);
+    letter-spacing: 0;
+    cursor: pointer;
+    transition: border-color .14s, background .14s, color .14s;
+  }
+  .filter-button:hover {
+    border-color: var(--accent-line);
+    color: var(--ink);
+  }
+  .filter-button[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-wash);
+    color: var(--accent-deep);
+  }
+  .filter-count {
+    min-width: 18px;
+    color: var(--muted);
+    font-weight: 500;
+    text-align: right;
+  }
+
+  .results-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 50px;
+    color: var(--muted);
+    font: 500 12px/1.4 var(--mono);
+  }
+  .results-meta strong { color: var(--ink); font-weight: 600; }
+  .load-status[data-kind="error"] { color: oklch(50% 0.19 25); }
+
+  .timeline { min-height: 280px; }
+  .change-month + .change-month { margin-top: 34px; }
+  .month-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .month-head h2 {
+    color: var(--ink);
+    font: 700 15px/1.3 var(--mono);
+    letter-spacing: 0;
+  }
+  .month-head span {
+    color: var(--muted);
+    font: 500 11.5px/1 var(--mono);
+  }
+  .commit-row {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 22px;
+    padding: 19px 0 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .commit-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .commit-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 68px;
+    min-height: 24px;
+    padding: 5px 7px;
+    border: 1px solid currentColor;
+    border-radius: 5px;
+    font: 700 10.5px/1 var(--mono);
+    letter-spacing: 0;
+  }
+  .type-patch { color: oklch(49% 0.19 25); background: oklch(97% 0.025 25); }
+  .type-add { color: oklch(43% 0.13 150); background: oklch(97% 0.025 150); }
+  .type-remove { color: oklch(45% 0.14 5); background: oklch(97% 0.022 5); }
+  .type-docs { color: oklch(47% 0.14 250); background: oklch(97% 0.024 250); }
+  .type-test { color: oklch(48% 0.13 75); background: oklch(97% 0.028 75); }
+  .type-release { color: var(--accent-deep); background: var(--accent-wash); }
+  .type-refactor { color: oklch(44% 0.1 205); background: oklch(97% 0.024 205); }
+  .type-ci { color: oklch(43% 0.1 225); background: oklch(97% 0.022 225); }
+  .type-chore, .type-change { color: var(--ink-soft); background: var(--surface-2); }
+  .commit-date {
+    color: var(--muted);
+    font: 500 11.5px/1.4 var(--mono);
+  }
+  .commit-content { min-width: 0; }
+  .commit-title {
+    display: inline;
+    color: var(--ink);
+    font-size: 16px;
+    line-height: 1.35;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+  .commit-title:hover { color: var(--accent-deep); }
+  .commit-body {
+    margin-top: 8px;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    line-height: 1.55;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+  }
+  .commit-foot {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    color: var(--muted);
+    font: 500 11.5px/1.4 var(--mono);
+  }
+  .commit-sha {
+    padding: 2px 5px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--accent-deep);
+  }
+  .commit-separator { color: var(--line-strong); }
+
+  .empty-state,
+  .error-state {
+    margin: 24px 0;
+    padding: 24px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    text-align: center;
+  }
+  .empty-state h2,
+  .error-state h2 { font-size: 18px; letter-spacing: 0; }
+  .empty-state p,
+  .error-state p { margin-top: 7px; color: var(--ink-soft); font-size: 14px; }
+  .empty-state button,
+  .error-state a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    margin-top: 16px;
+    padding: 8px 13px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font: 600 13.5px/1 var(--font);
+    cursor: pointer;
+  }
+  .empty-state button:hover,
+  .error-state a:hover {
+    border-color: var(--accent-line);
+    background: var(--accent-wash);
+    color: var(--accent-deep);
+  }
+
+  .skeleton-list[hidden] { display: none; }
+  .skeleton-row {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 22px;
+    padding: 19px 0 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .skeleton-tag,
+  .skeleton-line {
+    border-radius: 4px;
+    background: var(--line);
+    animation: skeleton-pulse 1.15s ease-in-out infinite;
+  }
+  .skeleton-tag { width: 68px; height: 24px; }
+  .skeleton-line { height: 12px; }
+  .skeleton-line:first-child { width: 74%; height: 16px; }
+  .skeleton-line + .skeleton-line { width: 46%; margin-top: 12px; }
+  @keyframes skeleton-pulse { 50% { opacity: .45; } }
+
+  @media (max-width: 720px) {
+    .changelog-shell { padding: 42px 20px 8px; }
+    .changelog-head { align-items: flex-start; flex-direction: column; gap: 20px; }
+    .changelog-head h1 { font-size: 32px; }
+    .repo-link { width: 100%; justify-content: center; }
+    .repo-strip { align-items: flex-start; flex-direction: column; gap: 7px; }
+    .sync-state { padding-left: 25px; }
+    .tool-row { grid-template-columns: minmax(0, 1fr) 42px; }
+    .refresh-button { min-width: 42px; width: 42px; padding: 0; }
+    .refresh-button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .results-meta { align-items: flex-start; flex-direction: column; justify-content: center; gap: 3px; padding: 10px 0; }
+    .commit-row,
+    .skeleton-row { grid-template-columns: 1fr; gap: 11px; }
+    .commit-meta { flex-direction: row; align-items: center; }
+  }
+
+  @media (max-width: 390px) {
+    .changelog-shell { padding-left: 16px; padding-right: 16px; }
+    .category-filters { gap: 6px; }
+    .filter-button { padding-left: 8px; padding-right: 8px; }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
+      Comix Downloader
+      <span class="ver">v4.2.14</span>
+    </a>
+    <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <nav class="nav-links" id="nav-links">
+      <a href="index.html">Home</a>
+      <a href="Documentation.html">Documentation</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="changelog-shell" id="main" tabindex="-1">
+  <header class="changelog-head">
+    <div>
+      <span class="eyebrow">Repository log</span>
+      <h1>Changelog</h1>
+      <p class="lede">The complete development history of Comix Downloader, synchronized from the public repository.</p>
+    </div>
+    <a class="repo-link" href="https://github.com/N3uralCreativity/comix-downloader/commits/master" target="_blank" rel="noopener">
+      View on GitHub
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+    </a>
+  </header>
+
+  <div class="repo-strip" aria-label="Repository source">
+    <span class="repo-path">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v12"/><path d="m18 15-3.5-3.5A5 5 0 0 0 11 10H9"/></svg>
+      <span>N3uralCreativity/comix-downloader : master</span>
+    </span>
+    <span class="sync-state loading" id="sync-state">Connecting to GitHub</span>
+  </div>
+
+  <section class="changelog-tools" aria-label="Changelog controls">
+    <div class="tool-row">
+      <label class="search-field">
+        <span class="visually-hidden">Search commits</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="commit-search" type="search" placeholder="Search commits" autocomplete="off" spellcheck="false">
+      </label>
+      <button class="refresh-button" id="refresh-button" type="button" title="Refresh commits">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.2 6.5L3 16"/><path d="M3 21v-5h5"/><path d="M3 12A9 9 0 0 1 18.2 5.5L21 8"/><path d="M21 3v5h-5"/></svg>
+        <span>Refresh</span>
+      </button>
+    </div>
+    <div class="category-filters" id="category-filters" role="group" aria-label="Filter by change type"></div>
+  </section>
+
+  <div class="results-meta">
+    <span id="results-count">Loading commit history...</span>
+    <span class="load-status" id="load-status" role="status" aria-live="polite"></span>
+  </div>
+
+  <div class="skeleton-list" id="skeleton-list" aria-hidden="true">
+    <div class="skeleton-row"><span class="skeleton-tag"></span><div><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+    <div class="skeleton-row"><span class="skeleton-tag"></span><div><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+    <div class="skeleton-row"><span class="skeleton-tag"></span><div><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+    <div class="skeleton-row"><span class="skeleton-tag"></span><div><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+  </div>
+  <div class="timeline" id="commit-list"></div>
+
+  <noscript>
+    <div class="error-state">
+      <h2>JavaScript is required to load the commit history</h2>
+      <p>The complete history remains available directly on GitHub.</p>
+      <a href="https://github.com/N3uralCreativity/comix-downloader/commits/master">Open GitHub commits</a>
+    </div>
+  </noscript>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span class="brand" style="font-weight:700;"><svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>Comix Downloader</span>
+    <span class="sep">·</span>
+    <span>MIT © N3uralCreativity</span>
+    <div class="right">
+      <a class="status-btn" href="https://everythingmoe.com/monitor" target="_blank" rel="noopener" title="Check comix.to status on EverythingMoe"><span class="status-dot"></span>Comix Status</a>
+      <a class="changelog-btn active" href="changelog.html" aria-current="page"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>Changelog</a>
+      <a href="Documentation.html">Docs</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js" defer></script>
+<script src="changelog.js" defer></script>
+</body>
+</html>

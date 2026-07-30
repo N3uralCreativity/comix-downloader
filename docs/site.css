@@ -282,6 +282,41 @@ img { display: block; max-width: 100%; }
   background: oklch(64% 0.17 150);
   box-shadow: 0 0 6px oklch(64% 0.17 150 / 0.5);
 }
+.footer-inner .changelog-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font: 600 12px/1 var(--mono);
+  letter-spacing: 0;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.footer-inner .changelog-btn:hover,
+.footer-inner .changelog-btn.active {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+  color: var(--accent-deep);
+}
+.footer-inner .changelog-btn svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
 
 /* code */
 code {

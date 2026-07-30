@@ -40,6 +40,7 @@ Update-VersionInFile "docs/index.html"         '(class="ver">v)[0-9][0-9.]*(<)' 
 Update-VersionInFile "docs/Documentation.html" '(class="ver">v)[0-9][0-9.]*(<)' "site badge"
 Update-VersionInFile "docs/privacy.html"       '(class="ver">v)[0-9][0-9.]*(<)' "site badge"
 Update-VersionInFile "docs/welcome.html"       '(class="ver">v)[0-9][0-9.]*(<)' "site badge"
+Update-VersionInFile "docs/changelog.html"     '(class="ver">v)[0-9][0-9.]*(<)' "site badge"
 
 # Extension UI version fallbacks (overwritten by JS at runtime, kept in sync for tidiness).
 Update-VersionInFile "legacy/options.html" '(id="ver">v)[0-9][0-9.]*(<)' "options fallback"
