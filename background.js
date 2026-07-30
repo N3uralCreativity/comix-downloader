@@ -2822,11 +2822,108 @@ function notifyTab(tabId, message) {
 // ── Extraction Promise-based (pour download-all) ──────────────────────────────
 // Ouvre un onglet, attend le chargement complet, injecte le script d'extraction,
 // retourne les images ou lance une exception.
-async function extractFromTab(url, cfg) {
+let _mobileBrowserPlatformPromise = null;
+
+function isMobileBrowserPlatform() {
+  if (!_mobileBrowserPlatformPromise) {
+    _mobileBrowserPlatformPromise = Promise.resolve().then(async () => {
+      try {
+        const info = await chrome.runtime.getPlatformInfo();
+        const os = String(info && info.os || '').toLowerCase();
+        if (os === 'android' || os === 'ios') return true;
+      } catch (_) {}
+
+      try {
+        const nav = typeof navigator !== 'undefined' ? navigator : null;
+        const ua = String(nav && nav.userAgent || '');
+        const platform = String(nav && nav.platform || '');
+        return /Android|Mobile|iPhone|iPad|iPod/i.test(ua) ||
+          (platform === 'MacIntel' && Number(nav && nav.maxTouchPoints) > 1);
+      } catch (_) {
+        return false;
+      }
+    });
+  }
+  return _mobileBrowserPlatformPromise;
+}
+
+async function restoreMobileDownloadAllOrigin(originTabId, expectedSeriesSlug) {
+  if (originTabId == null) return false;
+  try {
+    const origin = await chrome.tabs.get(originTabId);
+    const originUrl = String(origin && (origin.url || origin.pendingUrl) || '');
+    const actualSlug = downloadAllTabSlug(originUrl);
+    const expectedSlug = String(expectedSeriesSlug || '').trim();
+    if (!actualSlug || (
+      expectedSlug && actualSlug.toLowerCase() !== expectedSlug.toLowerCase()
+    )) {
+      return false;
+    }
+    await chrome.tabs.update(originTabId, { active: true });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function createDownloadAllExtractionTab(url, originTabId, expectedSeriesSlug) {
+  const mobile = await isMobileBrowserPlatform();
+  const tab = await chrome.tabs.create({ url: withExtractMarker(url), active: false });
+  let foregrounded = false;
+
+  // Firefox for Android through v152 can ignore active:false and select the new
+  // tab. Detect the violation instead of changing focus on browsers that behave.
+  if (mobile) {
+    foregrounded = !!tab.active;
+    if (!foregrounded) {
+      try { foregrounded = !!(await chrome.tabs.get(tab.id)).active; } catch (_) {}
+    }
+    if (foregrounded) {
+      await restoreMobileDownloadAllOrigin(originTabId, expectedSeriesSlug);
+    }
+  }
+
+  return {
+    tab,
+    navigation: {
+      mobile,
+      foregrounded,
+      originTabId,
+      expectedSeriesSlug: String(expectedSeriesSlug || downloadAllTabSlug(url) || ''),
+    },
+  };
+}
+
+async function closeDownloadAllExtractionTab(tabId, navigation) {
+  const shouldRestore = !!(navigation && navigation.mobile && navigation.foregrounded);
+  if (shouldRestore) {
+    // Select the exact title tab before closing the temporary foreground tab so
+    // the mobile browser never has to guess which history/tab entry to reveal.
+    await restoreMobileDownloadAllOrigin(
+      navigation.originTabId,
+      navigation.expectedSeriesSlug
+    );
+  }
+  try { await chrome.tabs.remove(tabId); } catch (_) {}
+  if (shouldRestore) {
+    // Some mobile tab managers apply their own selection after remove() settles.
+    await restoreMobileDownloadAllOrigin(
+      navigation.originTabId,
+      navigation.expectedSeriesSlug
+    );
+  }
+}
+
+async function extractFromTab(url, cfg, navigation = {}) {
   cfg = cfg || {};
   const tabTimeout = cfg['perf.tabLoadTimeoutMs'] || 120000;
   const aggressive = !!cfg['advanced.aggressiveRetrieval'];
-  const tab = await chrome.tabs.create({ url: withExtractMarker(url), active: false });
+  const opened = await createDownloadAllExtractionTab(
+    url,
+    navigation.originTabId,
+    navigation.expectedSeriesSlug
+  );
+  const tab = opened.tab;
   const tabId = tab.id;
 
   // A freshly created background tab can briefly report status:"complete" while
@@ -2843,16 +2940,17 @@ async function extractFromTab(url, cfg) {
 
   return new Promise((resolve, reject) => {
     let settled = false;
-    const settle = (fn, val) => {
+    let timer = null;
+    const settle = async (fn, val) => {
       if (settled) return;
       settled = true;
       chrome.tabs.onUpdated.removeListener(onUpdated);
       clearTimeout(timer);
+      await closeDownloadAllExtractionTab(tabId, opened.navigation);
       fn(val);
     };
 
-    const timer = setTimeout(() => {
-      chrome.tabs.remove(tabId).catch(() => {});
+    timer = setTimeout(() => {
       settle(reject, new Error('Timeout chargement onglet'));
     }, tabTimeout);
 
@@ -2871,10 +2969,8 @@ async function extractFromTab(url, cfg) {
             scrollSettleMs: cfg['perf.scrollSettleMs'],
           }],
         });
-        chrome.tabs.remove(tabId).catch(() => {});
         settle(resolve, results?.[0]?.result || []);
       } catch (err) {
-        chrome.tabs.remove(tabId).catch(() => {});
         settle(reject, err);
       }
     };
@@ -2926,6 +3022,7 @@ async function handleDownloadAllRequest(
 
   const cfg = await loadCfg();
   const opts = resolveOutputOptions(cfg, options);
+  const expectedSeriesSlug = downloadAllResumeSlug(resumeData);
   if (!opts.totalCount) opts.totalCount = totalChapters;
   // Push finished .cbz files to the library server, only when enabled + CBZ format.
   if (opts.format === 'cbz') {
@@ -3133,7 +3230,14 @@ async function handleDownloadAllRequest(
     let images = null, extractErr = null;
     for (let attempt = 0; attempt <= chapterRetries; attempt++) {
       if (downloadAllAbortFlag) break;
-      try { images = await extractFromTab(chapterUrl, cfg); extractErr = null; break; }
+      try {
+        images = await extractFromTab(chapterUrl, cfg, {
+          originTabId,
+          expectedSeriesSlug,
+        });
+        extractErr = null;
+        break;
+      }
       catch (e) { extractErr = e; images = null; }
     }
     if (extractErr) {

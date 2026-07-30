@@ -166,6 +166,7 @@ const allContext = {
 vm.createContext(allContext);
 vm.runInContext(`
   ${extractFunction('formatImageDownloadFailure')}
+  ${extractFunction('downloadAllResumeSlug')}
   ${extractFunction('handleDownloadAllRequest')}
   globalThis.handleDownloadAllRequest = handleDownloadAllRequest;
 `, allContext);
