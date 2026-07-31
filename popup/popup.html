@@ -27,6 +27,38 @@
       overflow-x: hidden;
     }
 
+    /* Firefox Android presents action popups in a browser-window overlay. Fill
+       that surface there, while retaining the compact 340px desktop popup. */
+    html.firefox-android {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+    }
+    html.firefox-android body {
+      width: 100vw;
+      max-width: none;
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    html.firefox-android .header,
+    html.firefox-android .btn-row,
+    html.firefox-android .review-prompt,
+    html.firefox-android .logs-header,
+    html.firefox-android .footer {
+      flex: 0 0 auto;
+    }
+    html.firefox-android .logs-wrap {
+      height: auto;
+      min-height: 0;
+      flex: 1 1 auto;
+    }
+    html.firefox-android .footer {
+      padding-bottom: calc(11px + env(safe-area-inset-bottom, 0px));
+    }
+
     /* ── Header ── */
     .header {
       display: flex; align-items: center; gap: 12px;

@@ -8,6 +8,15 @@ const OPERA_REVIEW_URL = 'https://addons.opera.com/extensions/details/comix-down
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function isFirefoxAndroid(userAgent) {
+  const ua = String(userAgent || '');
+  return /Android/i.test(ua) && /Firefox\//i.test(ua);
+}
+
+function applyPlatformLayout(userAgent) {
+  document.documentElement.classList.toggle('firefox-android', isFirefoxAndroid(userAgent));
+}
+
 function pad(n) { return String(n).padStart(2, '0'); }
 
 function formatTs(ts) {
@@ -213,4 +222,9 @@ async function init() {
   });
 }
 
-init();
+if (typeof module === 'object' && module.exports) {
+  module.exports = { isFirefoxAndroid };
+} else {
+  applyPlatformLayout(navigator.userAgent);
+  init();
+}
