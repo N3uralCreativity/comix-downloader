@@ -13,6 +13,13 @@ const requiredMessages = [
   'reviewPromptMessage',
   'reviewPromptAction',
   'reviewPromptDismiss',
+  'updateAvailableTitle',
+  'updateAvailableMessage',
+  'updateAvailableAction',
+  'updateInstalling',
+  'updateBusy',
+  'updateFailed',
+  'updateToolbarTitle',
 ];
 
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));

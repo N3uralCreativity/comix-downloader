@@ -22,5 +22,28 @@
   "reviewPromptDismiss": {
     "message": "ปิด",
     "description": "ป้ายกำกับสำหรับปุ่มปิด"
+  },
+  "updateAvailableTitle": {
+    "message": "ส่วนขยายของคุณล้าสมัย"
+  },
+  "updateAvailableMessage": {
+    "message": "เวอร์ชัน $VERSION$ พร้อมแล้ว การตั้งค่าและประวัติของคุณจะยังคงอยู่",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateAvailableAction": {
+    "message": "อัปเดตตอนนี้"
+  },
+  "updateInstalling": {
+    "message": "กำลังอัปเดต..."
+  },
+  "updateBusy": {
+    "message": "ดาวน์โหลดปัจจุบันให้เสร็จหรือยกเลิก แล้วลองอีกครั้ง"
+  },
+  "updateFailed": {
+    "message": "เริ่มการอัปเดตไม่ได้ เปิดป๊อปอัปอีกครั้งแล้วลองใหม่"
+  },
+  "updateToolbarTitle": {
+    "message": "Comix Downloader - อัปเดต $VERSION$ พร้อมแล้ว",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
   }
 }

@@ -22,5 +22,28 @@
   "reviewPromptDismiss": {
     "message": "Cerrar",
     "description": "Etiqueta accesible del botón de cierre."
+  },
+  "updateAvailableTitle": {
+    "message": "Tu extensión está desactualizada"
+  },
+  "updateAvailableMessage": {
+    "message": "La versión $VERSION$ está lista. Tus ajustes y tu historial se conservarán.",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateAvailableAction": {
+    "message": "Actualizar ahora"
+  },
+  "updateInstalling": {
+    "message": "Actualizando..."
+  },
+  "updateBusy": {
+    "message": "Termina o descarta la descarga actual y vuelve a intentarlo."
+  },
+  "updateFailed": {
+    "message": "No se pudo iniciar la actualización. Vuelve a abrir el panel e inténtalo de nuevo."
+  },
+  "updateToolbarTitle": {
+    "message": "Comix Downloader - actualización $VERSION$ lista",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
   }
 }

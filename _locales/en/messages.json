@@ -22,5 +22,35 @@
   "reviewPromptDismiss": {
     "message": "Dismiss",
     "description": "Accessible label for dismissing the review request."
+  },
+  "updateAvailableTitle": {
+    "message": "Your extension is outdated",
+    "description": "Title shown when the browser has downloaded an extension update."
+  },
+  "updateAvailableMessage": {
+    "message": "Version $VERSION$ is ready. Your settings and history will stay intact.",
+    "description": "Update notice body.",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateAvailableAction": {
+    "message": "Update now",
+    "description": "Button that applies a browser-approved extension update."
+  },
+  "updateInstalling": {
+    "message": "Updating...",
+    "description": "Status shown while the extension reloads into an update."
+  },
+  "updateBusy": {
+    "message": "Finish or discard the current download, then try again.",
+    "description": "Status shown when an update would interrupt a download."
+  },
+  "updateFailed": {
+    "message": "Could not start the update. Reopen the popup and try again.",
+    "description": "Status shown when the update cannot be applied."
+  },
+  "updateToolbarTitle": {
+    "message": "Comix Downloader - update $VERSION$ ready",
+    "description": "Toolbar tooltip shown for an available update.",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
   }
 }

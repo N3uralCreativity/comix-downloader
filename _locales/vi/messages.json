@@ -22,5 +22,28 @@
   "reviewPromptDismiss": {
     "message": "Đóng",
     "description": "Nhãn hỗ trợ tiếp cận cho nút đóng."
+  },
+  "updateAvailableTitle": {
+    "message": "Tiện ích của bạn đã lỗi thời"
+  },
+  "updateAvailableMessage": {
+    "message": "Phiên bản $VERSION$ đã sẵn sàng. Cài đặt và lịch sử của bạn sẽ được giữ nguyên.",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateAvailableAction": {
+    "message": "Cập nhật ngay"
+  },
+  "updateInstalling": {
+    "message": "Đang cập nhật..."
+  },
+  "updateBusy": {
+    "message": "Hoàn tất hoặc hủy bản tải xuống hiện tại rồi thử lại."
+  },
+  "updateFailed": {
+    "message": "Không thể bắt đầu cập nhật. Hãy mở lại cửa sổ bật lên và thử lại."
+  },
+  "updateToolbarTitle": {
+    "message": "Comix Downloader - bản cập nhật $VERSION$ đã sẵn sàng",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
   }
 }

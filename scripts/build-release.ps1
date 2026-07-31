@@ -49,6 +49,7 @@ function Copy-ReleaseFiles([string]$Destination) {
     "core/cdl-badge-core.js",
     "core/cdl-comicinfo.js",
     "core/review-prompt.js",
+    "core/update-state.js",
     "_locales",
     "manifest.json",
     "popup/popup.html",
@@ -139,6 +140,7 @@ $firefoxManifest.background = [ordered]@{
     "core/cdl-features-core.js",
     "core/cdl-comicinfo.js",
     "core/review-prompt.js",
+    "core/update-state.js",
     "background.js"
   )
 }

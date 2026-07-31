@@ -22,5 +22,28 @@
   "reviewPromptDismiss": {
     "message": "Tutup",
     "description": "Label aksesibel untuk tombol tutup."
+  },
+  "updateAvailableTitle": {
+    "message": "Ekstensi Anda sudah usang"
+  },
+  "updateAvailableMessage": {
+    "message": "Versi $VERSION$ sudah siap. Pengaturan dan riwayat Anda akan tetap tersimpan.",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateAvailableAction": {
+    "message": "Perbarui sekarang"
+  },
+  "updateInstalling": {
+    "message": "Memperbarui..."
+  },
+  "updateBusy": {
+    "message": "Selesaikan atau batalkan unduhan saat ini, lalu coba lagi."
+  },
+  "updateFailed": {
+    "message": "Pembaruan tidak dapat dimulai. Buka kembali popup lalu coba lagi."
+  },
+  "updateToolbarTitle": {
+    "message": "Comix Downloader - pembaruan $VERSION$ siap",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
   }
 }

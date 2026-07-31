@@ -13,6 +13,7 @@ Thumbs.db
 
 # Browser-generated unpacked-extension metadata
 _metadata/
+.playwright-cli/
 
 # Claude Code per-machine local settings (permission allowlist etc. — not shared)
 .claude/settings.local.json

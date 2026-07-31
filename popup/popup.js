@@ -28,9 +28,9 @@ function badgeLabel(level) {
   return { info: 'INFO', ok: 'OK', warn: 'WARN', error: 'ERR' }[level] || level.toUpperCase();
 }
 
-function i18n(messageName, fallback) {
+function i18n(messageName, fallback, substitutions) {
   try {
-    const translated = chrome.i18n.getMessage(messageName);
+    const translated = chrome.i18n.getMessage(messageName, substitutions);
     if (translated) return translated;
   } catch (_) {}
   return fallback;
@@ -83,6 +83,58 @@ async function showReviewPromptWhenEligible() {
   dismiss.setAttribute('aria-label', dismissLabel);
   dismiss.addEventListener('click', () => { prompt.hidden = true; });
   prompt.hidden = false;
+}
+
+async function showAvailableUpdate() {
+  const panel = document.getElementById('update-panel');
+  if (!panel) return false;
+
+  const response = await sendRuntimeMessage({ action: 'getAvailableUpdate' });
+  const update = response && response.ok && response.update;
+  if (!update || !update.version) {
+    panel.hidden = true;
+    return false;
+  }
+
+  const title = document.getElementById('update-title');
+  const message = document.getElementById('update-message');
+  const action = document.getElementById('update-action');
+  const actionLabel = document.getElementById('update-action-label');
+  const status = document.getElementById('update-status');
+  const defaultAction = i18n('updateAvailableAction', 'Update now');
+
+  title.textContent = i18n('updateAvailableTitle', 'Your extension is outdated');
+  message.textContent = i18n(
+    'updateAvailableMessage',
+    `Version ${update.version} is ready. Your settings and history will stay intact.`,
+    update.version
+  );
+  actionLabel.textContent = defaultAction;
+  action.disabled = false;
+  status.textContent = '';
+  action.onclick = async () => {
+    action.disabled = true;
+    actionLabel.textContent = i18n('updateInstalling', 'Updating...');
+    status.textContent = '';
+
+    const result = await sendRuntimeMessage({ action: 'installAvailableUpdate' });
+    if (result && result.ok) {
+      status.textContent = i18n('updateInstalling', 'Updating...');
+      return;
+    }
+
+    action.disabled = false;
+    actionLabel.textContent = defaultAction;
+    if (result && result.noUpdate) {
+      panel.hidden = true;
+      return;
+    }
+    status.textContent = result && result.busy
+      ? i18n('updateBusy', 'Finish or discard the current download, then try again.')
+      : i18n('updateFailed', 'Could not start the update. Reopen the popup and try again.');
+  };
+  panel.hidden = false;
+  return true;
 }
 
 // ── Logs rendering ──────────────────────────────────────────────────────────
@@ -192,7 +244,8 @@ async function init() {
     chrome.tabs.create({ url: GITHUB_URL });
   });
 
-  await showReviewPromptWhenEligible();
+  const updateVisible = await showAvailableUpdate();
+  if (!updateVisible) await showReviewPromptWhenEligible();
 
   // Load and render logs
   const { cdlLogs = [] } = await chrome.storage.local.get('cdlLogs');
@@ -219,6 +272,7 @@ async function init() {
   // Live updates while the popup is open
   chrome.storage.onChanged.addListener((changes) => {
     if (changes.cdlLogs) renderLogs(changes.cdlLogs.newValue || []);
+    if (changes.cdlUpdateAvailable) void showAvailableUpdate();
   });
 }
 

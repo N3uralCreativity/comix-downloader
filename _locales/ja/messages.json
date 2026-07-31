@@ -22,5 +22,28 @@
   "reviewPromptDismiss": {
     "message": "閉じる",
     "description": "レビュー依頼を閉じるボタンのラベルです。"
+  },
+  "updateAvailableTitle": {
+    "message": "拡張機能が古くなっています"
+  },
+  "updateAvailableMessage": {
+    "message": "バージョン $VERSION$ を適用できます。設定と履歴は保持されます。",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateAvailableAction": {
+    "message": "今すぐ更新"
+  },
+  "updateInstalling": {
+    "message": "更新中..."
+  },
+  "updateBusy": {
+    "message": "現在のダウンロードを完了または破棄してから、もう一度お試しください。"
+  },
+  "updateFailed": {
+    "message": "更新を開始できませんでした。ポップアップを開き直してお試しください。"
+  },
+  "updateToolbarTitle": {
+    "message": "Comix Downloader - 更新 $VERSION$ の準備完了",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
   }
 }

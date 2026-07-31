@@ -15,8 +15,7 @@ if (typeof importScripts === 'function' && typeof JSZip === 'undefined') {
 }
 
 // Shared settings module (CDLSettings). Chrome loads it here; Firefox loads it
-// via manifest.background.scripts (jszip, settings, features-core, comicinfo,
-// background — in that order).
+// via manifest.background.scripts (jszip, shared core modules, background).
 if (typeof importScripts === 'function' && typeof CDLSettings === 'undefined') {
   importScripts('core/settings.js');
 }
@@ -31,6 +30,9 @@ if (typeof importScripts === 'function' && typeof CDLComicInfo === 'undefined') 
 }
 if (typeof importScripts === 'function' && typeof CDLReviewPrompt === 'undefined') {
   importScripts('core/review-prompt.js');
+}
+if (typeof importScripts === 'function' && typeof CDLUpdateState === 'undefined') {
+  importScripts('core/update-state.js');
 }
 
 'use strict';
@@ -267,26 +269,128 @@ let downloadAllSession = null;
 const FEATURES_NOTICE_VERSION = '2.0.2';
 const CONCURRENCY_NOTICE_VERSION = '2.1.0';
 
-// Toolbar "NEW" icon badge removed per user preference — intentionally a no-op so existing
-// callers stay harmless. The download-progress badge (setProgressBadge) is unaffected.
+// Toolbar "NEW" icon badge removed per user preference - intentionally a no-op so existing
+// callers stay harmless. Download progress takes priority over the update-ready badge.
 function _setNewToolbarBadge() {}
-function _clearToolbarBadge() {
-  try { if (chrome.action && chrome.action.setBadgeText) chrome.action.setBadgeText({ text: '' }); } catch (_) {}
+let _downloadProgressBadgeActive = false;
+let _idleBadgeRefreshGeneration = 0;
+let _updateReloadScheduled = false;
+
+function extensionVersion() {
+  try { return (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || ''; }
+  catch (_) { return ''; }
 }
 
-// Live Download-All progress on the toolbar icon (overrides the NEW badge while
-// running). Restored to NEW / cleared when the run ends.
-function setProgressBadge(completed, total) {
+function extensionName() {
+  try { return chrome.i18n.getMessage('extensionName') || 'Comix Downloader'; }
+  catch (_) { return 'Comix Downloader'; }
+}
+
+function setToolbarTitle(title) {
+  try {
+    if (chrome.action && chrome.action.setTitle) chrome.action.setTitle({ title });
+  } catch (_) {}
+}
+
+function _clearToolbarBadge() {
+  try { if (chrome.action && chrome.action.setBadgeText) chrome.action.setBadgeText({ text: '' }); } catch (_) {}
+  setToolbarTitle(extensionName());
+}
+
+async function getAvailableUpdateState() {
+  if (typeof CDLUpdateState === 'undefined') return null;
+  const key = CDLUpdateState.STORAGE_KEY;
+  try {
+    const values = await chrome.storage.local.get(key);
+    const stored = values && values[key];
+    const state = CDLUpdateState.normalizeAvailableUpdate(stored, extensionVersion());
+    if (!state && stored) await chrome.storage.local.remove(key);
+    return state;
+  } catch (_) {
+    return null;
+  }
+}
+
+function setUpdateToolbarBadge(state) {
+  if (!state || _downloadProgressBadgeActive) return;
   try {
     if (!(chrome.action && chrome.action.setBadgeText)) return;
-    let text = '';
-    if (total > 0) text = `${Math.min(99, Math.round((completed / total) * 100))}%`;
+    chrome.action.setBadgeText({ text: 'UP' });
+    if (chrome.action.setBadgeBackgroundColor) {
+      chrome.action.setBadgeBackgroundColor({ color: '#d97706' });
+    }
+    if (chrome.action.setBadgeTextColor) {
+      chrome.action.setBadgeTextColor({ color: '#ffffff' });
+    }
+  } catch (_) {}
+  let title = `${extensionName()} - update ${state.version} ready`;
+  try {
+    title = chrome.i18n.getMessage('updateToolbarTitle', state.version) || title;
+  } catch (_) {}
+  setToolbarTitle(title);
+}
+
+async function refreshIdleBadge() {
+  const generation = ++_idleBadgeRefreshGeneration;
+  const state = await getAvailableUpdateState();
+  if (_downloadProgressBadgeActive || generation !== _idleBadgeRefreshGeneration) return;
+  if (state) setUpdateToolbarBadge(state);
+  else _clearToolbarBadge();
+}
+
+async function rememberAvailableUpdate(details) {
+  if (typeof CDLUpdateState === 'undefined') return null;
+  const state = CDLUpdateState.createAvailableUpdate(
+    details && details.version,
+    extensionVersion(),
+    Date.now()
+  );
+  if (!state) return null;
+  await chrome.storage.local.set({ [CDLUpdateState.STORAGE_KEY]: state });
+  if (!_downloadProgressBadgeActive) void refreshIdleBadge();
+  return state;
+}
+
+// Live Download-All progress on the toolbar icon. The update badge is restored
+// after the run finishes if a signed store update is waiting.
+function setProgressBadge(completed, total) {
+  let text = '';
+  if (total > 0) text = `${Math.min(99, Math.round((completed / total) * 100))}%`;
+  if (!text) {
+    restoreIdleBadge();
+    return;
+  }
+  _downloadProgressBadgeActive = true;
+  _idleBadgeRefreshGeneration++;
+  try {
+    if (!(chrome.action && chrome.action.setBadgeText)) return;
     chrome.action.setBadgeText({ text });
     if (text && chrome.action.setBadgeBackgroundColor) chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
   } catch (_) {}
+  setToolbarTitle(`${extensionName()} - Download All ${text}`);
 }
-// When a download run ends, clear the toolbar badge (no more "NEW" restore).
-function restoreIdleBadge() { _clearToolbarBadge(); }
+
+function restoreIdleBadge() {
+  _downloadProgressBadgeActive = false;
+  void refreshIdleBadge();
+}
+
+function hasActiveDownloadWork() {
+  if (typeof CDLUpdateState === 'undefined') return true;
+  return CDLUpdateState.hasActiveDownloadWork({
+    downloadAllActive: !!(downloadAllSession && downloadAllSession.active),
+    activeChapterDownloads,
+    queuedChapterDownloads: downloadQueue.length,
+    pendingExtractionTabs: pendingDownloads.size,
+    pendingArchive: !!_pendingZip,
+  });
+}
+
+if (chrome.runtime.onUpdateAvailable) {
+  chrome.runtime.onUpdateAvailable.addListener((details) => {
+    rememberAvailableUpdate(details).catch(() => {});
+  });
+}
 
 // ── Right-click context menu ──────────────────────────────────────────────────
 // setupContextMenus runs on both onInstalled and onStartup; if those race, the
@@ -335,7 +439,7 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
 
 chrome.runtime.onInstalled.addListener(setupContextMenus);
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(setupContextMenus);
-if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(_clearToolbarBadge); // clear any persisted "NEW" badge
+if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(restoreIdleBadge);
 
 // First install → open the site's welcome page (thanks + what's new). Install only:
 // updates must never steal a tab from the user.
@@ -347,7 +451,12 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason !== 'install' && details.reason !== 'update') return;
-  _clearToolbarBadge(); // remove any lingering "NEW" badge from earlier versions
+  // The new package is running. Clear only the transient update marker; all
+  // settings, history, logs, and download records remain in storage.local.
+  const updateKey = typeof CDLUpdateState !== 'undefined'
+    ? CDLUpdateState.STORAGE_KEY
+    : 'cdlUpdateAvailable';
+  chrome.storage.local.remove(updateKey).then(restoreIdleBadge).catch(restoreIdleBadge);
   chrome.storage.local.get(['cdlFeaturesNotice', 'cdlConcurrencyNotice']).then((res) => {
     const prevF = res && res.cdlFeaturesNotice;
     if (!(prevF && prevF.seenVersion === FEATURES_NOTICE_VERSION)) {
@@ -1112,6 +1221,52 @@ async function resumeDownloadAllFromCheckpoint(originTabId, tabUrl = '') {
 // ── Réception des messages depuis content_title.js ───────────────────────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'getAvailableUpdate') {
+    getAvailableUpdateState()
+      .then((update) => sendResponse({ ok: true, update }))
+      .catch(() => sendResponse({ ok: false, update: null }));
+    return true;
+  }
+
+  if (message.action === 'installAvailableUpdate') {
+    getAvailableUpdateState()
+      .then((update) => {
+        if (!update) {
+          sendResponse({
+            ok: false,
+            noUpdate: true,
+            error: 'The browser no longer has an update waiting.',
+          });
+          return;
+        }
+        if (_updateReloadScheduled) {
+          sendResponse({ ok: true, reloading: true, version: update.version });
+          return;
+        }
+        if (hasActiveDownloadWork()) {
+          sendResponse({
+            ok: false,
+            busy: true,
+            error: 'Finish or discard the current download, then try again.',
+          });
+          return;
+        }
+
+        _updateReloadScheduled = true;
+        sendResponse({ ok: true, reloading: true, version: update.version });
+        // Let the popup paint its acknowledgement before this context reloads.
+        setTimeout(() => {
+          try { chrome.runtime.reload(); }
+          catch (_) { _updateReloadScheduled = false; }
+        }, 180);
+      })
+      .catch(() => sendResponse({
+        ok: false,
+        error: 'The update could not be started.',
+      }));
+    return true;
+  }
+
   if (message.action === 'downloadChapter') {
     const originTabId = sender.tab?.id ?? null;
     sendResponse({ ok: true }); // ack first so a fault in setup never reads as "connection failed"

@@ -22,5 +22,28 @@
   "reviewPromptDismiss": {
     "message": "Fechar",
     "description": "Rótulo acessível do botão de fechar."
+  },
+  "updateAvailableTitle": {
+    "message": "Sua extensão está desatualizada"
+  },
+  "updateAvailableMessage": {
+    "message": "A versão $VERSION$ está pronta. Suas configurações e seu histórico serão mantidos.",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateAvailableAction": {
+    "message": "Atualizar agora"
+  },
+  "updateInstalling": {
+    "message": "Atualizando..."
+  },
+  "updateBusy": {
+    "message": "Conclua ou descarte o download atual e tente novamente."
+  },
+  "updateFailed": {
+    "message": "Não foi possível iniciar a atualização. Reabra o popup e tente novamente."
+  },
+  "updateToolbarTitle": {
+    "message": "Comix Downloader - atualização $VERSION$ pronta",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
   }
 }

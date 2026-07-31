@@ -22,5 +22,28 @@
   "reviewPromptDismiss": {
     "message": "Fermer",
     "description": "Libellé accessible du bouton de fermeture."
+  },
+  "updateAvailableTitle": {
+    "message": "Votre extension n'est pas à jour"
+  },
+  "updateAvailableMessage": {
+    "message": "La version $VERSION$ est prête. Vos paramètres et votre historique seront conservés.",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateAvailableAction": {
+    "message": "Mettre à jour"
+  },
+  "updateInstalling": {
+    "message": "Mise à jour..."
+  },
+  "updateBusy": {
+    "message": "Terminez ou abandonnez le téléchargement en cours, puis réessayez."
+  },
+  "updateFailed": {
+    "message": "Impossible de lancer la mise à jour. Rouvrez la fenêtre et réessayez."
+  },
+  "updateToolbarTitle": {
+    "message": "Comix Downloader - mise à jour $VERSION$ prête",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
   }
 }

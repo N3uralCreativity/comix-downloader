@@ -68,6 +68,16 @@ check('review requests are counted only after confirmed archive saves',
 check('review prompt eligibility is claimed through the serialized background worker',
   backgroundSource.includes("message.action === 'claimReviewPrompt'") &&
   backgroundSource.includes('CDLReviewPrompt.claimPrompt(chrome.storage.local, version)'));
+check('signed browser updates surface in the popup and can reload safely',
+  backgroundSource.includes('chrome.runtime.onUpdateAvailable.addListener') &&
+  backgroundSource.includes("message.action === 'getAvailableUpdate'") &&
+  backgroundSource.includes("message.action === 'installAvailableUpdate'") &&
+  backgroundSource.includes('hasActiveDownloadWork()') &&
+  backgroundSource.includes('chrome.runtime.reload()'));
+check('Download All progress takes priority over the update-ready toolbar badge',
+  backgroundSource.includes("setBadgeText({ text: 'UP' })") &&
+  backgroundSource.includes('_downloadProgressBadgeActive') &&
+  backgroundSource.includes('void refreshIdleBadge()'));
 
 // 2. content_title.js (content script) settings keys
 const contentTitleSource = read('content/content_title.js');
@@ -188,6 +198,8 @@ check('release packages both ad blocker scripts', releaseScript.includes('conten
 check('release packages declarative request rules', releaseScript.includes('"rules"'));
 check('release packages all locales and the review state helper',
   releaseScript.includes('"_locales"') && releaseScript.includes('"core/review-prompt.js"'));
+check('release packages the update state helper',
+  releaseScript.includes('"core/update-state.js"'));
 check('release emits dedicated Chromium-store packages',
   ['chrome', 'opera', 'chromium'].every((target) => releaseScript.includes(`"${target}"`)));
 const releaseValidator = read('scripts/validate-release.ps1');
