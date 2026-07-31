@@ -2093,9 +2093,10 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   const delivery = await saveGeneratedArchive({
     url, revoke, base64: urlBase64, zip, filename: outName, originTabId,
   });
+  const accepted = isArchiveDeliveryAccepted(delivery);
 
-  cdlLog(delivery.confirmed ? 'ok' : 'warn',
-    `${ext.toUpperCase()} ${delivery.confirmed ? 'saved' : 'handed to browser'}: ${outName} (${images.length} images)`);
+  cdlLog(accepted ? 'ok' : 'warn',
+    `${ext.toUpperCase()} ${delivery.confirmed ? 'saved' : accepted ? 'sent to mobile downloads' : 'handed to browser'}: ${outName} (${images.length} images)`);
   if (delivery.confirmed) await recordSuccessfulDownloadForReview();
   notifyTab(originTabId, { action: 'downloadDone', chapterUrl });
 
@@ -2106,7 +2107,7 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
       (String(chapterUrl).match(/\/title\/([^/]+)\//) || [])[1] || '';
     const chapterLabel = (options && options.chapterLabel) || chapterLabelFromUrl(chapterUrl);
     const mangaName = (options && options.mangaName) || (opts.seriesMeta && opts.seriesMeta.title) || '';
-    if (delivery.confirmed) recordChapterDownloaded(slug, chapterLabel, mangaName);
+    if (accepted) recordChapterDownloaded(slug, chapterLabel, mangaName);
     if (isCbz) {
       const libCfg = await getLibraryConfig();
       if (libCfg && libCfg.enabled && /^https?:\/\//i.test(libCfg.endpoint || '')) {
@@ -2508,6 +2509,10 @@ function downloadItemProgressPercent(item) {
   return Math.max(0, Math.min(100, received / total * 100));
 }
 
+function isArchiveDeliveryAccepted(delivery) {
+  return !!(delivery && (delivery.confirmed === true || delivery.accepted === true));
+}
+
 async function waitForBrowserDownload(downloadId, options = {}) {
   const pollMs = options.pollMs ?? DOWNLOAD_CONFIRM_POLL_MS;
   const timeoutMs = options.timeoutMs ?? DOWNLOAD_CONFIRM_TIMEOUT_MS;
@@ -2589,7 +2594,7 @@ async function saveGeneratedArchive({
         reportSave ? { onProgress: reportSave } : undefined
       );
       revoke();
-      return { confirmed: true, fallback: false, downloadId: item.id };
+      return { confirmed: true, accepted: true, fallback: false, downloadId: item.id };
     } catch (error) {
       if (!isDownloadCancelledError(error)) {
         startOrTransferError = error;
@@ -2617,8 +2622,8 @@ async function saveGeneratedArchive({
   }
 
   // Firefox Android can reject the downloads API before creating an item.
-  // Its page-context fallback cannot expose the OS save result, so it is never
-  // treated as a confirmed local download for manifest bookkeeping.
+  // Its page-context fallback cannot expose an OS DownloadItem, but a successful
+  // handoff is the strongest completion signal available on that platform.
   const canFallback = _IS_FIREFOX && originTabId != null && startOrTransferError.downloadPhase === 'start';
   if (!canFallback) {
     revoke();
@@ -2631,8 +2636,23 @@ async function saveGeneratedArchive({
     action: 'triggerDownload', base64: payload, filename,
   });
   if (response && response.ok === false) throw new Error(response.error || 'Browser download fallback failed');
-  if (reportSave) reportSave({ state: 'fallback', bytesReceived: 0, totalBytes: -1 });
-  return { confirmed: false, fallback: true, downloadId: null };
+  const mobile = await isMobileBrowserPlatform();
+  const mobileHandoff = mobile && !!(response && response.ok === true &&
+    (response.handoff === true || response.confirmed === false));
+  if (reportSave) {
+    reportSave({
+      state: mobileHandoff ? 'mobile_handoff' : 'fallback',
+      bytesReceived: 0,
+      totalBytes: -1,
+    });
+  }
+  return {
+    confirmed: false,
+    accepted: mobileHandoff,
+    mobileHandoff,
+    fallback: true,
+    downloadId: null,
+  };
 }
 
 function sanitizeFilename(name, ext) {
@@ -3171,16 +3191,17 @@ async function handleDownloadAllRequest(
     }
 
     savedZipNames.push(saved.filename);
+    const accepted = isArchiveDeliveryAccepted(saved);
     if (saved.confirmed) confirmedZipParts++;
-    else unconfirmedZipParts++;
-    cdlLog(saved.confirmed ? 'ok' : 'warn',
-      `Download All ZIP part ${saved.confirmed ? 'saved' : 'handed to browser'}: ${saved.filename}`);
+    else if (!accepted) unconfirmedZipParts++;
+    cdlLog(accepted ? 'ok' : 'warn',
+      `Download All ZIP part ${saved.confirmed ? 'saved' : accepted ? 'sent to mobile downloads' : 'handed to browser'}: ${saved.filename}`);
     zip = new JSZip();
     zipPart++;
     zipPartChapters = 0;
     zipPartBytes = 0;
     zipPartChapterRecords = [];
-    if (saved.confirmed && !resumeData.checkpointBlocked) {
+    if (accepted && !resumeData.checkpointBlocked) {
       updateDownloadAllResumeCheckpoint({
         checkpointIndex,
         nextZipPart: zipPart,
@@ -3188,9 +3209,9 @@ async function handleDownloadAllRequest(
         terminalCounts,
         firstChapterError,
       });
-    } else if (!saved.confirmed) {
-      // Without browser confirmation, a later part cannot form a safe resume
-      // boundary because this part may not exist on disk.
+    } else if (!accepted) {
+      // Without browser confirmation or a successful mobile handoff, a later
+      // part cannot form a safe resume boundary because this part may not exist.
       resumeData.checkpointBlocked = true;
       resumeData.updatedAt = Date.now();
       persistDownloadAllSession(true, true);
@@ -3415,7 +3436,8 @@ async function handleDownloadAllRequest(
   }
   const warning = warnings.join(' ');
   cdlLog(warning ? 'warn' : 'ok', `Download All complete: ${doneName}${warning ? ` (${warning})` : ''}`);
-  if (confirmedZipParts > 0 && unconfirmedZipParts === 0 && incompleteCount === 0) {
+  if (confirmedZipParts > 0 && confirmedZipParts === savedZipNames.length &&
+      unconfirmedZipParts === 0 && incompleteCount === 0) {
     await recordSuccessfulDownloadForReview();
   }
   notifyDownloadAllDone(originTabId, doneName, warning);
@@ -3483,20 +3505,26 @@ async function _doZipAndSave(pending) {
       }
     }
 
-    if (delivery.confirmed) {
+    const accepted = isArchiveDeliveryAccepted(delivery);
+    if (accepted) {
       for (const record of chapterRecords) {
         if (record && record.chapterLabel) recordChapterDownloaded(slug, record.chapterLabel, mangaName);
       }
     }
     if (_pendingZip === pending) _pendingZip = null;
     if (notifyDone) {
-      const warning = delivery.confirmed
+      const warning = accepted
         ? ''
         : 'The browser received the file, but completion could not be verified; chapters were not marked as downloaded.';
-      cdlLog(delivery.confirmed ? 'ok' : 'warn', `Download All complete: ${filename}${warning ? ` (${warning})` : ''}`);
+      cdlLog(accepted ? 'ok' : 'warn', `Download All complete: ${filename}${warning ? ` (${warning})` : ''}`);
       notifyDownloadAllDone(originTabId, filename, warning);
     }
-    return { filename, confirmed: delivery.confirmed };
+    return {
+      filename,
+      confirmed: delivery.confirmed === true,
+      accepted,
+      mobileHandoff: delivery.mobileHandoff === true,
+    };
   } catch (err) {
     releasePendingGeneratedArchive(pending);
     if (isDownloadCancelledError(err)) {

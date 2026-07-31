@@ -74,6 +74,7 @@ const allEvents = {
 };
 let fetchMode = 'fail';
 let chaptersPerPart = 30;
+let archiveDeliveryMode = 'confirmed';
 const allContext = {
   BATCH_SIZE: 4,
   ZIP_PART_MAX_CHAPTERS: 30,
@@ -127,8 +128,15 @@ const allContext = {
       onSaveProgress({ state: 'in_progress', bytesReceived: 50, totalBytes: 100 });
       onSaveProgress({ state: 'complete', bytesReceived: 100, totalBytes: 100 });
     }
-    chapterRecords.forEach((record) => allEvents.recorded.push(record.chapterLabel));
-    return { filename: zipName, confirmed: true };
+    const confirmed = archiveDeliveryMode === 'confirmed';
+    const accepted = confirmed || archiveDeliveryMode === 'mobile';
+    if (accepted) chapterRecords.forEach((record) => allEvents.recorded.push(record.chapterLabel));
+    return {
+      filename: zipName,
+      confirmed,
+      accepted,
+      mobileHandoff: archiveDeliveryMode === 'mobile',
+    };
   },
   extractFromTab: async (url) => {
     allEvents.extracted.push(url);
@@ -167,6 +175,7 @@ vm.createContext(allContext);
 vm.runInContext(`
   ${extractFunction('formatImageDownloadFailure')}
   ${extractFunction('downloadAllResumeSlug')}
+  ${extractFunction('isArchiveDeliveryAccepted')}
   ${extractFunction('handleDownloadAllRequest')}
   globalThis.handleDownloadAllRequest = handleDownloadAllRequest;
 `, allContext);
@@ -263,6 +272,24 @@ async function run() {
   resetAllEvents();
   fetchMode = 'pass';
   chaptersPerPart = 2;
+  archiveDeliveryMode = 'mobile';
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },
+  ], 'Series', 'series.zip', 7, {});
+  check('Firefox Android Download All handoff finishes without a verification warning',
+    allEvents.done.length === 1 && allEvents.done[0].warning === '');
+  check('Firefox Android Download All handoff marks included chapters as downloaded',
+    allEvents.recorded.join(',') === 'Ch1,Ch2');
+  check('Firefox Android Download All handoff advances the resume checkpoint',
+    allEvents.checkpoints.some((checkpoint) => checkpoint.checkpointIndex === 2));
+  check('an API-unverified mobile handoff does not trigger the review request',
+    allEvents.reviews.length === 0);
+
+  resetAllEvents();
+  fetchMode = 'pass';
+  chaptersPerPart = 2;
+  archiveDeliveryMode = 'confirmed';
   const allChapters = [
     { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
     { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },

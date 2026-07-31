@@ -43,10 +43,10 @@ check('Download All keeps concurrent chapter events behind the active archive st
   backgroundSource.includes('archivePresentationActive') &&
   backgroundSource.includes('deferredChapterProgress') &&
   backgroundSource.includes("phase: 'resuming'"));
-check('Download All persists a lightweight confirmed ZIP checkpoint',
+check('Download All persists a lightweight accepted ZIP checkpoint',
   backgroundSource.includes("const DL_RESUME_KEY = 'cdlDownloadAllResume'") &&
   backgroundSource.includes('updateDownloadAllResumeCheckpoint') &&
-  backgroundSource.includes('if (saved.confirmed && !resumeData.checkpointBlocked)'));
+  backgroundSource.includes('if (accepted && !resumeData.checkpointBlocked)'));
 check('Download All exposes a checkpoint resume message without persisting archive bytes',
   backgroundSource.includes("message.action === 'resumeDownloadAll'") &&
   backgroundSource.includes('remainingChapters = resumeData.chapters.slice(checkpointIndex)') &&
@@ -63,7 +63,8 @@ check('an inactive checkpoint cannot block Download All on another title',
   !backgroundSource.includes('is waiting to be resumed or discarded'));
 check('review requests are counted only after confirmed archive saves',
   backgroundSource.includes('if (delivery.confirmed) await recordSuccessfulDownloadForReview()') &&
-  backgroundSource.includes('confirmedZipParts > 0 && unconfirmedZipParts === 0 && incompleteCount === 0'));
+  backgroundSource.includes('confirmedZipParts === savedZipNames.length') &&
+  backgroundSource.includes('unconfirmedZipParts === 0 && incompleteCount === 0'));
 check('review prompt eligibility is claimed through the serialized background worker',
   backgroundSource.includes("message.action === 'claimReviewPrompt'") &&
   backgroundSource.includes('CDLReviewPrompt.claimPrompt(chrome.storage.local, version)'));
@@ -71,6 +72,10 @@ check('review prompt eligibility is claimed through the serialized background wo
 // 2. content_title.js (content script) settings keys
 const contentTitleSource = read('content/content_title.js');
 const ctKeys = refsIn(contentTitleSource, 'CFG');
+check('Firefox Android handoffs are accepted without weakening desktop verification',
+  backgroundSource.includes('const mobileHandoff = mobile &&') &&
+  backgroundSource.includes('response.handoff === true') &&
+  contentTitleSource.includes('handoff: true'));
 check('content_title.js reads a meaningful number of settings', ctKeys.length >= 9);
 ctKeys.forEach((k) => check('content_title.js key exists in DEFAULTS: ' + k, DEFAULT_KEYS.indexOf(k) !== -1));
 check('Download All frame exposes Download, ZIP, and Save stages',

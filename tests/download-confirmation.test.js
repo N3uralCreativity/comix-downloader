@@ -89,9 +89,11 @@ let archiveErrors = [];
 let archiveDownloadOptions = [];
 let fallbackCalls = 0;
 let revokeCalls = 0;
+let archiveIsMobile = false;
 const archiveContext = {
   _IS_FIREFOX: true,
   SAVE_DIALOG_AUTO_RETRY_DELAY_MS: 0,
+  isMobileBrowserPlatform: async () => archiveIsMobile,
   startAndConfirmBrowserDownload: async (options, waitOptions) => {
     archiveDownloadOptions.push(options);
     const nextError = archiveErrors.length ? archiveErrors.shift() : archiveError;
@@ -104,7 +106,7 @@ const archiveContext = {
   },
   chrome: {
     tabs: {
-      async sendMessage() { fallbackCalls++; return { ok: true, confirmed: false }; },
+      async sendMessage() { fallbackCalls++; return { ok: true, confirmed: false, handoff: true }; },
     },
   },
   console,
@@ -116,6 +118,7 @@ vm.runInContext(`
   ${extractFunction('isDownloadCancelledError')}
   ${extractFunction('isRetryableSaveCancellation')}
   ${extractFunction('makeDownloadCancelledError')}
+  ${extractFunction('isArchiveDeliveryAccepted')}
   ${extractFunction('saveGeneratedArchive')}
   globalThis.saveGeneratedArchive = saveGeneratedArchive;
 `, archiveContext);
@@ -156,6 +159,7 @@ vm.createContext(zipContext);
 vm.runInContext(`
   ${extractFunction('downloadErrorText')}
   ${extractFunction('isDownloadCancelledError')}
+  ${extractFunction('isArchiveDeliveryAccepted')}
   ${extractFunction('releasePendingGeneratedArchive')}
   ${extractFunction('waitForPendingArchiveSaveDecision')}
   ${extractFunction('resolvePendingArchiveSaveDecision')}
@@ -313,12 +317,27 @@ async function run() {
 
   archiveError = Object.assign(new Error('downloads API unavailable'), { downloadPhase: 'start' });
   archiveDownloadOptions = [];
+  archiveIsMobile = false;
   const fallback = await archiveContext.saveGeneratedArchive({
     url: 'data:test', revoke() {}, base64: 'AA==',
     zip: { generateAsync: async () => 'AA==' }, filename: 'chapter.zip', originTabId: 4,
   });
-  check('Firefox start failure can use an explicitly unconfirmed page fallback',
-    fallback.confirmed === false && fallback.fallback === true && fallbackCalls === 1);
+  check('desktop Firefox start failure remains an explicitly unconfirmed page fallback',
+    fallback.confirmed === false && fallback.accepted === false &&
+    fallback.fallback === true && fallbackCalls === 1);
+
+  archiveIsMobile = true;
+  const mobileFallbackUpdates = [];
+  const mobileFallback = await archiveContext.saveGeneratedArchive({
+    url: 'data:test', revoke() {}, base64: 'AA==',
+    zip: { generateAsync: async () => 'AA==' }, filename: 'chapter.zip', originTabId: 4,
+    onSaveProgress: (item) => mobileFallbackUpdates.push(item.state),
+  });
+  check('Firefox Android accepts a successful page-to-download-manager handoff',
+    mobileFallback.confirmed === false && mobileFallback.accepted === true &&
+    mobileFallback.mobileHandoff === true && mobileFallback.fallback === true &&
+    mobileFallbackUpdates.join(',') === 'starting,mobile_handoff');
+  archiveIsMobile = false;
 
   resetZipEvents();
   zipDelivery = { confirmed: true, fallback: false, downloadId: 17 };
@@ -343,6 +362,17 @@ async function run() {
   });
   check('unverified fallback does not record chapters as downloaded',
     unconfirmedZip.confirmed === false && zipEvents.records.length === 0);
+
+  resetZipEvents();
+  zipDelivery = { confirmed: false, accepted: true, mobileHandoff: true, fallback: true, downloadId: null };
+  const mobileZip = await zipContext.doZipAndSave({
+    zip: {}, zipName: 'series.zip', originTabId: 4,
+    chapterRecords: [{ chapterLabel: 'Ch3.5' }], slug: 'series', mangaName: 'Series',
+  });
+  check('accepted Firefox Android handoff records chapters without an unverified warning',
+    mobileZip.confirmed === false && mobileZip.accepted === true &&
+    mobileZip.mobileHandoff === true && zipEvents.records.join(',') === 'Ch3.5' &&
+    zipEvents.done.length === 1 && zipEvents.done[0].warning === '');
 
   resetZipEvents();
   zipDelivery = { confirmed: true, fallback: false, downloadId: 19 };

@@ -864,7 +864,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-      sendResponse({ ok: true, confirmed: false });
+      sendResponse({ ok: true, confirmed: false, handoff: true });
     } catch (error) {
       sendResponse({ ok: false, confirmed: false, error: error.message || 'Download fallback failed' });
     }
@@ -2334,6 +2334,8 @@ function updateDownloadAllPopup(msg) {
       el('cdl-ap-img-status').textContent = 'The prepared ZIP is unchanged.';
     } else if (msg.saveState === 'starting' || phase === 'savingPart') {
       el('cdl-ap-img-status').textContent = 'Waiting for the browser save location…';
+    } else if (msg.saveState === 'mobile_handoff') {
+      el('cdl-ap-img-status').textContent = 'ZIP sent to Firefox downloads.';
     } else if (msg.saveState === 'fallback') {
       el('cdl-ap-img-status').textContent = 'File handed to the browser; completion cannot be verified.';
     } else if (hasPercent) {
