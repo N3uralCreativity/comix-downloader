@@ -237,6 +237,7 @@ async function runAsyncSessionChecks() {
     globalThis.api = {
       getDownloadAllSessionForTabAsync,
       getState: () => downloadAllSession,
+      setState: (next) => { downloadAllSession = next; },
       getPersistCount: () => persistCount,
     };
   `, asyncContext);
@@ -302,6 +303,21 @@ async function runAsyncSessionChecks() {
     cleanTitle === null && asyncContext.api.getState() === null);
   check('restoring and rebinding scoped checkpoints persists repaired sessions',
     asyncContext.api.getPersistCount() >= 4);
+
+  asyncContext.api.setState({
+    active: true,
+    status: 'running',
+    originTabId: 20,
+    mangaName: 'Series',
+    seriesSlug: 'series',
+    totalChapters: 3,
+    updatedAt: Date.now(),
+  });
+  const duplicateTitleTab = await asyncContext.api.getDownloadAllSessionForTabAsync(
+    21, 'https://comix.to/title/series'
+  );
+  check('a second same-title tab cannot steal an active Download All session',
+    duplicateTitleTab === null && asyncContext.api.getState().originTabId === 20);
 }
 
 runAsyncSessionChecks().then(() => {

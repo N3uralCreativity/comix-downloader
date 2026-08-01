@@ -75,13 +75,18 @@ vm.runInContext(`${helperSource}\n globalThis.api = { downloadItemProgressPercen
 
 const zipGenerationContext = {
   _IS_FIREFOX: false,
+  Blob,
   URL: {
     createObjectURL: () => 'blob:generated',
     revokeObjectURL() {},
   },
 };
 vm.createContext(zipGenerationContext);
-vm.runInContext(`${extractFunction('_zipToDownloadUrl')}\n globalThis.zipToDownloadUrl = _zipToDownloadUrl;`, zipGenerationContext);
+vm.runInContext(`
+  ${extractFunction('generateChromiumZipBlob')}
+  ${extractFunction('_zipToDownloadUrl')}
+  globalThis.zipToDownloadUrl = _zipToDownloadUrl;
+`, zipGenerationContext);
 
 let archiveDelivery = { confirmed: true, fallback: false, downloadId: 17 };
 let archiveError = null;
@@ -198,6 +203,27 @@ async function run() {
   check('JSZip progress metadata is forwarded without changing STORE output',
     generatedUrl.url === 'blob:generated' && zipOptions.type === 'blob' &&
     zipOptions.compression === 'STORE' && zipUpdates.join(',') === '12.5,100');
+
+  let streamOptions = null;
+  const streamUpdates = [];
+  const streamedUrl = await zipGenerationContext.zipToDownloadUrl({
+    generateInternalStream(options) {
+      streamOptions = options;
+      const handlers = {};
+      return {
+        on(event, handler) { handlers[event] = handler; return this; },
+        resume() {
+          handlers.data(new Uint8Array([1, 2]), { percent: 50, currentFile: '001.webp' });
+          handlers.data(new Uint8Array([3, 4]), { percent: 100, currentFile: '' });
+          handlers.end();
+        },
+      };
+    },
+  }, (metadata) => streamUpdates.push(metadata.percent));
+  check('Chromium ZIP generation streams chunks without changing STORE compression',
+    streamedUrl.url === 'blob:generated' && streamOptions.type === 'uint8array' &&
+    streamOptions.compression === 'STORE' && streamOptions.streamFiles === true &&
+    streamUpdates.join(',') === '50,100');
 
   archiveError = null;
   archiveErrors = [];

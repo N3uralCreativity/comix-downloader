@@ -220,9 +220,9 @@
       warn: 'Too short can miss pages that only load once scrolled into view.' },
 
     'retry.imageRetries': { type: 'int', min: 0, max: 5, risk: 'none',
-      label: 'Retry failed images', help: 'Re-attempt a failed image this many times (0 = skip, the default).' },
+      label: 'Retry failed images', help: 'Re-attempt each failed image this many times before chapter recovery. Temporary server errors may receive extra automatic retries.' },
     'retry.chapterRetries': { type: 'int', min: 0, max: 3, risk: 'none',
-      label: 'Retry failed chapters', help: 'Re-attempt a failed chapter this many times (0 = skip, the default).' },
+      label: 'Retry failed chapters', help: 'Re-open failed chapters and retry any remaining missing pages this many times.' },
 
     'naming.imagePadDigits': { type: 'int', min: 1, max: 5, risk: 'none',
       label: 'Image number padding', help: 'Zero-padding for page filenames (3 → 001.webp).' },

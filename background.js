@@ -554,8 +554,17 @@ function updateDownloadAllSessionLog(progress) {
 
   if (phase === 'extracting') {
     text = `${chapterLabel} - opening...`;
+  } else if (phase === 'retryingChapter') {
+    text = `${chapterLabel} - reopening (retry ${progress.retryAttempt}/${progress.retryLimit})...`;
   } else if (phase === 'downloading') {
     text = `${chapterLabel} - ${imagesDone}/${imagesTotal} images`;
+  } else if (phase === 'retryingImage') {
+    text = `${chapterLabel} - retrying page ${progress.imagePage}/${imagesTotal} ` +
+      `(${progress.retryAttempt}/${progress.retryLimit})...`;
+  } else if (phase === 'retryingImages') {
+    const missing = Math.max(0, Number(progress.missingImages) || 0);
+    text = `${chapterLabel} - retrying ${missing} missing image${missing === 1 ? '' : 's'} ` +
+      `(${progress.retryAttempt}/${progress.retryLimit})...`;
   } else if (phase === 'done') {
     cls = 'done';
     text = `${chapterLabel} (${imagesDone}/${imagesTotal} images)`;
@@ -979,6 +988,7 @@ async function getDownloadAllSessionForTabAsync(tabId, tabUrl = '') {
 
   if (
     downloadAllSession &&
+    !downloadAllSession.active &&
     downloadAllSession.originTabId != null &&
     tabId != null &&
     downloadAllSession.originTabId !== tabId &&
@@ -2294,21 +2304,135 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   }
 }
 
+const IMAGE_TRANSIENT_MIN_RETRIES = 3;
+const IMAGE_RETRY_BASE_MS = 650;
+const IMAGE_RETRY_MAX_MS = 5000;
+const IMAGE_RETRY_AFTER_MAX_MS = 15000;
+const CHAPTER_RECOVERY_BASE_MS = 2500;
+const CHAPTER_RECOVERY_MAX_MS = 10000;
+const imageHostCooldownUntil = new Map();
+
+function imageRequestStatus(error) {
+  const explicit = Number(error?.status);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const match = String(error?.message || '').match(/\bHTTP\s+(\d{3})\b/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function isRetryableImageRequestError(error) {
+  const status = imageRequestStatus(error);
+  if (status) return status === 408 || status === 425 || status === 429 || status >= 500;
+  const name = String(error?.name || '');
+  const message = String(error?.message || '');
+  return name === 'AbortError' || name === 'TimeoutError' || name === 'TypeError' ||
+    /network|failed to fetch|timed?\s*out/i.test(message);
+}
+
+function imageRetryLimit(configuredRetries, error) {
+  const configured = Math.max(0, Math.floor(Number(configuredRetries) || 0));
+  return isRetryableImageRequestError(error)
+    ? Math.max(configured, IMAGE_TRANSIENT_MIN_RETRIES)
+    : configured;
+}
+
+function parseRetryAfterMs(value, now = Date.now()) {
+  if (!value) return 0;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - now) : 0;
+}
+
+function imageRetryDelayMs(error, retryNumber) {
+  const exponential = Math.min(
+    IMAGE_RETRY_MAX_MS,
+    IMAGE_RETRY_BASE_MS * (2 ** Math.max(0, retryNumber - 1))
+  );
+  const retryAfter = Math.min(
+    IMAGE_RETRY_AFTER_MAX_MS,
+    Math.max(0, Number(error?.retryAfterMs) || 0)
+  );
+  return Math.max(retryAfter, exponential + Math.floor(Math.random() * 250));
+}
+
+function imageHostKey(src) {
+  try { return new URL(src).origin; } catch (_) { return ''; }
+}
+
+function deferImageHost(src, delayMs) {
+  const host = imageHostKey(src);
+  if (!host || delayMs <= 0) return;
+  imageHostCooldownUntil.set(host, Math.max(imageHostCooldownUntil.get(host) || 0, Date.now() + delayMs));
+}
+
+async function waitForImageHostCooldown(src) {
+  const host = imageHostKey(src);
+  if (!host) return;
+  const until = imageHostCooldownUntil.get(host) || 0;
+  const remaining = until - Date.now();
+  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  if ((imageHostCooldownUntil.get(host) || 0) <= Date.now()) imageHostCooldownUntil.delete(host);
+}
+
+function chapterRecoveryDelayMs(retryNumber, errors = []) {
+  const exponential = Math.min(
+    CHAPTER_RECOVERY_MAX_MS,
+    CHAPTER_RECOVERY_BASE_MS * (2 ** Math.max(0, retryNumber - 1))
+  );
+  const retryAfter = errors.reduce((longest, error) => Math.max(
+    longest,
+    Math.min(IMAGE_RETRY_AFTER_MAX_MS, Math.max(0, Number(error?.retryAfterMs) || 0))
+  ), 0);
+  return Math.max(exponential, retryAfter);
+}
+
+async function waitForChapterRecovery(retryNumber, errors = []) {
+  await new Promise((resolve) => setTimeout(resolve, chapterRecoveryDelayMs(retryNumber, errors)));
+}
+
+async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry) {
+  let retryLimit = Math.max(0, Math.floor(Number(configuredRetries) || 0));
+  let lastError = null;
+  for (let attempt = 0; attempt <= retryLimit; attempt++) {
+    await waitForImageHostCooldown(src);
+    try {
+      return await fetchImageForZip(src, cfg);
+    } catch (error) {
+      lastError = error;
+      retryLimit = Math.max(retryLimit, imageRetryLimit(configuredRetries, error));
+      if (attempt >= retryLimit) break;
+      let retryDelayMs = 0;
+      if (isRetryableImageRequestError(error)) {
+        retryDelayMs = imageRetryDelayMs(error, attempt + 1);
+        deferImageHost(src, retryDelayMs);
+      }
+      if (typeof onRetry === 'function') {
+        try {
+          onRetry({
+            retryAttempt: attempt + 1,
+            retryLimit,
+            retryDelayMs,
+            status: imageRequestStatus(error),
+            error,
+          });
+        } catch (_) {}
+      }
+    }
+  }
+  throw lastError || new Error('Unknown image request failure');
+}
+
 // Fetch one image (with optional retries) and add it to the given JSZip
 // container (the zip root or a chapter folder). Returns bytes written, 0 on fail.
 async function fetchImageIntoZip(container, paddedIndex, src, cfg, retries) {
-  let lastErr = null;
-  for (let attempt = 0; attempt <= (retries || 0); attempt++) {
-    try {
-      const image = await fetchImageForZip(src, cfg);
-      container.file(`${paddedIndex}.${image.ext}`, image.buffer);
-      return image.buffer.byteLength || 0;
-    } catch (err) {
-      lastErr = err;
-    }
+  try {
+    const image = await fetchImageWithRetry(src, cfg, retries);
+    container.file(`${paddedIndex}.${image.ext}`, image.buffer);
+    return image.buffer.byteLength || 0;
+  } catch (error) {
+    console.warn(`[ComixDL] image ${paddedIndex} skipped:`, error.message);
+    return 0;
   }
-  if (lastErr) console.warn(`[ComixDL] image ${paddedIndex} skipped:`, lastErr.message);
-  return 0;
 }
 
 // Like fetchImageIntoZip, but returns the image bytes instead of writing straight
@@ -2317,21 +2441,17 @@ async function fetchImageIntoZip(container, paddedIndex, src, cfg, retries) {
 // packer — so two chapters downloading at once never race on the ZIP object.
 // Returns a discriminated { file, error } result so callers cannot accidentally
 // count a failed request as a downloaded image.
-async function fetchImageToFile(paddedIndex, src, cfg, retries) {
-  let lastErr = null;
-  for (let attempt = 0; attempt <= (retries || 0); attempt++) {
-    try {
-      const image = await fetchImageForZip(src, cfg);
-      return {
-        file: { name: `${paddedIndex}.${image.ext}`, buffer: image.buffer, bytes: image.buffer.byteLength || 0 },
-        error: null,
-      };
-    } catch (err) {
-      lastErr = err;
-    }
+async function fetchImageToFile(paddedIndex, src, cfg, retries, onRetry) {
+  try {
+    const image = await fetchImageWithRetry(src, cfg, retries, onRetry);
+    return {
+      file: { name: `${paddedIndex}.${image.ext}`, buffer: image.buffer, bytes: image.buffer.byteLength || 0 },
+      error: null,
+    };
+  } catch (error) {
+    console.warn(`[ComixDL] image ${paddedIndex} skipped:`, error.message);
+    return { file: null, error };
   }
-  if (lastErr) console.warn(`[ComixDL] image ${paddedIndex} skipped:`, lastErr.message);
-  return { file: null, error: lastErr || new Error('Unknown image request failure') };
 }
 
 function formatImageDownloadFailure(total, saved, error) {
@@ -2366,7 +2486,12 @@ async function fetchImageForZip(src, cfg) {
       },
     });
 
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(`HTTP ${response.status}`);
+      error.status = response.status;
+      error.retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+      throw error;
+    }
 
     const contentType = response.headers.get('content-type') || '';
     const rawExt = getImageExtension(src, contentType);
@@ -2618,14 +2743,56 @@ function makeScramblePermutation(seed, count, initConst = 0xe42f) {
  *   resolved by the Firefox downloads API (they are scoped to the SW context).
  * Retourne { url, revoke, base64? } — appeler revoke() après téléchargement.
  */
+function generateChromiumZipBlob(zip, report) {
+  if (!zip || typeof zip.generateInternalStream !== 'function') {
+    return zip.generateAsync({ type: 'blob', compression: 'STORE' }, report);
+  }
+
+  return new Promise((resolve, reject) => {
+    let parts = [];
+    let stream;
+    try {
+      stream = zip.generateInternalStream({
+        type: 'uint8array',
+        compression: 'STORE',
+        streamFiles: true,
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    stream.on('data', (chunk, metadata) => {
+      parts.push(chunk);
+      if (report) report(metadata);
+    });
+    stream.on('error', (error) => {
+      parts = [];
+      reject(error);
+    });
+    stream.on('end', () => {
+      try {
+        const blob = new Blob(parts, { type: 'application/zip' });
+        parts = [];
+        resolve(blob);
+      } catch (error) {
+        parts = [];
+        reject(error);
+      }
+    });
+    stream.resume();
+  });
+}
+
 async function _zipToDownloadUrl(zip, onUpdate) {
   const report = typeof onUpdate === 'function'
     ? (metadata) => { try { onUpdate(metadata || {}); } catch (_) {} }
     : undefined;
   if (!_IS_FIREFOX) {
-    // Chrome: blob URL (no size limit, memory-efficient)
+    // Build Chromium archives incrementally. JSZip's generateAsync({type:'blob'})
+    // concatenates the full archive at 100%, causing a large allocation/GC pause.
     try {
-      const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' }, report);
+      const blob = await generateChromiumZipBlob(zip, report);
       const url  = URL.createObjectURL(blob);
       return { url, revoke: () => URL.revokeObjectURL(url) };
     } catch (_) {}
@@ -3251,7 +3418,10 @@ async function handleDownloadAllRequest(
   // the monotonic progress bar/counter. Injected into every progress message so
   // the popup never depends on which of the concurrent chapters reported last.
   let finishedCount = chapterOffset;
-  const chapterProgressPhases = new Set(['extracting', 'downloading', 'done', 'error', 'skipped']);
+  const chapterProgressPhases = new Set([
+    'extracting', 'retryingChapter', 'downloading', 'retryingImage', 'retryingImages',
+    'done', 'error', 'skipped',
+  ]);
   const archiveProgressPhases = new Set(['zipping', 'saving', 'savingPart']);
   let archivePresentationActive = false;
   let archiveCompletedSnapshot = 0;
@@ -3414,6 +3584,7 @@ async function handleDownloadAllRequest(
   const MIN_DELAY = cfg['perf.rateMinMs'] != null ? cfg['perf.rateMinMs'] : 800;
   const MAX_DELAY = cfg['perf.rateMaxMs'] || 8000;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const abortPromise = _downloadAllAbortPromise();   // one reusable per-run signal
 
   // Download one chapter's images into memory. Emits extracting/downloading
   // progress; returns a result the packer can add to the ZIP. Never throws.
@@ -3425,6 +3596,7 @@ async function handleDownloadAllRequest(
              chapterLabel, imagesDone: 0, imagesTotal: 0 });
 
     let images = null, extractErr = null;
+    let encounteredRetries = false;
     for (let attempt = 0; attempt <= chapterRetries; attempt++) {
       if (downloadAllAbortFlag) break;
       try {
@@ -3435,7 +3607,21 @@ async function handleDownloadAllRequest(
         extractErr = null;
         break;
       }
-      catch (e) { extractErr = e; images = null; }
+      catch (e) {
+        extractErr = e;
+        images = null;
+        if (attempt < chapterRetries) {
+          encounteredRetries = true;
+          const retryAttempt = attempt + 1;
+          notify({
+            phase: 'retryingChapter', chapterIndex: globalIndex, totalChapters,
+            chapterLabel, imagesDone: 0, imagesTotal: 0,
+            retryAttempt, retryLimit: chapterRetries,
+          });
+          cdlLog('warn', `${chapterLabel}: reopening chapter (retry ${retryAttempt}/${chapterRetries})`);
+          await Promise.race([waitForChapterRecovery(retryAttempt, [e]), abortPromise]);
+        }
+      }
     }
     if (extractErr) {
       console.warn(`[ComixDL-All] Chapitre ${chapterLabel} échoué:`, extractErr.message);
@@ -3454,7 +3640,8 @@ async function handleDownloadAllRequest(
     // sparse or duplicated. Then sort the fetched files by page (they complete out
     // of order under concurrency) so the archive's entry order matches reading order.
     const ordered = images.slice().sort((a, b) => (a.index || 0) - (b.index || 0));
-    const files = [];
+    const filesByPage = new Map();
+    const failedPages = new Map();
     let bytes = 0, imagesProcessed = 0, firstImageError = null;
     for (let j = 0; j < ordered.length; j += batchSize) {
       if (downloadAllAbortFlag) break;
@@ -3462,22 +3649,98 @@ async function handleDownloadAllRequest(
       await Promise.allSettled(batch.map(async (img, k) => {
         const page = j + k + 1;
         const paddedIndex = String(page).padStart(padDigits, '0');
-        const fetched = await fetchImageToFile(paddedIndex, img.src, cfg, imageRetries);
+        const fetched = await fetchImageToFile(paddedIndex, img.src, cfg, imageRetries, (retry) => {
+          encounteredRetries = true;
+          notify({
+            phase: 'retryingImage', chapterIndex: globalIndex, totalChapters,
+            chapterLabel, imagesDone: filesByPage.size, imagesTotal: ordered.length,
+            imagePage: page, retryAttempt: retry.retryAttempt, retryLimit: retry.retryLimit,
+          });
+        });
         if (fetched.file) {
           fetched.file.page = page;
-          files.push(fetched.file);
+          filesByPage.set(page, fetched.file);
           bytes += fetched.file.bytes;
-        } else if (!firstImageError) {
-          firstImageError = fetched.error;
+        } else {
+          failedPages.set(page, { page, img, error: fetched.error });
+          if (!firstImageError) firstImageError = fetched.error;
         }
         imagesProcessed++;
         notify({ phase: 'downloading', chapterIndex: globalIndex, totalChapters,
                  chapterLabel, imagesDone: imagesProcessed, imagesTotal: ordered.length });
       }));
     }
-    files.sort((a, b) => a.page - b.page);
+
+    // A page may still fail after its per-image attempts when Cloudflare returns
+    // a short burst of 520/521 responses. Chapter retries perform a delayed,
+    // low-concurrency pass over only those missing pages; successful pages stay
+    // in memory and are never downloaded again.
+    // Recovery is deliberately sequential per chapter. With several chapter
+    // workers active, this still allows parallel recovery without repeating the
+    // original high-request burst that likely triggered the CDN errors.
+    const recoveryBatchSize = 1;
+    for (let retryAttempt = 1;
+      retryAttempt <= chapterRetries && failedPages.size && !downloadAllAbortFlag;
+      retryAttempt++) {
+      const pendingFailures = [...failedPages.values()].sort((a, b) => a.page - b.page);
+      encounteredRetries = true;
+      const errors = pendingFailures.map((failure) => failure.error).filter(Boolean);
+      const recoveryDelay = chapterRecoveryDelayMs(retryAttempt, errors);
+      for (const failure of pendingFailures) deferImageHost(failure.img.src, recoveryDelay);
+
+      notify({
+        phase: 'retryingImages', chapterIndex: globalIndex, totalChapters,
+        chapterLabel, imagesDone: filesByPage.size, imagesTotal: ordered.length,
+        missingImages: failedPages.size, retryAttempt, retryLimit: chapterRetries,
+      });
+      cdlLog('warn', `${chapterLabel}: retrying ${failedPages.size} missing image${failedPages.size === 1 ? '' : 's'} ` +
+        `(chapter retry ${retryAttempt}/${chapterRetries})`);
+      await Promise.race([waitForChapterRecovery(retryAttempt, errors), abortPromise]);
+      if (downloadAllAbortFlag) break;
+
+      for (let j = 0; j < pendingFailures.length; j += recoveryBatchSize) {
+        if (downloadAllAbortFlag) break;
+        const batch = pendingFailures.slice(j, j + recoveryBatchSize);
+        await Promise.allSettled(batch.map(async (failure) => {
+          const paddedIndex = String(failure.page).padStart(padDigits, '0');
+          const fetched = await fetchImageToFile(
+            paddedIndex,
+            failure.img.src,
+            cfg,
+            imageRetries,
+            (retry) => {
+              encounteredRetries = true;
+              notify({
+                phase: 'retryingImage', chapterIndex: globalIndex, totalChapters,
+                chapterLabel, imagesDone: filesByPage.size, imagesTotal: ordered.length,
+                imagePage: failure.page,
+                retryAttempt: retry.retryAttempt, retryLimit: retry.retryLimit,
+                recoveryAttempt: retryAttempt,
+              });
+            }
+          );
+          if (fetched.file) {
+            fetched.file.page = failure.page;
+            filesByPage.set(failure.page, fetched.file);
+            failedPages.delete(failure.page);
+            bytes += fetched.file.bytes;
+          } else {
+            failedPages.set(failure.page, { ...failure, error: fetched.error });
+            firstImageError = fetched.error || firstImageError;
+          }
+          notify({
+            phase: 'retryingImages', chapterIndex: globalIndex, totalChapters,
+            chapterLabel, imagesDone: filesByPage.size, imagesTotal: ordered.length,
+            missingImages: failedPages.size, retryAttempt, retryLimit: chapterRetries,
+          });
+        }));
+      }
+    }
+
+    const files = [...filesByPage.values()].sort((a, b) => a.page - b.page);
     if (files.length !== ordered.length) {
-      const error = formatImageDownloadFailure(ordered.length, files.length, firstImageError);
+      const unresolved = [...failedPages.values()].find((failure) => failure.error)?.error;
+      const error = formatImageDownloadFailure(ordered.length, files.length, unresolved || firstImageError);
       cdlLog('error', `${chapterLabel} failed: ${error}`);
       return {
         index: i, chapterUrl, chapterLabel, files: [], bytes: 0,
@@ -3487,6 +3750,7 @@ async function handleDownloadAllRequest(
     return {
       index: i, chapterUrl, chapterLabel, files, bytes,
       imagesTotal: ordered.length, imagesSaved: files.length, status: 'done',
+      hadRetries: encounteredRetries,
     };
   };
 
@@ -3494,8 +3758,6 @@ async function handleDownloadAllRequest(
   const results = new Array(chapters.length);
   const resolvers = new Array(chapters.length);
   const ready = chapters.map((_, i) => new Promise((res) => { resolvers[i] = res; }));
-  const abortPromise = _downloadAllAbortPromise();   // one reusable per-run signal
-
   let cursor = 0;        // next chapter index to grab
   let packedCount = 0;   // chapters consumed by the packer (packed or skipped)
   let packFailed = false;
@@ -3526,7 +3788,13 @@ async function handleDownloadAllRequest(
         notify({ phase: 'done', chapterIndex: globalIndex, totalChapters,
                  chapterLabel: result.chapterLabel, imagesDone: result.imagesSaved, imagesTotal: result.imagesTotal });
         cdlLog('ok', `${result.chapterLabel}: done (${result.imagesSaved} images)`);
-        if (rateMode === 'dynamic') rateDelay = Math.max(MIN_DELAY, rateDelay - 100); // success → slightly faster
+        if (rateMode === 'dynamic') {
+          // A recovered chapter is successful, but it is also evidence that the
+          // CDN is under pressure. Back off instead of immediately accelerating.
+          rateDelay = result.hadRetries
+            ? Math.min(MAX_DELAY, Math.max(MIN_DELAY, Math.round(rateDelay * 1.25)))
+            : Math.max(MIN_DELAY, rateDelay - 100);
+        }
       } else if (result.status === 'skipped') {
         notify({ phase: 'skipped', chapterIndex: globalIndex, totalChapters,
                  chapterLabel: result.chapterLabel, imagesDone: 0, imagesTotal: 0 });
