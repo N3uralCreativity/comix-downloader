@@ -199,8 +199,18 @@
     .footer { padding: 9px 16px 11px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
     .footer-note { font-size: 10px; color: var(--muted-2); }
     .footer-note strong { color: var(--muted); font-weight: 600; }
-    .footer-status { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted-2); }
-    .footer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px rgba(34,197,94,.4); }
+    .footer-status { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted-2); transition: color .15s; }
+    .footer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-2); box-shadow: none; transition: background .15s, box-shadow .15s; }
+    .footer-status[data-state="active"] { color: var(--muted); }
+    .footer-status[data-state="active"] .footer-dot { background: var(--ok); box-shadow: 0 0 6px rgba(34,197,94,.4); }
+    .footer-status[data-state="downloading"] { color: var(--accent); }
+    .footer-status[data-state="downloading"] .footer-dot {
+      background: var(--accent); box-shadow: 0 0 7px var(--accent-soft); animation: footer-status-pulse 1s ease-in-out infinite;
+    }
+    @keyframes footer-status-pulse { 50% { opacity: .45; transform: scale(.72); } }
+    @media (prefers-reduced-motion: reduce) {
+      .footer-status[data-state="downloading"] .footer-dot { animation: none; }
+    }
   </style>
 </head>
 <body>
@@ -297,7 +307,10 @@
 
   <div class="footer">
     <span class="footer-note">by <strong>N3uralCreativity</strong> · MIT</span>
-    <span class="footer-status"><span class="footer-dot" title="Extension active"></span> Active</span>
+    <span class="footer-status" id="footer-status" data-state="checking" title="Checking extension status" role="status" aria-live="polite">
+      <span class="footer-dot" aria-hidden="true"></span>
+      <span id="footer-status-label">Checking...</span>
+    </span>
   </div>
 
   <script src="popup.js"></script>

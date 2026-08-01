@@ -375,15 +375,31 @@ function restoreIdleBadge() {
   void refreshIdleBadge();
 }
 
-function hasActiveDownloadWork() {
-  if (typeof CDLUpdateState === 'undefined') return true;
-  return CDLUpdateState.hasActiveDownloadWork({
+function downloadActivitySnapshot() {
+  return {
     downloadAllActive: !!(downloadAllSession && downloadAllSession.active),
     activeChapterDownloads,
     queuedChapterDownloads: downloadQueue.length,
     pendingExtractionTabs: pendingDownloads.size,
     pendingArchive: !!_pendingZip,
-  });
+  };
+}
+
+function hasActiveDownloadWork() {
+  if (typeof CDLUpdateState === 'undefined') return true;
+  return CDLUpdateState.hasActiveDownloadWork(downloadActivitySnapshot());
+}
+
+function hasPopupDownloadActivity() {
+  const activity = downloadActivitySnapshot();
+  if (typeof CDLUpdateState !== 'undefined') {
+    return CDLUpdateState.hasActiveDownloadWork(activity);
+  }
+  return activity.downloadAllActive ||
+    activity.activeChapterDownloads > 0 ||
+    activity.queuedChapterDownloads > 0 ||
+    activity.pendingExtractionTabs > 0 ||
+    activity.pendingArchive;
 }
 
 if (chrome.runtime.onUpdateAvailable) {
@@ -1221,6 +1237,11 @@ async function resumeDownloadAllFromCheckpoint(originTabId, tabUrl = '') {
 // ── Réception des messages depuis content_title.js ───────────────────────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'getPopupActivity') {
+    sendResponse({ ok: true, downloading: hasPopupDownloadActivity() });
+    return false;
+  }
+
   if (message.action === 'getAvailableUpdate') {
     getAvailableUpdateState()
       .then((update) => sendResponse({ ok: true, update }))

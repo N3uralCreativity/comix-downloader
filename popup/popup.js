@@ -13,6 +13,38 @@ function isFirefoxAndroid(userAgent) {
   return /Android/i.test(ua) && /Firefox\//i.test(ua);
 }
 
+function isSupportedTabUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return (url.protocol === 'https:' || url.protocol === 'http:') &&
+      url.hostname === 'comix.to';
+  } catch (_) {
+    return false;
+  }
+}
+
+function derivePopupActivityState(tabUrl, activity) {
+  if (activity && activity.downloading === true) {
+    return {
+      key: 'downloading',
+      label: 'Downloading',
+      title: 'A download is in progress',
+    };
+  }
+  if (isSupportedTabUrl(tabUrl)) {
+    return {
+      key: 'active',
+      label: 'Active',
+      title: 'Extension active on this tab',
+    };
+  }
+  return {
+    key: 'inactive',
+    label: 'Not active',
+    title: 'The current tab is not supported',
+  };
+}
+
 function applyPlatformLayout(userAgent) {
   document.documentElement.classList.toggle('firefox-android', isFirefoxAndroid(userAgent));
 }
@@ -54,6 +86,41 @@ function sendRuntimeMessage(message) {
       resolve(null);
     }
   });
+}
+
+function queryActiveTab() {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        void chrome.runtime.lastError;
+        resolve(Array.isArray(tabs) && tabs.length ? tabs[0] : null);
+      });
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+function renderPopupActivityState(state) {
+  const status = document.getElementById('footer-status');
+  const label = document.getElementById('footer-status-label');
+  if (!status || !label) return;
+  status.dataset.state = state.key;
+  status.title = state.title;
+  label.textContent = state.label;
+}
+
+async function refreshPopupActivityState() {
+  const [tab, activity] = await Promise.all([
+    queryActiveTab(),
+    sendRuntimeMessage({ action: 'getPopupActivity' }),
+  ]);
+  renderPopupActivityState(derivePopupActivityState(tab && tab.url, activity));
+}
+
+function startPopupActivityUpdates() {
+  void refreshPopupActivityState();
+  window.setInterval(() => { void refreshPopupActivityState(); }, 750);
 }
 
 async function showReviewPromptWhenEligible() {
@@ -228,6 +295,7 @@ function applySiteTheme() {
 
 async function init() {
   applySiteTheme();
+  startPopupActivityUpdates();
   // Version from manifest
   const manifest = chrome.runtime.getManifest();
   const verEl = document.getElementById('ext-version');
@@ -277,7 +345,7 @@ async function init() {
 }
 
 if (typeof module === 'object' && module.exports) {
-  module.exports = { isFirefoxAndroid };
+  module.exports = { isFirefoxAndroid, isSupportedTabUrl, derivePopupActivityState };
 } else {
   applyPlatformLayout(navigator.userAgent);
   init();
