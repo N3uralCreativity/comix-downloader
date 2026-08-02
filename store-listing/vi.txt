@@ -4,7 +4,7 @@ Lưu chương comix.to dưới dạng ZIP hoặc CBZ, tải tất cả, theo dõ
 MÔ TẢ CHI TIẾT
 Comix Downloader là tiện ích trình duyệt mã nguồn mở, không chính thức dành cho comix.to.
 
-Tiện ích thêm nút tải xuống trực tiếp vào trang truyện và danh sách chương để bạn lưu một chương hoặc toàn bộ bộ truyện dưới dạng ZIP hay CBZ.
+Tiện ích thêm nút tải xuống trực tiếp vào trang truyện và danh sách chương để bạn lưu một chương hoặc toàn bộ bộ truyện dưới dạng ZIP hoặc CBZ.
 
 Tính năng chính:
 - Tải từng chương hoặc toàn bộ bộ truyện

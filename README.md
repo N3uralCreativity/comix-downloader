@@ -31,7 +31,7 @@ If the download buttons aren't showing up, just refresh the page. Your browser t
 
 ## What it does
 
-Adds download buttons directly to every comix.to title page. grab a single chapter or the entire series, all neatly zipped and organized.
+Adds download buttons directly to every comix.to title page. Grab a single chapter or the entire series as organized ZIP or CBZ output.
 
 It also blocks comix.to's intermittent click-anywhere ads, popunders, and transparent ad overlays. Ad blocking is enabled by default and can be turned off under **Settings -> Additional Features**. Normal links and the site's share popup remain available.
 
@@ -39,7 +39,7 @@ It also blocks comix.to's intermittent click-anywhere ads, popunders, and transp
 
 ## Download an entire series in one click
 
-Hit **Download All** on any title page. Every chapter is downloaded, packaged into its own folder, and bundled into a single ZIP named, padded, and sorted.
+Hit **Download All** on any title page. Every chapter is downloaded in order and packaged as image folders or one CBZ per chapter. Large series use resumable outer ZIP parts with separate chapter limits for each format.
 
 ![Download All button on title page](assets/screenshot-title.png) (peak Manhwa btw)
 

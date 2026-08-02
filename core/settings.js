@@ -15,6 +15,15 @@
   'use strict';
 
   var STORAGE_KEY = 'cdlSettings';
+  // PDF output remains implemented and packaged, but is not ready for users yet.
+  // Flip this one flag when the feature is ready to return to the UI.
+  var PDF_OUTPUT_VISIBLE = false;
+  var OUTPUT_FORMATS = PDF_OUTPUT_VISIBLE ? ['zip', 'cbz', 'pdf'] : ['zip', 'cbz'];
+  var OUTPUT_FORMAT_OPTIONS = {
+    zip: 'ZIP (folders of images)',
+    cbz: 'CBZ (per chapter, library-ready)'
+  };
+  if (PDF_OUTPUT_VISIBLE) OUTPUT_FORMAT_OPTIONS.pdf = 'PDF (one document per chapter)';
 
   // chrome.* is present in every extension context; Firefox also exposes browser.*.
   var storage = (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local)
@@ -25,13 +34,15 @@
   var DEFAULTS = {
     // Download & ZIP
     'download.splitMode': 'multipart',     // 'multipart' | 'single'
-    'download.chaptersPerPart': 5,         // ZIP_PART_MAX_CHAPTERS
+    'download.chaptersPerPart': 5,         // ZIP chapters per outer part
+    'download.cbzChaptersPerPart': 10,     // CBZ chapters per outer part
+    'download.pdfChaptersPerPart': 5,      // PDF chapters per outer part
     'download.mbPerPart': 300,             // ZIP_PART_MAX_BYTES / 1MB
     'download.concurrentChapters': 2,      // how many chapters "Download All" fetches at once (up to 10)
     'download.skipDownloaded': true,       // in Download All, default to only chapters not already grabbed
 
     // Output format & library
-    'output.format': 'zip',                // 'zip' (folders of images) | 'cbz' (per-chapter comic file)
+    'output.format': 'zip',                // 'zip' | 'cbz' | 'pdf'
     'output.includeComicInfo': true,       // write ComicInfo.xml per chapter
     'output.includeSeriesMeta': false,     // save cover.jpg + series.json for the series
     'output.folderLayout': 'default',      // 'default' (Ch0001) | 'kavita' (Series/Series - Chapter 0001)
@@ -157,7 +168,11 @@
       options: { multipart: 'Multiple parts (recommended)', single: 'One single ZIP' },
       warn: 'A single ZIP for a whole series can exhaust memory and fail to download or unzip on large titles. Multi-part is much safer.' },
     'download.chaptersPerPart': { type: 'int', min: 1, max: 50, risk: 'none',
-      label: 'Chapters per part', help: 'Start a new ZIP part after this many chapters.' },
+      label: 'ZIP chapters per part', help: 'For ZIP output, start a new outer ZIP part after this many chapters.' },
+    'download.cbzChaptersPerPart': { type: 'int', min: 1, max: 50, risk: 'none',
+      label: 'CBZ chapters per part', help: 'For CBZ output, place this many chapter CBZ files in each outer ZIP part.' },
+    'download.pdfChaptersPerPart': { type: 'int', min: 1, max: 50, risk: 'none',
+      label: 'PDF chapters per part', help: 'For PDF output, place this many chapter PDF files in each outer ZIP part.' },
     'download.mbPerPart': { type: 'int', min: 50, max: 2000, risk: 'glitchy',
       label: 'Max size per part (MB)', help: 'Start a new ZIP part after this size.',
       warn: 'Parts larger than ~800 MB may strain memory while the ZIP is being built.' },
@@ -167,9 +182,9 @@
     'download.skipDownloaded': { type: 'bool', risk: 'none',
       label: 'Skip already-downloaded', help: 'In "Download All", default to only the chapters you have not downloaded yet. You can still choose "All" in the panel to re-download everything.' },
 
-    'output.format': { type: 'enum', enum: ['zip', 'cbz'], risk: 'none',
-      label: 'Download format', help: 'ZIP keeps plain folders of images. CBZ makes one comic file per chapter that opens directly in Komga, Kavita, Mihon, YACReader, etc.',
-      options: { zip: 'ZIP (folders of images)', cbz: 'CBZ (per chapter, library-ready)' } },
+    'output.format': { type: 'enum', enum: OUTPUT_FORMATS, risk: 'none',
+      label: 'Download format', help: 'ZIP keeps folders of images. CBZ creates a comic archive per chapter.',
+      options: OUTPUT_FORMAT_OPTIONS },
     'output.includeComicInfo': { type: 'bool', risk: 'none',
       label: 'Include ComicInfo.xml', help: 'Add a ComicInfo.xml (series, number, count, summary, tags…) to each chapter so library servers index it correctly.' },
     'output.includeSeriesMeta': { type: 'bool', risk: 'none',
@@ -338,7 +353,8 @@
   // ── Tab grouping for the options UI ──────────────────────────────────────────
   var TABS = [
     { id: 'download', label: 'Download & ZIP', icon: 'box',
-      keys: ['download.concurrentChapters', 'download.splitMode', 'download.chaptersPerPart', 'download.mbPerPart'] },
+      keys: ['download.concurrentChapters', 'download.splitMode', 'download.chaptersPerPart', 'download.cbzChaptersPerPart']
+        .concat(PDF_OUTPUT_VISIBLE ? ['download.pdfChaptersPerPart'] : [], ['download.mbPerPart']) },
     { id: 'output', label: 'Output & Library', icon: 'box',
       keys: ['output.format', 'output.includeComicInfo', 'output.includeSeriesMeta', 'output.folderLayout', 'download.skipDownloaded'] },
     { id: 'perf', label: 'Performance', icon: 'gauge',
@@ -590,6 +606,7 @@
 
   var CDLSettings = {
     STORAGE_KEY: STORAGE_KEY,
+    PDF_OUTPUT_VISIBLE: PDF_OUTPUT_VISIBLE,
     DEFAULTS: DEFAULTS,
     SCHEMA: SCHEMA,
     TABS: TABS,

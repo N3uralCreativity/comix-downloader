@@ -481,14 +481,14 @@
       <ul class="plain">
         <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Click <strong>Download All</strong> in the sidebar of the title page.</li>
         <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> An options panel opens — pick ZIP or CBZ, metadata, and which chapters (or just hit <strong>Start</strong>). See <a href="#library">Output, library &amp; sync</a>.</li>
-        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Every chapter is fetched, named and padded, then bundled into one ZIP (with a <code>.cbz</code> per chapter in CBZ mode).</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Every chapter is fetched in order, then packaged as image folders or one <code>.cbz</code> per chapter inside resumable ZIP parts.</li>
         <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Open the extension popup to watch live progress and the activity log.</li>
       </ul>
 
       <h3>Download a single chapter</h3>
       <ul class="plain">
         <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Each chapter row has its own download button on the right.</li>
-        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Click it to grab just that chapter as a ZIP.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Click it to save that chapter using your selected ZIP or CBZ format.</li>
       </ul>
 
       <div class="shot" style="margin-top:18px;max-width:520px;">
@@ -560,8 +560,8 @@
       <h3>How it's organized</h3>
       <p>Settings are grouped into labelled sections:</p>
       <ul class="tab-list">
-        <li><strong>Download &amp; ZIP</strong> — multi-part (default) or single ZIP, the limit per part, and how many chapters to fetch at once.</li>
-        <li><strong>Output &amp; Library</strong> — ZIP vs CBZ, ComicInfo.xml, series info, folder layout, and skipping already-downloaded chapters.</li>
+        <li><strong>Download &amp; ZIP</strong> — multi-part (default) or single ZIP, separate ZIP/CBZ chapter limits per part, and how many chapters to fetch at once.</li>
+        <li><strong>Output &amp; Library</strong> — ZIP or CBZ, ComicInfo.xml, series info, folder layout, and skipping already-downloaded chapters.</li>
         <li><strong>Performance</strong> — parallel image downloads, pacing between chapters, and network timeouts.</li>
         <li><strong>Retries</strong> — re-attempt images or chapters that fail.</li>
         <li><strong>Naming</strong> — image padding and templates for chapter folders and ZIP names, with a live preview.</li>
@@ -607,7 +607,7 @@
       <p>Clicking <strong>Download All</strong> opens a small options panel first — with smart defaults, so you can just hit <strong>Start</strong>. Everything here is also in <em>Settings → Output &amp; Library</em>, and remembered per-series if you tick “Remember for this series”.</p>
 
       <h3>ZIP or CBZ</h3>
-      <p>Choose <strong>ZIP</strong> (plain folders of images) or <strong>CBZ</strong> — one comic file per chapter that opens directly in Komga, Kavita, Mihon (local source), YACReader and similar. With CBZ, “Download All” still gives you one ZIP, containing a tidy <code>.cbz</code> per chapter.</p>
+      <p>Choose <strong>ZIP</strong> for plain image folders or <strong>CBZ</strong> for one comic archive per chapter that opens directly in Komga, Kavita, Mihon (local source), YACReader and similar. CBZ is a ZIP-based comic container, so it is not inherently smaller than ZIP. Download All keeps each chapter file inside resumable outer ZIP parts, using the separate per-format limits from Settings.</p>
 
       <h3>Metadata for your library</h3>
       <ul class="plain">
@@ -707,6 +707,14 @@
       </details>
 
       <details>
+        <summary>Cloudflare keeps asking me to verify</summary>
+        <div class="ans">
+          <p>The extension cannot and does not bypass Cloudflare. When comix.to presents a challenge, the download pauses, opens exactly one real verification tab, and resumes automatically after you complete it. Other chapter tabs wait behind that verification instead of opening more challenges.</p>
+          <p>If verification loops, keep <strong>Dynamic</strong> rate limiting enabled, lower <strong>Chapters at once</strong> and <strong>Parallel image downloads</strong>, use a stable connection, and temporarily disable a VPN, proxy or another blocker that may interfere with Cloudflare scripts. See Cloudflare's <a href="https://developers.cloudflare.com/cloudflare-challenges/troubleshooting/challenge-solve-issues/" target="_blank" rel="noopener">challenge troubleshooting guide</a>.</p>
+        </div>
+      </details>
+
+      <details>
         <summary>A series download stopped partway through</summary>
         <div class="ans">
           <p>The most common cause is the browser being closed or going to sleep mid-session. Keep the window open and your machine awake during large downloads. You can re-run <strong>Download All</strong> — or grab the missing chapters individually.</p>
@@ -716,7 +724,7 @@
       <details>
         <summary>A page looks scrambled (tiles in the wrong places)</summary>
         <div class="ans">
-          <p>Some comix.to pages are served as a shuffled grid of tiles that the reader reassembles on screen. As of <strong>v2.3.3 (DeScrambling Revamp)</strong>, the extension unscrambles these automatically while building the ZIP/CBZ — scrambled pages come out correct, with no extra steps.</p>
+          <p>Some comix.to pages are served as a shuffled grid of tiles that the reader reassembles on screen. As of <strong>v2.3.3 (DeScrambling Revamp)</strong>, the extension unscrambles these automatically while building ZIP or CBZ output — scrambled pages come out correct, with no extra steps.</p>
           <p>If a page still looks scrambled, it almost always means it only downloaded partially (a slow or briefly blocked image). Just <strong>re-download that chapter</strong>. Keeping rate limiting on and not pushing "Chapters at once" too high makes partial downloads less likely.</p>
         </div>
       </details>
@@ -724,7 +732,7 @@
       <details>
         <summary>Where do my files end up?</summary>
         <div class="ans">
-          <p>On desktop, chapters arrive as a single ZIP in your browser's normal downloads folder, with each chapter in its own named, padded subfolder.</p>
+          <p>On desktop, a single chapter arrives as your selected ZIP or CBZ. Download All arrives as one or more ZIP parts containing the selected per-chapter layout.</p>
           <p>In Mihon on Android, downloads are stored under <code>Mihon/downloads/Comix/&lt;Manga&gt;/&lt;Chapter&gt;/</code> for offline reading.</p>
         </div>
       </details>

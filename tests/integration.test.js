@@ -94,6 +94,29 @@ check('Download All frame exposes Download, ZIP, and Save stages',
   contentTitleSource.includes('data-stage="save"'));
 check('Download All frame consumes real ZIP and browser save percentages',
   contentTitleSource.includes('msg.zipPercent') && contentTitleSource.includes('msg.savePercent'));
+check('PDF output is available per chapter with visible build progress',
+  backgroundSource.includes('buildChapterPdfOutput') &&
+  contentTitleSource.includes("PDF_OUTPUT_VISIBLE ? '<div class=\"cdl-op-card\" data-fmt=\"pdf\"") &&
+  contentTitleSource.includes("phase === 'buildingPdf'"));
+check('PDF output remains dormant at every user-facing settings boundary',
+  S.PDF_OUTPUT_VISIBLE === false &&
+  S.SCHEMA['output.format'].enum.join(',') === 'zip,cbz' &&
+  contentTitleSource.includes('const visibleFormats = PDF_OUTPUT_VISIBLE'));
+check('visible format cards always divide the available width evenly',
+  contentTitleSource.includes('grid-template-columns:repeat(${PDF_OUTPUT_VISIBLE ? 3 : 2},minmax(0,1fr))'));
+check('PDF work overlaps chapter fetching without concurrent PDF builds',
+  backgroundSource.includes('let pdfBuildChain = Promise.resolve()') &&
+  backgroundSource.includes('enqueuePdfBuild(async () =>') &&
+  backgroundSource.includes('files: [], pdfBytes'));
+check('PDF finalization keeps the Manifest V3 worker alive and remains visible',
+  backgroundSource.includes('withExtensionKeepAlive') &&
+  backgroundSource.includes('chrome.runtime.getPlatformInfo(') &&
+  contentTitleSource.includes('msg.pdfFinalizing === true'));
+check('Cloudflare challenges pause for one user-completed browser verification',
+  backgroundSource.includes('coordinateCloudflareChallenge') &&
+  backgroundSource.includes('_cloudflareChallengeGate') &&
+  backgroundSource.includes("reportCloudflareChallenge(onState, 'required')") &&
+  !backgroundSource.includes('turnstile-bypass'));
 check('Download All frame no longer substitutes a fake 99 percent ZIP state',
   !contentTitleSource.includes("style.width            = '99%'") &&
   !contentTitleSource.includes("style.width = '99%'"));

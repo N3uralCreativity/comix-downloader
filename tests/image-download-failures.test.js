@@ -112,13 +112,21 @@ check('single-chapter download rejects incomplete image sets before ZIP generati
 
 const allEvents = {
   progress: [], errors: [], done: [], saves: [], recorded: [], logs: [],
-  checkpoints: [], sessions: [], extracted: [], reviews: [],
+  checkpoints: [], sessions: [], extracted: [], reviews: [], pdfBuilds: [], packed: [],
 };
 let fetchMode = 'fail';
 let extractMode = 'pass';
 let chaptersPerPart = 30;
 let chapterRetriesSetting = 1;
 let archiveDeliveryMode = 'confirmed';
+let outputFormat = 'zip';
+let pipelineTestActive = false;
+let activePdfBuilds = 0;
+let maxActivePdfBuilds = 0;
+let resolveFirstPdfStarted = null;
+let firstPdfStarted = Promise.resolve();
+let resolveSecondChapterFetched = null;
+let secondChapterFetched = Promise.resolve();
 const imageFetchCalls = new Map();
 const extractCalls = new Map();
 const allContext = {
@@ -133,7 +141,8 @@ const allContext = {
     'retry.imageRetries': 1,
     'retry.chapterRetries': chapterRetriesSetting,
   }),
-  resolveOutputOptions: (_cfg, options) => ({ format: 'zip', slug: 'series', ...(options || {}) }),
+  resolveOutputOptions: (_cfg, options) => ({ format: outputFormat, slug: 'series', ...(options || {}) }),
+  chaptersPerPartForFormat: (cfg) => cfg['download.chaptersPerPart'] || 30,
   getLibraryConfig: async () => null,
   chapterConcurrencyLimit: () => 2,
   createDownloadAllResumeData({ chapters, mangaName, zipName, options, resumeState }) {
@@ -198,6 +207,11 @@ const allContext = {
   },
   verifyEnumeratedImages: async (images) => images,
   fetchImageToFile: async (index, src) => {
+    if (pipelineTestActive && src.includes('/good/2/')) {
+      await firstPdfStarted;
+      allEvents.pdfBuilds.push(`fetch-ch2:pdfs-${activePdfBuilds}`);
+      if (resolveSecondChapterFetched) resolveSecondChapterFetched();
+    }
     const calls = (imageFetchCalls.get(src) || 0) + 1;
     imageFetchCalls.set(src, calls);
     const recoversMissingPage = fetchMode === 'recover-missing' &&
@@ -219,7 +233,24 @@ const allContext = {
     return item.totalBytes > 0 ? item.bytesReceived / item.totalBytes * 100 : null;
   },
   recordChapterDownloaded: (_slug, label) => allEvents.recorded.push(label),
-  addChapterToOuter: async (_zip, result) => result.bytes,
+  buildChapterPdfOutput: async (files, _opts, chapterLabel, _chapterUrl, _mangaName, onProgress) => {
+    activePdfBuilds++;
+    maxActivePdfBuilds = Math.max(maxActivePdfBuilds, activePdfBuilds);
+    allEvents.pdfBuilds.push(`start:${chapterLabel}`);
+    if (onProgress) onProgress({ current: 1, total: files.length, finalizing: false });
+    if (pipelineTestActive && chapterLabel === 'Ch1') {
+      if (resolveFirstPdfStarted) resolveFirstPdfStarted();
+      await secondChapterFetched;
+    }
+    if (onProgress) onProgress({ current: files.length, total: files.length, finalizing: true });
+    allEvents.pdfBuilds.push(`end:${chapterLabel}`);
+    activePdfBuilds--;
+    return new Uint8Array([1, 2, 3]);
+  },
+  addChapterToOuter: async (_zip, result) => {
+    allEvents.packed.push({ chapterLabel: result.chapterLabel, hasPdf: !!result.pdfBytes });
+    return result.pdfBytes ? result.pdfBytes.byteLength : result.bytes;
+  },
   _signalDownloadAllAbort() {},
   addSeriesMetaToOuter: async () => {},
   notifyDownloadAllCancelled() {},
@@ -243,6 +274,10 @@ function resetAllEvents() {
   Object.values(allEvents).forEach((items) => { items.length = 0; });
   imageFetchCalls.clear();
   extractCalls.clear();
+  outputFormat = 'zip';
+  pipelineTestActive = false;
+  activePdfBuilds = 0;
+  maxActivePdfBuilds = 0;
 }
 
 async function run() {
@@ -464,6 +499,29 @@ async function run() {
     allEvents.checkpoints.some((checkpoint) =>
       checkpoint.checkpointIndex === 4 && checkpoint.nextZipPart === 3 &&
       checkpoint.terminalCounts.done === 4));
+
+  resetAllEvents();
+  fetchMode = 'pass';
+  chaptersPerPart = 2;
+  outputFormat = 'pdf';
+  pipelineTestActive = true;
+  firstPdfStarted = new Promise((resolve) => { resolveFirstPdfStarted = resolve; });
+  secondChapterFetched = new Promise((resolve) => { resolveSecondChapterFetched = resolve; });
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },
+  ], 'Series', 'series.zip', 7, {});
+  check('a second chapter keeps fetching while the first chapter PDF is being built',
+    allEvents.pdfBuilds.includes('fetch-ch2:pdfs-1'));
+  check('PDF builds remain serialized to bound CPU and memory usage',
+    maxActivePdfBuilds === 1 &&
+    allEvents.pdfBuilds.filter((event) => event.startsWith('start:')).length === 2);
+  check('the packer receives completed PDF bytes instead of rebuilding image pages',
+    allEvents.packed.length === 2 && allEvents.packed.every((entry) => entry.hasPdf));
+  check('Download All exposes PDF page and finalization progress before succeeding',
+    allEvents.progress.some((event) => event.phase === 'buildingPdf' && event.pdfFinalizing === false) &&
+    allEvents.progress.some((event) => event.phase === 'buildingPdf' && event.pdfFinalizing === true) &&
+    allEvents.done.length === 1 && allEvents.errors.length === 0);
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);

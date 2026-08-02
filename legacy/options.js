@@ -78,6 +78,8 @@
   // Rows that are only meaningful when another setting has a certain value.
   var DEPENDS = {
     'download.chaptersPerPart': function () { return draft['download.splitMode'] === 'multipart'; },
+    'download.cbzChaptersPerPart': function () { return draft['download.splitMode'] === 'multipart'; },
+    'download.pdfChaptersPerPart': function () { return draft['download.splitMode'] === 'multipart'; },
     'download.mbPerPart':       function () { return draft['download.splitMode'] === 'multipart'; },
     'perf.rateBaseMs':          function () { return draft['perf.rateLimitMode'] !== 'off'; },
     'perf.rateMinMs':           function () { return draft['perf.rateLimitMode'] === 'dynamic'; },

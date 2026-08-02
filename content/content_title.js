@@ -46,6 +46,7 @@ const ICON_ERROR = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="1
 
 // ── User settings (loaded async; v1.1.2 defaults until then) ────────────────────
 let CFG = (typeof CDLSettings !== 'undefined') ? Object.assign({}, CDLSettings.DEFAULTS) : {};
+const PDF_OUTPUT_VISIBLE = typeof CDLSettings !== 'undefined' && CDLSettings.PDF_OUTPUT_VISIBLE === true;
 
 // Replace a node's children from a trusted HTML string without touching innerHTML.
 // All callers pass internal icon constants + escapeHtml()'d text. Parsing with
@@ -818,6 +819,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         progressSpan.textContent = `${message.current}/${message.total}`;
       }
     }
+  } else if (message.action === 'downloadPackaging') {
+    const btn = findButtonByChapterUrl(message.chapterUrl);
+    if (btn && btn.getAttribute('data-state') === 'loading') {
+      const progressSpan = btn.querySelector(`.${PROGRESS_SPAN_CLASS}`);
+      if (progressSpan) {
+        progressSpan.textContent = message.finalizing
+          ? 'PDF save'
+          : `PDF ${message.current}/${message.total}`;
+      }
+      btn.title = message.finalizing ? 'Finalizing chapter PDF' : 'Building ordered chapter PDF';
+    }
+  } else if (message.action === 'downloadChallenge') {
+    const btn = findButtonByChapterUrl(message.chapterUrl);
+    if (btn && btn.getAttribute('data-state') === 'loading') {
+      const progressSpan = btn.querySelector(`.${PROGRESS_SPAN_CLASS}`);
+      if (progressSpan) progressSpan.textContent = message.state === 'required' ? 'Verify' : 'Waiting';
+      btn.title = message.state === 'required'
+        ? 'Complete Cloudflare verification in the opened tab'
+        : 'Waiting for Cloudflare verification';
+    }
   } else if (message.action === 'downloadDone') {
     const btn = findButtonByChapterUrl(message.chapterUrl);
     if (btn) setButtonState(btn, 'done', null);
@@ -867,7 +888,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const bytes = atob(message.base64);
       const arr = new Uint8Array(bytes.length);
       for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-      const blob = new Blob([arr], { type: 'application/zip' });
+      const mime = /\.pdf$/i.test(message.filename || '') ? 'application/pdf' : 'application/zip';
+      const blob = new Blob([arr], { type: mime });
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
@@ -1788,12 +1810,12 @@ function injectOptsStyles() {
     .cdl-op-close:hover { color:var(--cdl-text-strong); background:var(--cdl-hover); }
     .cdl-op-body { padding:14px 16px; display:flex; flex-direction:column; gap:14px; }
     .cdl-op-sec-label { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--cdl-muted); margin-bottom:7px; }
-    .cdl-op-cards { display:flex; gap:9px; }
+    .cdl-op-cards { display:grid; grid-template-columns:repeat(${PDF_OUTPUT_VISIBLE ? 3 : 2},minmax(0,1fr)); gap:9px; }
     .cdl-op-card { flex:1; border:1.5px solid var(--cdl-border); border-radius:10px; padding:10px 11px; cursor:pointer; transition:border-color .12s, background .12s; }
     .cdl-op-card:hover { background:var(--cdl-hover); }
     .cdl-op-card.sel { border-color:var(--cdl-accent); background:var(--cdl-accent-bg); }
     .cdl-op-card .t { font-weight:600; color:var(--cdl-text-strong); font-size:13px; }
-    .cdl-op-card .d { color:var(--cdl-muted); font-size:11px; margin-top:3px; line-height:1.35; }
+    .cdl-op-card .d { color:var(--cdl-muted); font-size:11px; margin-top:3px; line-height:1.35; overflow-wrap:anywhere; }
     .cdl-op-row { display:flex; align-items:center; gap:9px; }
     .cdl-op-check { display:flex; align-items:flex-start; gap:9px; cursor:pointer; }
     .cdl-op-check input { margin-top:2px; accent-color:var(--cdl-accent); width:15px; height:15px; flex-shrink:0; }
@@ -1880,6 +1902,7 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
         <div class="cdl-op-cards">
           <div class="cdl-op-card" data-fmt="zip"><div class="t">ZIP</div><div class="d">Plain folders of images.</div></div>
           <div class="cdl-op-card" data-fmt="cbz"><div class="t">CBZ</div><div class="d">One comic file per chapter — opens in Komga, Kavita, Mihon, YACReader…</div></div>
+          ${PDF_OUTPUT_VISIBLE ? '<div class="cdl-op-card" data-fmt="pdf"><div class="t">PDF</div><div class="d">One ordered document per chapter.</div></div>' : ''}
         </div>
       </div>
       <label class="cdl-op-check"><input type="checkbox" id="cdl-op-comicinfo"><span><span class="t">Include ComicInfo.xml</span><br><span class="d">Series, number, tags — so library servers index each chapter.</span></span></label>
@@ -1921,13 +1944,25 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
   document.body.appendChild(backdrop);
 
   // ── State + wiring ──
-  let format = def.format;
+  const visibleFormats = PDF_OUTPUT_VISIBLE ? ['zip', 'cbz', 'pdf'] : ['zip', 'cbz'];
+  let format = visibleFormats.includes(def.format) ? def.format : 'zip';
   const q = (id) => panel.querySelector(id);
   const cards = [...panel.querySelectorAll('.cdl-op-card')];
-  const selectFormat = (f) => { format = f; cards.forEach((c) => c.classList.toggle('sel', c.dataset.fmt === f)); };
+  const comicInfoInput = q('#cdl-op-comicinfo');
+  const syncFormatControls = () => {
+    const unavailable = format === 'pdf';
+    comicInfoInput.disabled = unavailable;
+    const row = comicInfoInput.closest('.cdl-op-check');
+    if (row) row.style.opacity = unavailable ? '.5' : '';
+  };
+  const selectFormat = (f) => {
+    format = f;
+    cards.forEach((c) => c.classList.toggle('sel', c.dataset.fmt === f));
+    syncFormatControls();
+  };
   cards.forEach((c) => c.addEventListener('click', () => { selectFormat(c.dataset.fmt); updateEstimate(); }));
   selectFormat(format);
-  q('#cdl-op-comicinfo').checked = def.includeComicInfo;
+  comicInfoInput.checked = def.includeComicInfo;
   q('#cdl-op-meta').checked = def.includeSeriesMeta;
   q('#cdl-op-layout').value = def.folderLayout;
   const scopeRadio = (v) => panel.querySelector(`input[name="cdl-op-scope"][value="${v}"]`);
@@ -1959,7 +1994,8 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
     const n = selectedChapters().length;
     const mb = Math.max(1, Math.round(n * 6)); // ~6 MB/chapter, very rough
     const lib = (format === 'cbz' && libPushEnabled) ? ' · each CBZ will also be pushed to your library server' : '';
-    q('#cdl-op-estimate').textContent = `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title)${lib}`;
+    const pdf = format === 'pdf' ? ' · WebP/AVIF pages are converted losslessly for PDF compatibility' : '';
+    q('#cdl-op-estimate').textContent = `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title)${lib}${pdf}`;
     q('#cdl-op-start').disabled = n === 0;
   };
   panel.querySelectorAll('input[name="cdl-op-scope"], #cdl-op-from, #cdl-op-to')
@@ -2295,7 +2331,10 @@ function _dlAllSetChapterProgress(completed, totalChapters) {
   return percent;
 }
 
-function _dlAllSetArchiveProgress({ stage, percent, zipPart, finalPart, indeterminate = false }) {
+function _dlAllSetArchiveProgress({
+  stage, percent, zipPart, finalPart, indeterminate = false,
+  customLabel = '', ariaLabel = '',
+}) {
   const panel = document.getElementById('cdl-ap-archive');
   if (!panel) return;
   const value = Number(percent);
@@ -2308,14 +2347,14 @@ function _dlAllSetArchiveProgress({ stage, percent, zipPart, finalPart, indeterm
   panel.classList.toggle('is-indeterminate', indeterminate || !hasPercent);
   panel.setAttribute('aria-hidden', 'false');
   const label = document.getElementById('cdl-ap-archive-label');
-  if (label) label.textContent = `${isSaving ? 'Saving ZIP' : 'Building ZIP'}${partText}`;
+  if (label) label.textContent = customLabel || `${isSaving ? 'Saving ZIP' : 'Building ZIP'}${partText}`;
   const percentNode = document.getElementById('cdl-ap-archive-percent');
   if (percentNode) percentNode.textContent = hasPercent ? `${safePercent}%` : 'Waiting…';
   const fill = document.getElementById('cdl-ap-zip-fill');
   if (fill && !panel.classList.contains('is-indeterminate')) fill.style.width = `${safePercent}%`;
   const progress = document.getElementById('cdl-ap-zip-progress');
   if (progress) {
-    progress.setAttribute('aria-label', isSaving ? 'Browser save progress' : 'ZIP creation progress');
+    progress.setAttribute('aria-label', ariaLabel || (isSaving ? 'Browser save progress' : 'ZIP creation progress'));
     if (hasPercent) progress.setAttribute('aria-valuenow', String(safePercent));
     else progress.removeAttribute('aria-valuenow');
   }
@@ -2470,6 +2509,25 @@ function updateDownloadAllPopup(msg) {
     _dlAllSetChapterProgress(completed, totalChapters);
     _dlAllAddLog(chapterLabel, 'active', `${chapterLabel} — opening…`);
 
+  } else if (phase === 'challenge') {
+    _dlAllSetStage(popup, 'download');
+    _dlAllHideArchiveProgress();
+    status.classList.add('warning');
+    const required = msg.challengeState === 'required';
+    const waiting = msg.challengeState === 'waiting';
+    status.textContent = required
+      ? 'Cloudflare verification required'
+      : 'Cloudflare security check detected';
+    el('cdl-ap-img-status').textContent = required
+      ? 'Complete the check in the opened tab. Download resumes automatically.'
+      : waiting
+        ? 'Waiting for the active verification tab…'
+        : 'Waiting briefly for automatic verification…';
+    _dlAllSetChapterProgress(completed, totalChapters);
+    _dlAllAddLog(chapterLabel, 'active', required
+      ? `${chapterLabel} — waiting for Cloudflare verification…`
+      : `${chapterLabel} — checking Cloudflare verification…`);
+
   } else if (phase === 'retryingChapter') {
     _dlAllSetStage(popup, 'download');
     _dlAllHideArchiveProgress();
@@ -2535,10 +2593,36 @@ function updateDownloadAllPopup(msg) {
     _dlAllSetChapterProgress(completed, totalChapters);
     _dlAllAddLog(chapterLabel, 'skipped', `— ${chapterLabel} — skipped`);
 
+  } else if (phase === 'buildingPdf') {
+    const current = Math.max(0, Number(msg.pdfCurrent) || 0);
+    const total = Math.max(1, Number(msg.pdfTotal) || 1);
+    const percent = Math.max(0, Math.min(100, current / total * 100));
+    const finalizing = msg.pdfFinalizing === true;
+    _dlAllSetStage(popup, 'zip');
+    const packageStage = popup.querySelector('.cdl-ap-stage[data-stage="zip"] span:last-child');
+    if (packageStage) packageStage.textContent = 'PDF';
+    _dlAllSetChapterProgress(completed, totalChapters);
+    _dlAllSetArchiveProgress({
+      stage: 'zip', percent: finalizing ? null : percent,
+      zipPart: msg.zipPart, finalPart: false, indeterminate: finalizing,
+      customLabel: `${finalizing ? 'Finalizing' : 'Building'} ${chapterLabel} PDF`,
+      ariaLabel: 'PDF creation progress',
+    });
+    status.textContent = `${finalizing ? 'Finalizing' : 'Building'} ${chapterLabel} PDF…`;
+    el('cdl-ap-img-status').textContent = finalizing
+      ? 'Writing the completed document…'
+      : `Adding page ${current} / ${total}`;
+    _dlAllAddLog(chapterLabel, 'active', finalizing
+      ? `${chapterLabel} — finalizing PDF…`
+      : `${chapterLabel} — building PDF ${current}/${total}…`);
+    clearTimeout(popup._cdlRetryTimer);
+
   } else if (phase === 'zipping') {
     const percent = Number.isFinite(Number(msg.zipPercent)) ? Number(msg.zipPercent) : 0;
     const partText = msg.zipPart > 1 || !msg.finalPart ? ` part ${msg.zipPart || 1}` : '';
     _dlAllSetStage(popup, 'zip');
+    const packageStage = popup.querySelector('.cdl-ap-stage[data-stage="zip"] span:last-child');
+    if (packageStage) packageStage.textContent = 'ZIP';
     _dlAllSetChapterProgress(completed, totalChapters);
     _dlAllSetArchiveProgress({
       stage: 'zip', percent, zipPart: msg.zipPart, finalPart: msg.finalPart,

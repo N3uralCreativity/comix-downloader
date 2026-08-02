@@ -13,6 +13,9 @@
 if (typeof importScripts === 'function' && typeof JSZip === 'undefined') {
   importScripts('lib/jszip.min.js');
 }
+if (typeof importScripts === 'function' && typeof PDFLib === 'undefined') {
+  importScripts('lib/pdf-lib.min.js');
+}
 
 // Shared settings module (CDLSettings). Chrome loads it here; Firefox loads it
 // via manifest.background.scripts (jszip, shared core modules, background).
@@ -27,6 +30,9 @@ if (typeof importScripts === 'function' && typeof CDLFeaturesCore === 'undefined
 }
 if (typeof importScripts === 'function' && typeof CDLComicInfo === 'undefined') {
   importScripts('core/cdl-comicinfo.js');
+}
+if (typeof importScripts === 'function' && typeof CDLPdf === 'undefined') {
+  importScripts('core/cdl-pdf.js');
 }
 if (typeof importScripts === 'function' && typeof CDLReviewPrompt === 'undefined') {
   importScripts('core/review-prompt.js');
@@ -554,6 +560,14 @@ function updateDownloadAllSessionLog(progress) {
 
   if (phase === 'extracting') {
     text = `${chapterLabel} - opening...`;
+  } else if (phase === 'challenge') {
+    const waiting = progress.challengeState === 'waiting';
+    const required = progress.challengeState === 'required';
+    text = required
+      ? `${chapterLabel} - waiting for Cloudflare verification...`
+      : waiting
+        ? `${chapterLabel} - queued behind Cloudflare verification...`
+        : `${chapterLabel} - checking Cloudflare verification...`;
   } else if (phase === 'retryingChapter') {
     text = `${chapterLabel} - reopening (retry ${progress.retryAttempt}/${progress.retryLimit})...`;
   } else if (phase === 'downloading') {
@@ -565,6 +579,10 @@ function updateDownloadAllSessionLog(progress) {
     const missing = Math.max(0, Number(progress.missingImages) || 0);
     text = `${chapterLabel} - retrying ${missing} missing image${missing === 1 ? '' : 's'} ` +
       `(${progress.retryAttempt}/${progress.retryLimit})...`;
+  } else if (phase === 'buildingPdf') {
+    text = progress.pdfFinalizing
+      ? `${chapterLabel} - finalizing PDF...`
+      : `${chapterLabel} - building PDF ${progress.pdfCurrent || 0}/${progress.pdfTotal || 0}...`;
   } else if (phase === 'done') {
     cls = 'done';
     text = `${chapterLabel} (${imagesDone}/${imagesTotal} images)`;
@@ -1577,14 +1595,35 @@ async function handleDownloadRequest(chapterUrl, zipName, originTabId, options) 
 
 // ── Listener sur l'état des onglets ──────────────────────────────────────────
 
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
   if (!pendingDownloads.has(tabId)) return;
   if (changeInfo.status !== 'complete') return;
 
-  const { chapterUrl, zipName, originTabId, cfg, options } = pendingDownloads.get(tabId);
-  pendingDownloads.delete(tabId);
+  const pending = pendingDownloads.get(tabId);
+  if (pending.handling) return;
+  pending.handling = true;
+  const { chapterUrl, zipName, originTabId, cfg, options } = pending;
 
   try {
+    const challenge = await coordinateCloudflareChallenge(tabId, {
+      originTabId,
+      expectedSeriesSlug: (String(chapterUrl).match(/\/title\/([^/]+)/) || [])[1] || '',
+      onChallenge: ({ state }) => notifyTab(originTabId, {
+        action: 'downloadChallenge', chapterUrl, state,
+      }),
+    });
+    if (challenge.reloaded) {
+      pending.handling = false;
+      setTimeout(() => {
+        chrome.tabs.get(tabId).then((tab) => {
+          if (tab && tab.status === 'complete') {
+            handlePendingDownloadTabUpdated(tabId, { status: 'complete' });
+          }
+        }).catch(() => {});
+      }, 100);
+      return;
+    }
+
     // Injecter le script d'extraction dans l'onglet chapitre
     const results = await chrome.scripting.executeScript({
       target: { tabId },
@@ -1607,10 +1646,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
     }
     images = await verifyEnumeratedImages(images, zipName);
 
+    pendingDownloads.delete(tabId);
     cdlLog('info', `Extracted ${images.length} images for ${zipName}`);
     // Lancer le téléchargement + ZIP directement dans le service worker
     scheduleDownload({ images, chapterUrl, zipName, originTabId, cfg, options });
   } catch (err) {
+    pendingDownloads.delete(tabId);
     chrome.tabs.remove(tabId).catch(() => {});
     console.error('[ComixDL] Extraction échouée:', err);
     cdlLog('error', `Extraction failed (${zipName}): ${err.message}`);
@@ -1620,7 +1661,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
       error: err.message || 'Extraction des images échouée',
     });
   }
-});
+}
+
+chrome.tabs.onUpdated.addListener(handlePendingDownloadTabUpdated);
 
 // ── Nettoyage des onglets fermés avant extraction ─────────────────────────────
 
@@ -2230,7 +2273,8 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   const batchSize = cfg['perf.batchSize'] || BATCH_SIZE;
   const padDigits = cfg['naming.imagePadDigits'] || 3;
   const imageRetries = cfg['retry.imageRetries'] || 0;
-  const zip = new JSZip();
+  const isPdf = opts.format === 'pdf';
+  const zip = isPdf ? null : new JSZip();
   // Re-sequence to clean 1..N page numbers (sorted by the extractor's index) so
   // names are unique + ordered; collect then add sorted so archive entry order
   // matches reading order regardless of fetch completion order.
@@ -2262,7 +2306,9 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   if (total === 0 || files.length !== total) {
     throw new Error(formatImageDownloadFailure(total, files.length, firstImageError));
   }
-  for (const f of files) zip.file(f.name, f.buffer);
+  if (!isPdf) {
+    for (const f of files) zip.file(f.name, f.buffer);
+  }
 
   // CBZ: a single chapter is itself the .cbz (flat images + optional ComicInfo.xml).
   const isCbz = opts.format === 'cbz';
@@ -2272,10 +2318,25 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
     const xml = buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, files.length, mangaName);
     if (xml) zip.file('ComicInfo.xml', xml);
   }
-  const ext = isCbz ? 'cbz' : 'zip';
+  const ext = isPdf ? 'pdf' : isCbz ? 'cbz' : 'zip';
   const outName = sanitizeFilename(zipName, ext);
 
-  const { url, revoke, base64: urlBase64 } = await _zipToDownloadUrl(zip);
+  let generated;
+  if (isPdf) {
+    const chapterLabel = (options && options.chapterLabel) || chapterLabelFromUrl(chapterUrl);
+    const mangaName = (options && options.mangaName) || (opts.seriesMeta && opts.seriesMeta.title) || '';
+    const pdfBytes = await buildChapterPdfOutput(files, opts, chapterLabel, chapterUrl, mangaName, (progress = {}) => {
+      notifyTab(originTabId, {
+        action: 'downloadPackaging', chapterUrl, format: 'pdf',
+        current: progress.current, total: progress.total,
+        finalizing: progress.finalizing === true,
+      });
+    });
+    generated = await _bytesToDownloadUrl(pdfBytes, 'application/pdf');
+  } else {
+    generated = await _zipToDownloadUrl(zip);
+  }
+  const { url, revoke, base64: urlBase64 } = generated;
   const delivery = await saveGeneratedArchive({
     url, revoke, base64: urlBase64, zip, filename: outName, originTabId,
   });
@@ -2445,7 +2506,7 @@ async function fetchImageToFile(paddedIndex, src, cfg, retries, onRetry) {
   try {
     const image = await fetchImageWithRetry(src, cfg, retries, onRetry);
     return {
-      file: { name: `${paddedIndex}.${image.ext}`, buffer: image.buffer, bytes: image.buffer.byteLength || 0 },
+      file: { name: `${paddedIndex}.${image.ext}`, ext: image.ext, buffer: image.buffer, bytes: image.buffer.byteLength || 0 },
       error: null,
     };
   } catch (error) {
@@ -2548,6 +2609,80 @@ async function reencodeImageBlob(blob, fmt, quality) {
   } finally {
     bitmap.close?.();
   }
+}
+
+function pdfImageMime(ext) {
+  ext = String(ext || '').toLowerCase().replace(/^\./, '');
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'avif') return 'image/avif';
+  if (ext === 'gif') return 'image/gif';
+  return 'image/webp';
+}
+
+async function prepareImageForPdf(file) {
+  const ext = String(file.ext || (String(file.name || '').match(/\.([a-z0-9]+)$/i) || [])[1] || '')
+    .toLowerCase().replace(/^jpeg$/, 'jpg');
+  if (ext === 'jpg' || ext === 'png') return { bytes: file.buffer, ext };
+  if (typeof createImageBitmap !== 'function') {
+    throw new Error(`PDF output cannot convert ${ext || 'this'} image format in this browser.`);
+  }
+  const converted = await reencodeImageBlob(
+    new Blob([file.buffer], { type: pdfImageMime(ext) }),
+    'png',
+    1
+  );
+  if (converted.ext !== 'png') {
+    throw new Error(`PDF output could not convert ${ext || 'this'} image format.`);
+  }
+  return { bytes: converted.buffer, ext: 'png' };
+}
+
+function chapterPdfMetadata(opts, chapterLabel, chapterUrl, mangaName) {
+  const meta = opts && opts.seriesMeta || {};
+  const authors = Array.isArray(meta.authors) ? meta.authors : [meta.author || meta.writer];
+  const tags = Array.isArray(meta.genres) && meta.genres.length ? meta.genres : meta.tags;
+  return {
+    title: `${meta.title || mangaName || 'Comix'} - ${chapterLabel || 'Chapter'}`,
+    subject: meta.description || chapterUrl || '',
+    author: authors.filter(Boolean).join(', '),
+    keywords: Array.isArray(tags) ? tags : [],
+  };
+}
+
+const PDF_KEEPALIVE_INTERVAL_MS = 15000;
+
+// A Manifest V3 service worker can be retired while pdf-lib is yielding during
+// a long serialization pass. Extension API activity resets Chrome's idle timer,
+// so keep the worker alive only for the lifetime of an active PDF build.
+async function withExtensionKeepAlive(task) {
+  const pulse = () => {
+    try {
+      if (chrome.runtime && chrome.runtime.getPlatformInfo) {
+        chrome.runtime.getPlatformInfo(() => {
+          try { void chrome.runtime.lastError; } catch (_) {}
+        });
+      }
+    } catch (_) {}
+  };
+  pulse();
+  const timer = setInterval(pulse, PDF_KEEPALIVE_INTERVAL_MS);
+  try {
+    return await task();
+  } finally {
+    clearInterval(timer);
+  }
+}
+
+function buildChapterPdfOutput(files, opts, chapterLabel, chapterUrl, mangaName, onProgress) {
+  if (typeof CDLPdf === 'undefined') {
+    throw new Error('The PDF generator is unavailable. Reload the extension and try again.');
+  }
+  return withExtensionKeepAlive(() => CDLPdf.buildChapterPdf(files, {
+    prepareImage: prepareImageForPdf,
+    metadata: chapterPdfMetadata(opts, chapterLabel, chapterUrl, mangaName),
+    onProgress,
+  }));
 }
 
 function getScrambleInfo(headers) {
@@ -2802,6 +2937,30 @@ async function _zipToDownloadUrl(zip, onUpdate) {
   return { url: `data:application/zip;base64,${base64}`, revoke: () => {}, base64 };
 }
 
+function bytesToBase64(bytes) {
+  bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const chunkSize = 0x6000; // divisible by 3, so encoded chunks concatenate safely
+  let out = '';
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize));
+    let binary = '';
+    for (let i = 0; i < chunk.length; i++) binary += String.fromCharCode(chunk[i]);
+    out += btoa(binary);
+  }
+  return out;
+}
+
+async function _bytesToDownloadUrl(bytes, mimeType) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const mime = mimeType || 'application/octet-stream';
+  if (!_IS_FIREFOX) {
+    const url = URL.createObjectURL(new Blob([data], { type: mime }));
+    return { url, revoke: () => URL.revokeObjectURL(url) };
+  }
+  const base64 = bytesToBase64(data);
+  return { url: `data:${mime};base64,${base64}`, revoke: () => {}, base64 };
+}
+
 const DOWNLOAD_CONFIRM_POLL_MS = 250;
 const DOWNLOAD_CONFIRM_TIMEOUT_MS = 30 * 60 * 1000;
 
@@ -3002,7 +3161,7 @@ function sanitizeFilename(name, ext) {
   ext = (ext || 'zip').replace(/^\./, '');
   const base = name
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
-    .replace(/\.(zip|cbz)$/i, '')
+    .replace(/\.(zip|cbz|pdf)$/i, '')
     .replace(/\.+$/, '')
     .substring(0, 196);
   return `${base || 'download'}.${ext}`;
@@ -3047,6 +3206,17 @@ function resolveOutputOptions(cfg, options) {
     slug: options.slug || null,
     totalCount: options.totalCount || null,   // total chapters in the series (ComicInfo <Count>)
   };
+}
+
+function chaptersPerPartForFormat(cfg, format) {
+  cfg = cfg || {};
+  const fallback = Math.max(1, Number(cfg['download.chaptersPerPart']) || ZIP_PART_MAX_CHAPTERS);
+  const key = format === 'cbz'
+    ? 'download.cbzChaptersPerPart'
+    : format === 'pdf'
+      ? 'download.pdfChaptersPerPart'
+      : 'download.chaptersPerPart';
+  return Math.max(1, Number(cfg[key]) || fallback);
 }
 
 // Top-level series folder name (Kavita/Komga layout groups everything under it).
@@ -3110,8 +3280,16 @@ function buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, pageCount, man
 async function addChapterToOuter(zip, r, opts, mangaName) {
   const entryBase = buildChapterEntryName(opts, r.chapterLabel, mangaName);
   const comicInfo = opts.includeComicInfo
-    ? buildChapterComicInfoXml(opts, r.chapterLabel, r.chapterUrl, r.files.length, mangaName)
+    ? buildChapterComicInfoXml(opts, r.chapterLabel, r.chapterUrl, r.imagesTotal || r.files.length, mangaName)
     : null;
+
+  if (opts.format === 'pdf') {
+    if (!r.pdfBytes || !r.pdfBytes.byteLength) {
+      throw new Error(`${r.chapterLabel || 'Chapter'} PDF data is missing.`);
+    }
+    zip.file(`${entryBase}.pdf`, r.pdfBytes);
+    return r.pdfBytes.byteLength || 0;
+  }
 
   if (opts.format === 'cbz') {
     const inner = new JSZip();
@@ -3180,6 +3358,152 @@ function recordChapterDownloaded(slug, chapterLabel, mangaName) {
 function notifyTab(tabId, message) {
   if (tabId == null) return;
   chrome.tabs.sendMessage(tabId, message).catch(() => {});
+}
+
+// Cloudflare challenges must be completed by the user in their real browser
+// session. Coordinate all extraction tabs behind one visible challenge so a
+// concurrent Download All cannot open several verification pages at once.
+const CLOUDFLARE_AUTO_WAIT_MS = 4000;
+const CLOUDFLARE_CHALLENGE_TIMEOUT_MS = 5 * 60 * 1000;
+const CLOUDFLARE_CHALLENGE_POLL_MS = 750;
+const CLOUDFLARE_FOLLOWER_RELEASE_MS = 1200;
+let _cloudflareChallengeGate = null;
+let _cloudflareFollowerReleaseChain = Promise.resolve();
+
+function detectCloudflareChallengeDocument() {
+  const title = String(document.title || '').trim();
+  const bodyText = String(document.body && document.body.innerText || '').slice(0, 6000);
+  const readerReady = !!document.querySelector(
+    'img.rpage-page__img, .rpage-page, [data-page-number], [data-page-index]'
+  );
+  const titleMarker = /just a moment|attention required|security verification|checking your browser/i.test(title);
+  const formMarker = !!document.querySelector(
+    '#challenge-running, #cf-challenge-running, form#challenge-form, .cf-turnstile, [data-sitekey]'
+  );
+  const runtimeMarker = typeof window !== 'undefined' && !!window._cf_chl_opt;
+  const textMarker = /verify you are human|performing security verification|checking if the site connection is secure|ray id/i.test(bodyText);
+  return {
+    challenged: !readerReady && (titleMarker || formMarker || runtimeMarker || textMarker),
+    title,
+  };
+}
+
+async function inspectCloudflareChallengeTab(tabId) {
+  try {
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: detectCloudflareChallengeDocument,
+    });
+    return result && result[0] && result[0].result || { challenged: false, title: '' };
+  } catch (_) {
+    return null;
+  }
+}
+
+function reportCloudflareChallenge(onState, state, extra = {}) {
+  if (typeof onState !== 'function') return;
+  try { onState({ state, ...extra }); } catch (_) {}
+}
+
+async function restoreChallengeOrigin(navigation) {
+  const originTabId = navigation && navigation.originTabId;
+  if (originTabId == null) return false;
+  const expectedSeriesSlug = navigation && navigation.expectedSeriesSlug;
+  if (expectedSeriesSlug) {
+    const restored = await restoreMobileDownloadAllOrigin(originTabId, expectedSeriesSlug);
+    if (restored) return true;
+  }
+  try {
+    await chrome.tabs.update(originTabId, { active: true });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function showCloudflareChallengeNotification() {
+  if (!chrome.notifications || !chrome.notifications.create) return;
+  try {
+    const created = chrome.notifications.create('cdl-cloudflare-challenge', {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title: 'Comix Downloader needs verification',
+      message: 'Complete the Cloudflare check in the opened comix.to tab. The download will resume automatically.',
+    });
+    if (created && typeof created.catch === 'function') created.catch(() => {});
+  } catch (_) {}
+}
+
+async function waitForCloudflareChallengeClear(tabId, deadline) {
+  while (Date.now() < deadline) {
+    let tab;
+    try { tab = await chrome.tabs.get(tabId); }
+    catch (_) { throw new Error('The Cloudflare verification tab was closed.'); }
+    if (tab && tab.status !== 'complete') {
+      await new Promise((resolve) => setTimeout(resolve, CLOUDFLARE_CHALLENGE_POLL_MS));
+      continue;
+    }
+    const state = await inspectCloudflareChallengeTab(tabId);
+    if (state && !state.challenged) return;
+    await new Promise((resolve) => setTimeout(resolve, CLOUDFLARE_CHALLENGE_POLL_MS));
+  }
+  throw new Error('Cloudflare verification timed out. Complete the check, then try the download again.');
+}
+
+async function coordinateCloudflareChallenge(tabId, navigation = {}) {
+  const initial = await inspectCloudflareChallengeTab(tabId);
+  if (!initial || !initial.challenged) return { challenged: false, reloaded: false };
+
+  const onState = navigation.onChallenge;
+  if (_cloudflareChallengeGate && _cloudflareChallengeGate.tabId !== tabId) {
+    reportCloudflareChallenge(onState, 'waiting');
+    await _cloudflareChallengeGate.promise;
+    const turn = _cloudflareFollowerReleaseChain.catch(() => {});
+    _cloudflareFollowerReleaseChain = turn.then(() => new Promise((resolve) => {
+      setTimeout(resolve, CLOUDFLARE_FOLLOWER_RELEASE_MS);
+    }));
+    await turn;
+    try {
+      await chrome.tabs.reload(tabId);
+      return { challenged: true, reloaded: true };
+    } catch (_) {
+      throw new Error('The chapter tab closed while waiting for Cloudflare verification.');
+    }
+  }
+
+  if (!_cloudflareChallengeGate) {
+    const promise = (async () => {
+      reportCloudflareChallenge(onState, 'automatic');
+      const automaticDeadline = Date.now() + CLOUDFLARE_AUTO_WAIT_MS;
+      try {
+        await waitForCloudflareChallengeClear(tabId, automaticDeadline);
+        reportCloudflareChallenge(onState, 'cleared', { automatic: true });
+        return;
+      } catch (error) {
+        if (/verification tab was closed/i.test(error.message)) throw error;
+      }
+
+      reportCloudflareChallenge(onState, 'required');
+      try { await chrome.tabs.update(tabId, { active: true }); }
+      catch (_) { throw new Error('The Cloudflare verification tab could not be opened.'); }
+      navigation.foregrounded = true;
+      navigation.challengeForegrounded = true;
+      showCloudflareChallengeNotification();
+      await waitForCloudflareChallengeClear(tabId, Date.now() + CLOUDFLARE_CHALLENGE_TIMEOUT_MS);
+      reportCloudflareChallenge(onState, 'cleared', { automatic: false });
+      await restoreChallengeOrigin(navigation);
+    })();
+    _cloudflareChallengeGate = { tabId, promise };
+  }
+
+  const gate = _cloudflareChallengeGate;
+  try {
+    await gate.promise;
+  } finally {
+    if (_cloudflareChallengeGate === gate) _cloudflareChallengeGate = null;
+  }
+  return { challenged: true, reloaded: false };
 }
 
 // ── Extraction Promise-based (pour download-all) ──────────────────────────────
@@ -3258,7 +3582,9 @@ async function createDownloadAllExtractionTab(url, originTabId, expectedSeriesSl
 }
 
 async function closeDownloadAllExtractionTab(tabId, navigation) {
-  const shouldRestore = !!(navigation && navigation.mobile && navigation.foregrounded);
+  const shouldRestore = !!(navigation && (
+    navigation.challengeForegrounded || (navigation.mobile && navigation.foregrounded)
+  ));
   if (shouldRestore) {
     // Select the exact title tab before closing the temporary foreground tab so
     // the mobile browser never has to guess which history/tab entry to reveal.
@@ -3288,6 +3614,7 @@ async function extractFromTab(url, cfg, navigation = {}) {
   );
   const tab = opened.tab;
   const tabId = tab.id;
+  opened.navigation.onChallenge = navigation.onChallenge;
 
   // A freshly created background tab can briefly report status:"complete" while
   // still on its initial about:blank document, before the navigation to `url`
@@ -3303,7 +3630,14 @@ async function extractFromTab(url, cfg, navigation = {}) {
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    let handling = false;
     let timer = null;
+    const armTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        settle(reject, new Error('Timeout chargement onglet'));
+      }, tabTimeout);
+    };
     const settle = async (fn, val) => {
       if (settled) return;
       settled = true;
@@ -3313,14 +3647,27 @@ async function extractFromTab(url, cfg, navigation = {}) {
       fn(val);
     };
 
-    timer = setTimeout(() => {
-      settle(reject, new Error('Timeout chargement onglet'));
-    }, tabTimeout);
+    armTimer();
 
     const onUpdated = async (updatedId, changeInfo, updatedTab) => {
       if (updatedId !== tabId) return;
       if (!isRealPageComplete(updatedTab, changeInfo)) return;
+      if (handling) return;
+      handling = true;
       try {
+        clearTimeout(timer);
+        const challenge = await coordinateCloudflareChallenge(tabId, opened.navigation);
+        if (challenge.reloaded) {
+          handling = false;
+          armTimer();
+          setTimeout(() => {
+            chrome.tabs.get(tabId).then((tab) => {
+              if (isRealPageComplete(tab, null)) onUpdated(tabId, { status: 'complete' }, tab);
+            }).catch(() => {});
+          }, 100);
+          return;
+        }
+        armTimer();
         const results = await chrome.scripting.executeScript({
           target: { tabId },
           world: 'MAIN',   // share the page's Resource Timing buffer (canvas-page URLs)
@@ -3398,7 +3745,7 @@ async function handleDownloadAllRequest(
   const imageRetries = cfg['retry.imageRetries'] || 0;
   const chapterRetries = cfg['retry.chapterRetries'] || 0;
   const splitMode = cfg['download.splitMode'] || 'multipart';
-  const maxChapters = splitMode === 'single' ? Infinity : (cfg['download.chaptersPerPart'] || ZIP_PART_MAX_CHAPTERS);
+  const maxChapters = splitMode === 'single' ? Infinity : chaptersPerPartForFormat(cfg, opts.format);
   const maxBytes = splitMode === 'single' ? Infinity : (cfg['download.mbPerPart'] || 300) * 1024 * 1024;
 
   cdlLog('info', `${chapterOffset ? 'Download All resumed' : 'Download All started'}: "${mangaName}" - ${chapters.length} remaining of ${totalChapters} chapters${concurrency > 1 ? ` (${concurrency} at a time)` : ''}`);
@@ -3419,11 +3766,12 @@ async function handleDownloadAllRequest(
   // the popup never depends on which of the concurrent chapters reported last.
   let finishedCount = chapterOffset;
   const chapterProgressPhases = new Set([
-    'extracting', 'retryingChapter', 'downloading', 'retryingImage', 'retryingImages',
-    'done', 'error', 'skipped',
+    'extracting', 'challenge', 'retryingChapter', 'downloading', 'retryingImage', 'retryingImages',
+    'buildingPdf', 'done', 'error', 'skipped', 'resuming',
   ]);
   const archiveProgressPhases = new Set(['zipping', 'saving', 'savingPart']);
   let archivePresentationActive = false;
+  let pdfPresentationActive = false;
   let archiveCompletedSnapshot = 0;
   let deferredProgressSequence = 0;
   const deferredChapterProgress = new Map();
@@ -3438,7 +3786,9 @@ async function handleDownloadAllRequest(
     // A concurrent worker may already be fetching the next chapter while the
     // in-order packer builds/saves the current ZIP part. Keep that useful work,
     // but do not let its events visually replace the archive stage.
-    if (archivePresentationActive && chapterProgressPhases.has(phase)) {
+    if (chapterProgressPhases.has(phase) && (
+      archivePresentationActive || (pdfPresentationActive && phase !== 'buildingPdf')
+    )) {
       const key = `${progress.chapterIndex || 0}:${progress.chapterLabel || ''}`;
       deferredChapterProgress.set(key, {
         sequence: ++deferredProgressSequence,
@@ -3450,6 +3800,7 @@ async function handleDownloadAllRequest(
   };
 
   const flushDeferredChapterProgress = () => {
+    if (archivePresentationActive || pdfPresentationActive) return 0;
     const buffered = [...deferredChapterProgress.values()]
       .sort((a, b) => a.sequence - b.sequence);
     deferredChapterProgress.clear();
@@ -3585,6 +3936,12 @@ async function handleDownloadAllRequest(
   const MAX_DELAY = cfg['perf.rateMaxMs'] || 8000;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const abortPromise = _downloadAllAbortPromise();   // one reusable per-run signal
+  let pdfBuildChain = Promise.resolve();
+  const enqueuePdfBuild = (task) => {
+    const run = pdfBuildChain.catch(() => {}).then(task);
+    pdfBuildChain = run.catch(() => {});
+    return run;
+  };
 
   // Download one chapter's images into memory. Emits extracting/downloading
   // progress; returns a result the packer can add to the ZIP. Never throws.
@@ -3603,6 +3960,10 @@ async function handleDownloadAllRequest(
         images = await extractFromTab(chapterUrl, cfg, {
           originTabId,
           expectedSeriesSlug,
+          onChallenge: ({ state }) => notify({
+            phase: 'challenge', chapterIndex: globalIndex, totalChapters,
+            chapterLabel, imagesDone: 0, imagesTotal: 0, challengeState: state,
+          }),
         });
         extractErr = null;
         break;
@@ -3747,6 +4108,53 @@ async function handleDownloadAllRequest(
         imagesTotal: ordered.length, imagesSaved: files.length, status: 'error', error,
       };
     }
+
+    if (opts.format === 'pdf') {
+      try {
+        const pdfBytes = await enqueuePdfBuild(async () => {
+          if (downloadAllAbortFlag) return null;
+          pdfPresentationActive = true;
+          try {
+            return await buildChapterPdfOutput(
+              files, opts, chapterLabel, chapterUrl, mangaName, (progress = {}) => {
+                notify({
+                  phase: 'buildingPdf', chapterIndex: globalIndex, totalChapters,
+                  chapterLabel, imagesDone: files.length, imagesTotal: ordered.length,
+                  pdfCurrent: progress.current, pdfTotal: progress.total,
+                  pdfFinalizing: progress.finalizing === true, zipPart,
+                });
+              }
+            );
+          } finally {
+            pdfPresentationActive = false;
+            flushDeferredChapterProgress();
+          }
+        });
+        if (downloadAllAbortFlag || !pdfBytes) {
+          return {
+            index: i, chapterUrl, chapterLabel, files: [], bytes: 0,
+            imagesTotal: ordered.length, imagesSaved: files.length, status: 'skipped',
+            hadRetries: encounteredRetries,
+          };
+        }
+        return {
+          index: i, chapterUrl, chapterLabel, files: [], pdfBytes,
+          bytes: pdfBytes.byteLength || 0,
+          imagesTotal: ordered.length, imagesSaved: files.length, status: 'done',
+          hadRetries: encounteredRetries,
+        };
+      } catch (error) {
+        const detail = error && error.message ? error.message : String(error || 'unknown error');
+        const message = `PDF creation failed: ${detail}`;
+        cdlLog('error', `${chapterLabel} failed: ${message}`);
+        return {
+          index: i, chapterUrl, chapterLabel, files: [], bytes: 0,
+          imagesTotal: ordered.length, imagesSaved: files.length, status: 'error', error: message,
+          hadRetries: encounteredRetries,
+        };
+      }
+    }
+
     return {
       index: i, chapterUrl, chapterLabel, files, bytes,
       imagesTotal: ordered.length, imagesSaved: files.length, status: 'done',
@@ -3825,7 +4233,7 @@ async function handleDownloadAllRequest(
         if (r.status === 'error' && !firstChapterError && r.error) firstChapterError = r.error;
       }
 
-      if (r && r.status === 'done' && r.files.length) {
+      if (r && r.status === 'done' && (r.files.length || (r.pdfBytes && r.pdfBytes.byteLength))) {
         const added = await addChapterToOuter(zip, r, opts, mangaName);
         zipPartChapters++;
         zipPartBytes += added;

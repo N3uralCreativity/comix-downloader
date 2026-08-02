@@ -50,6 +50,11 @@ check('pagePollMs clamp low', S.validate({ 'perf.pagePollMs': 1 })['perf.pagePol
 check('pageSettleMs clamp low', S.validate({ 'perf.pageSettleMs': -10 })['perf.pageSettleMs'] === 0);
 check('scrollSettleMs default', S.validate({})['perf.scrollSettleMs'] === 800);
 check('concurrentChapters default 2', S.validate({})['download.concurrentChapters'] === 2);
+check('ZIP chapters per part defaults to 5', S.validate({})['download.chaptersPerPart'] === 5);
+check('CBZ chapters per part defaults independently to 10', S.validate({})['download.cbzChaptersPerPart'] === 10);
+check('PDF chapters per part defaults independently to 5', S.validate({})['download.pdfChaptersPerPart'] === 5);
+check('CBZ chapters per part clamps high', S.validate({ 'download.cbzChaptersPerPart': 999 })['download.cbzChaptersPerPart'] === 50);
+check('PDF chapters per part clamps low', S.validate({ 'download.pdfChaptersPerPart': 0 })['download.pdfChaptersPerPart'] === 1);
 check('concurrentChapters clamp high', S.validate({ 'download.concurrentChapters': 99 })['download.concurrentChapters'] === 10);
 check('concurrentChapters clamp low', S.validate({ 'download.concurrentChapters': 0 })['download.concurrentChapters'] === 1);
 check('imageRetries default 1', S.validate({})['retry.imageRetries'] === 1);
@@ -58,6 +63,11 @@ check('chapterRetries default 1', S.validate({})['retry.chapterRetries'] === 1);
 // 3. Enums / bools / colors
 check('enum bad -> default', S.validate({ 'perf.rateLimitMode': 'nope' })['perf.rateLimitMode'] === 'dynamic');
 check('enum good', S.validate({ 'perf.rateLimitMode': 'off' })['perf.rateLimitMode'] === 'off');
+check('PDF output stays implemented but hidden behind the release flag', S.PDF_OUTPUT_VISIBLE === false);
+check('a previously saved PDF preference falls back to ZIP while PDF is hidden',
+  S.validate({ 'output.format': 'pdf' })['output.format'] === 'zip');
+check('hidden PDF partition controls are absent from settings tabs',
+  !S.TABS.some((tab) => tab.keys.includes('download.pdfChaptersPerPart')));
 check('bool cast', S.validate({ 'appearance.disableAnim': 1 })['appearance.disableAnim'] === true);
 check('color bad -> default', S.validate({ 'appearance.accentColor': 'red' })['appearance.accentColor'] === '#60a5fa');
 check('color good', S.validate({ 'appearance.accentColor': '#abc' })['appearance.accentColor'] === '#abc');
@@ -163,8 +173,10 @@ check('home.sections garbage -> default selection', (function () {
 
   // Schema/tab integrity
   const allTabKeys = S.TABS.reduce((a, t) => a.concat(t.keys), []);
+  const featureFlaggedKeys = S.PDF_OUTPUT_VISIBLE ? [] : ['download.pdfChaptersPerPart'];
   check('every DEFAULT has a SCHEMA entry', Object.keys(S.DEFAULTS).every((k) => S.SCHEMA[k]));
-  check('every DEFAULT appears in a TAB', Object.keys(S.DEFAULTS).every((k) => allTabKeys.indexOf(k) !== -1));
+  check('every visible DEFAULT appears in a TAB', Object.keys(S.DEFAULTS).every((k) =>
+    featureFlaggedKeys.indexOf(k) !== -1 || allTabKeys.indexOf(k) !== -1));
   check('no stray TAB keys', allTabKeys.every((k) => S.DEFAULTS[k] !== undefined));
 
   console.log(`\nRESULT: ${pass} passed, ${fail} failed`);

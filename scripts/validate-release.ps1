@@ -159,7 +159,7 @@ foreach ($path in $referenceMap.Keys) {
 }
 
 $firefoxManifest = Get-Content -LiteralPath (Join-Path $firefoxDir 'manifest.json') -Raw | ConvertFrom-Json
-$expectedFirefoxScripts = @('lib/jszip.min.js', 'core/settings.js', 'core/cdl-features-core.js', 'core/cdl-comicinfo.js', 'core/review-prompt.js', 'core/update-state.js', 'background.js')
+$expectedFirefoxScripts = @('lib/jszip.min.js', 'lib/pdf-lib.min.js', 'core/settings.js', 'core/cdl-features-core.js', 'core/cdl-comicinfo.js', 'core/cdl-pdf.js', 'core/review-prompt.js', 'core/update-state.js', 'background.js')
 Assert-Release ($firefoxManifest.manifest_version -eq 3) "Firefox must use Manifest V3."
 Assert-Release ($firefoxManifest.version -eq $Version) "Firefox manifest has the wrong version."
 Assert-Release ($firefoxManifest.default_locale -eq 'en') "Firefox must declare the English fallback locale."

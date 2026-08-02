@@ -11,7 +11,7 @@ Key features:
 - Concurrent chapter fetching with live progress
 - Separate download, ZIP creation, and save-confirmation stages
 - Recovery checkpoints and clear handling of canceled saves
-- Configurable filenames, chapter folders, archive splitting, and ComicInfo metadata
+- Configurable filenames, chapter folders, format-specific archive splitting, and ComicInfo metadata
 - Blocking for comix.to's intrusive click ads, popunders, and transparent overlays, enabled by default and configurable in Settings
 - Optional reading statistics, resume tools, subscriptions, and push-to-library support
 

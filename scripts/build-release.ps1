@@ -48,6 +48,7 @@ function Copy-ReleaseFiles([string]$Destination) {
     "core/cdl-home-core.js",
     "core/cdl-badge-core.js",
     "core/cdl-comicinfo.js",
+    "core/cdl-pdf.js",
     "core/review-prompt.js",
     "core/update-state.js",
     "_locales",
@@ -136,9 +137,11 @@ $firefoxManifest = $manifest | ConvertTo-Json -Depth 20 | ConvertFrom-Json
 $firefoxManifest.background = [ordered]@{
   scripts = @(
     "lib/jszip.min.js",
+    "lib/pdf-lib.min.js",
     "core/settings.js",
     "core/cdl-features-core.js",
     "core/cdl-comicinfo.js",
+    "core/cdl-pdf.js",
     "core/review-prompt.js",
     "core/update-state.js",
     "background.js"

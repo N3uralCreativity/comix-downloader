@@ -55,6 +55,8 @@
   // standalone options page so irrelevant settings don't mislead).
   var DEPENDS = {
     'download.chaptersPerPart': function (d) { return d['download.splitMode'] === 'multipart'; },
+    'download.cbzChaptersPerPart': function (d) { return d['download.splitMode'] === 'multipart'; },
+    'download.pdfChaptersPerPart': function (d) { return d['download.splitMode'] === 'multipart'; },
     'download.mbPerPart': function (d) { return d['download.splitMode'] === 'multipart'; },
     'perf.rateBaseMs': function (d) { return d['perf.rateLimitMode'] !== 'off'; },
     'perf.rateMinMs': function (d) { return d['perf.rateLimitMode'] === 'dynamic'; },
