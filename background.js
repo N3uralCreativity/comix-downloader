@@ -357,6 +357,12 @@ function _setNewToolbarBadge() {}
 let _downloadProgressBadgeActive = false;
 let _idleBadgeRefreshGeneration = 0;
 let _updateReloadScheduled = false;
+const UPDATE_CHECK_ALARM = 'cdlUpdateCheck';
+const UPDATE_CHECK_PERIOD_MINUTES = 30;
+const UPDATE_CHECK_INITIAL_DELAY_MINUTES = 5;
+const UPDATE_CHECK_LAST_ATTEMPT_KEY = 'cdlLastUpdateCheckAt';
+const UPDATE_CHECK_DEDUP_MS = 25 * 60 * 1000;
+let _scheduledUpdateCheckRunning = false;
 
 function extensionVersion() {
   try { return (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || ''; }
@@ -431,6 +437,140 @@ async function rememberAvailableUpdate(details) {
   await chrome.storage.local.set({ [CDLUpdateState.STORAGE_KEY]: state });
   if (!_downloadProgressBadgeActive) void refreshIdleBadge();
   return state;
+}
+
+function normalizeNativeUpdateCheckResult(resultOrStatus, details) {
+  if (typeof CDLUpdateState !== 'undefined' && CDLUpdateState.normalizeUpdateCheckResult) {
+    return CDLUpdateState.normalizeUpdateCheckResult(resultOrStatus, details);
+  }
+  const source = resultOrStatus && typeof resultOrStatus === 'object' ? resultOrStatus : {};
+  const extra = details && typeof details === 'object' ? details : {};
+  return {
+    status: typeof resultOrStatus === 'string' ? resultOrStatus : (source.status || 'unknown'),
+    version: source.version || extra.version || '',
+  };
+}
+
+// User-triggered only. Browsers already perform their own periodic checks; this
+// wrapper exists so all extension UIs can request one immediate store check while
+// supporting both callback-style Chromium and Promise-style WebExtensions APIs.
+function requestNativeUpdateCheck() {
+  return new Promise((resolve, reject) => {
+    const request = chrome.runtime && chrome.runtime.requestUpdateCheck;
+    if (typeof request !== 'function') {
+      resolve({ status: 'unsupported', version: '' });
+      return;
+    }
+
+    let settled = false;
+    let timeoutId = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      resolve(value);
+    };
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      reject(error instanceof Error ? error : new Error(String(error || 'Update check failed.')));
+    };
+    const callback = (resultOrStatus, details) => {
+      let runtimeError = null;
+      try { runtimeError = chrome.runtime.lastError; } catch (_) {}
+      if (runtimeError) {
+        fail(new Error(runtimeError.message || 'Update check failed.'));
+        return;
+      }
+      finish(normalizeNativeUpdateCheckResult(resultOrStatus, details));
+    };
+    timeoutId = setTimeout(() => fail(new Error('The browser did not finish the update check.')), 20000);
+
+    try {
+      const returned = request.call(chrome.runtime, callback);
+      if (returned && typeof returned.then === 'function') {
+        returned
+          .then((result) => finish(normalizeNativeUpdateCheckResult(result)))
+          .catch(fail);
+      }
+    } catch (callbackError) {
+      // Some Promise-only implementations reject a callback argument.
+      try {
+        const returned = request.call(chrome.runtime);
+        if (!returned || typeof returned.then !== 'function') throw callbackError;
+        returned
+          .then((result) => finish(normalizeNativeUpdateCheckResult(result)))
+          .catch(fail);
+      } catch (promiseError) {
+        fail(promiseError);
+      }
+    }
+  });
+}
+
+async function checkForAvailableUpdate() {
+  try {
+    try { await chrome.storage.local.set({ [UPDATE_CHECK_LAST_ATTEMPT_KEY]: Date.now() }); } catch (_) {}
+    const result = await requestNativeUpdateCheck();
+    if (result.status === 'update_available' && result.version) {
+      await rememberAvailableUpdate({ version: result.version });
+    }
+    let update = await getAvailableUpdateState();
+    // onUpdateAvailable can arrive just after requestUpdateCheck resolves.
+    if (!update && result.status === 'update_available') {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      update = await getAvailableUpdateState();
+    }
+    return { ok: true, status: update ? 'update_available' : result.status, update };
+  } catch (error) {
+    const update = await getAvailableUpdateState();
+    if (update) return { ok: true, status: 'update_available', update };
+    return {
+      ok: false,
+      status: 'error',
+      update: null,
+      error: error && error.message ? error.message : 'Update check failed.',
+    };
+  }
+}
+
+async function setupUpdateCheckAlarm() {
+  if (!chrome.alarms) return;
+  const existing = await new Promise((resolve) => {
+    try { chrome.alarms.get(UPDATE_CHECK_ALARM, (alarm) => resolve(alarm || null)); }
+    catch (_) { resolve(null); }
+  });
+  if (existing && existing.periodInMinutes === UPDATE_CHECK_PERIOD_MINUTES) return;
+  try { await chrome.alarms.clear(UPDATE_CHECK_ALARM); } catch (_) {}
+  try {
+    chrome.alarms.create(UPDATE_CHECK_ALARM, {
+      delayInMinutes: UPDATE_CHECK_INITIAL_DELAY_MINUTES,
+      periodInMinutes: UPDATE_CHECK_PERIOD_MINUTES,
+    });
+  } catch (_) {}
+}
+
+async function runScheduledUpdateCheck() {
+  if (_scheduledUpdateCheckRunning || hasActiveDownloadWork()) return;
+  _scheduledUpdateCheckRunning = true;
+  try {
+    const knownUpdate = await getAvailableUpdateState();
+    if (knownUpdate) {
+      if (!_downloadProgressBadgeActive) setUpdateToolbarBadge(knownUpdate);
+      return;
+    }
+    let stored = {};
+    try { stored = await chrome.storage.local.get(UPDATE_CHECK_LAST_ATTEMPT_KEY); } catch (_) {}
+    const lastAttempt = Number(stored && stored[UPDATE_CHECK_LAST_ATTEMPT_KEY]) || 0;
+    if (lastAttempt > 0 && Date.now() - lastAttempt < UPDATE_CHECK_DEDUP_MS) return;
+    // A throttled response is expected when the browser checked recently. It is
+    // intentionally silent; the next alarm or native onUpdateAvailable event
+    // will reuse the same update notification path.
+    await checkForAvailableUpdate();
+  } finally {
+    _scheduledUpdateCheckRunning = false;
+  }
 }
 
 // Live Download-All progress on the toolbar icon. The update badge is restored
@@ -538,6 +678,8 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
 chrome.runtime.onInstalled.addListener(setupContextMenus);
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(setupContextMenus);
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(restoreIdleBadge);
+chrome.runtime.onInstalled.addListener(setupUpdateCheckAlarm);
+if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(setupUpdateCheckAlarm);
 
 // First install → open the site's welcome page (thanks + what's new). Install only:
 // updates must never steal a tab from the user.
@@ -896,6 +1038,7 @@ function _serializeSession(s) {
     'startedAt', 'updatedAt', 'lastProgress', 'lastError', 'lastDone', 'lastCancelled',
     'lastSaveCancelled', 'saveFilename', 'saveZipPart', 'saveFinalPart', 'doneZipName',
     'lastInterrupted', 'resumeFromChapter', 'resumeChapterLabel', 'warning', 'error',
+    'errorTitle', 'errorKind', 'failurePhase',
     'canRetryZip', 'canRetrySave', 'canResumeDownload'];
   const out = {};
   for (const k of keys) if (s[k] !== undefined) out[k] = s[k];
@@ -961,6 +1104,8 @@ async function loadPersistedSession(tabUrl = '') {
 // with a confirmed-part Resume action instead of a forever-spinning bar.
 function prepareInterruptedDownloadAllSession(stored, tabId) {
   const resumeData = stored && stored.resumeData;
+  const previousStatus = stored && stored.status;
+  const previousPhase = stored && stored.phase;
   if (isCompletedDownloadAllResumeData(resumeData)) {
     const doneZipName = resumeData.savedZipNames.length === 1
       ? resumeData.savedZipNames[0]
@@ -983,15 +1128,19 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
 
   if (!isValidDownloadAllResumeData(resumeData)) {
     const error = 'Download interrupted - the browser or extension restarted. Start Download All again.';
+    const errorTitle = 'Download could not be restored.';
     Object.assign(stored, {
       active: false,
       status: 'error',
       originTabId: tabId ?? stored.originTabId ?? null,
       error,
+      errorTitle,
+      errorKind: 'runtime_interruption',
+      failurePhase: previousPhase || 'unknown',
       canRetryZip: false,
       canRetrySave: false,
       canResumeDownload: false,
-      lastError: { action: 'downloadAllError', error, canRetryZip: false },
+      lastError: { action: 'downloadAllError', error, errorTitle, errorKind: 'runtime_interruption', canRetryZip: false },
       updatedAt: Date.now(),
     });
     return stored;
@@ -1001,10 +1150,22 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
   const nextChapter = resumeData.chapters[checkpointIndex];
   const savedParts = resumeData.savedZipNames.length;
   let error;
-  if (stored.status === 'awaiting_save') {
+  let errorTitle = 'Chapter download was interrupted.';
+  if (previousStatus === 'awaiting_save') {
+    errorTitle = 'The prepared ZIP was lost.';
     error = checkpointIndex > 0
       ? `The prepared ZIP was lost when the extension restarted. ${savedParts} confirmed ZIP part${savedParts === 1 ? '' : 's'} remain saved.`
       : 'The prepared ZIP was lost when the extension restarted. No ZIP part had been confirmed yet.';
+  } else if (previousPhase === 'zipping') {
+    errorTitle = 'ZIP creation was interrupted.';
+    error = checkpointIndex > 0
+      ? `The extension restarted while building a ZIP. ${savedParts} confirmed ZIP part${savedParts === 1 ? '' : 's'} remain saved.`
+      : 'The extension restarted while building the first ZIP. No ZIP part had been confirmed yet.';
+  } else if (previousPhase === 'saving' || previousPhase === 'savingPart') {
+    errorTitle = 'ZIP saving was interrupted.';
+    error = checkpointIndex > 0
+      ? `The extension restarted while the browser was saving a ZIP. ${savedParts} confirmed ZIP part${savedParts === 1 ? '' : 's'} remain saved.`
+      : 'The extension restarted while the browser was saving the first ZIP. No ZIP part had been confirmed yet.';
   } else if (checkpointIndex > 0) {
     error = `Download interrupted. ${savedParts} confirmed ZIP part${savedParts === 1 ? '' : 's'} remain saved.`;
   } else {
@@ -1013,6 +1174,9 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
   const message = {
     action: 'downloadAllInterrupted',
     error,
+    errorTitle,
+    errorKind: 'runtime_interruption',
+    failurePhase: previousPhase || 'unknown',
     completed: checkpointIndex,
     totalChapters: resumeData.totalChapters,
     resumeFromChapter: checkpointIndex + 1,
@@ -1028,6 +1192,9 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
     completed: checkpointIndex,
     chapterIndex: checkpointIndex,
     error,
+    errorTitle,
+    errorKind: 'runtime_interruption',
+    failurePhase: previousPhase || 'unknown',
     canRetryZip: false,
     canRetrySave: false,
     canResumeDownload: true,
@@ -1164,30 +1331,47 @@ function notifyDownloadAllDone(originTabId, zipName, warning = '') {
   notifyTab(originTabId, message);
 }
 
-function notifyDownloadAllError(originTabId, error, canRetryZip = false) {
-  const message = { action: 'downloadAllError', error, canRetryZip };
+function notifyDownloadAllError(originTabId, error, options = false) {
+  const config = options && typeof options === 'object'
+    ? options
+    : { canRetryZip: !!options };
+  const canRetryZip = !!config.canRetryZip;
+  const errorTitle = String(config.errorTitle || 'Download failed.');
+  const errorKind = String(config.errorKind || 'pipeline');
+  const failurePhase = String(config.failurePhase || (downloadAllSession && downloadAllSession.phase) || 'unknown');
   const resumeData = downloadAllSession && downloadAllSession.resumeData;
-  const canResumeDownload = !canRetryZip && isValidDownloadAllResumeData(resumeData);
+  const canResumeDownload = config.allowResume !== false && !canRetryZip && isValidDownloadAllResumeData(resumeData);
   const nextChapter = canResumeDownload ? resumeData.chapters[resumeData.checkpointIndex] : null;
-  const lastInterrupted = canResumeDownload ? {
-    action: 'downloadAllInterrupted',
-    error: `Download stopped: ${error}`,
-    completed: resumeData.checkpointIndex,
-    totalChapters: resumeData.totalChapters,
-    resumeFromChapter: resumeData.checkpointIndex + 1,
-    resumeChapterLabel: nextChapter.chapterLabel,
-    savedZipParts: resumeData.savedZipNames.length,
-    canResumeDownload: true,
-  } : null;
+  const message = {
+    action: 'downloadAllError',
+    error,
+    errorTitle,
+    errorKind,
+    failurePhase,
+    canRetryZip,
+    canResumeDownload,
+  };
+  if (canResumeDownload) {
+    Object.assign(message, {
+      completed: resumeData.checkpointIndex,
+      totalChapters: resumeData.totalChapters,
+      resumeFromChapter: resumeData.checkpointIndex + 1,
+      resumeChapterLabel: nextChapter.chapterLabel,
+      savedZipParts: resumeData.savedZipNames.length,
+    });
+  }
   recordDownloadAllTerminal('error', {
     originTabId,
     error,
+    errorTitle,
+    errorKind,
+    failurePhase,
     canRetryZip,
     canRetrySave: false,
     canResumeDownload,
     resumeFromChapter: canResumeDownload ? resumeData.checkpointIndex + 1 : undefined,
     resumeChapterLabel: nextChapter ? nextChapter.chapterLabel : undefined,
-    lastInterrupted,
+    lastInterrupted: null,
     lastError: message,
   });
   restoreIdleBadge();
@@ -1224,40 +1408,6 @@ function notifyDownloadAllCancelled(originTabId) {
     lastCancelled: message,
   });
   clearPersistedDownloadAllResume();
-  restoreIdleBadge();
-  notifyTab(originTabId, message);
-}
-
-function notifyDownloadAllInterrupted(originTabId, error) {
-  const resumeData = downloadAllSession && downloadAllSession.resumeData;
-  if (!isValidDownloadAllResumeData(resumeData)) {
-    notifyDownloadAllError(originTabId, error, false);
-    return;
-  }
-  const nextChapter = resumeData.chapters[resumeData.checkpointIndex];
-  const message = {
-    action: 'downloadAllInterrupted',
-    error,
-    completed: resumeData.checkpointIndex,
-    totalChapters: resumeData.totalChapters,
-    resumeFromChapter: resumeData.checkpointIndex + 1,
-    resumeChapterLabel: nextChapter.chapterLabel,
-    savedZipParts: resumeData.savedZipNames.length,
-    canResumeDownload: true,
-  };
-  recordDownloadAllTerminal('interrupted', {
-    originTabId,
-    phase: 'interrupted',
-    completed: resumeData.checkpointIndex,
-    chapterIndex: resumeData.checkpointIndex,
-    error,
-    canRetryZip: false,
-    canRetrySave: false,
-    canResumeDownload: true,
-    resumeFromChapter: resumeData.checkpointIndex + 1,
-    resumeChapterLabel: nextChapter.chapterLabel,
-    lastInterrupted: message,
-  });
   restoreIdleBadge();
   notifyTab(originTabId, message);
 }
@@ -1325,9 +1475,14 @@ async function resumeDownloadAllFromCheckpoint(originTabId, tabUrl = '') {
     ))
     .catch((error) => {
       try { cdlLog('error', 'Download All resume failed: ' + (error?.message || error)); } catch (_) {}
-      notifyDownloadAllInterrupted(
+      notifyDownloadAllError(
         originTabId,
-        'Resume failed: ' + (error?.message || 'unexpected error')
+        error?.message || 'The download could not be resumed.',
+        {
+          errorTitle: 'Resume failed.',
+          errorKind: 'resume',
+          failurePhase: 'resuming',
+        }
       );
     });
 
@@ -1350,6 +1505,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     getAvailableUpdateState()
       .then((update) => sendResponse({ ok: true, update }))
       .catch(() => sendResponse({ ok: false, update: null }));
+    return true;
+  }
+
+  if (message.action === 'checkForUpdate') {
+    checkForAvailableUpdate()
+      .then(sendResponse)
+      .catch((error) => sendResponse({
+        ok: false,
+        status: 'error',
+        update: null,
+        error: error && error.message ? error.message : 'Update check failed.',
+      }));
     return true;
   }
 
@@ -1398,7 +1565,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     Promise.resolve()
       .then(() => handleDownloadRequest(message.chapterUrl, message.zipName, originTabId, message.options))
       .catch((e) => { try { cdlLog('error', 'Download failed: ' + (e?.message || e)); } catch (_) {}
-        notifyDownloadAllError(originTabId, 'Download failed: ' + (e?.message || 'unexpected error')); });
+        notifyTab(originTabId, {
+          action: 'downloadError',
+          chapterUrl: message.chapterUrl,
+          error: e?.message || 'The chapter download could not be started.',
+        }); });
     return true;
   }
 
@@ -1437,7 +1608,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             try { cdlLog('error', 'Download All failed: ' + (e?.message || e)); } catch (_) {}
             notifyDownloadAllError(
               originTabId,
-              'Download failed: ' + (e?.message || 'unexpected error')
+              e?.message || 'Unexpected download pipeline error.',
+              {
+                errorTitle: 'Download stopped unexpectedly.',
+                errorKind: 'pipeline',
+                failurePhase: (downloadAllSession && downloadAllSession.phase) || 'unknown',
+              }
             );
           });
       })
@@ -1488,18 +1664,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (belongsToSender) _pendingZip.dismissAfterAbandon = true;
     const abandoned = belongsToSender && resolvePendingArchiveSaveDecision(false);
     sendResponse({ ok: abandoned });
-    return true;
-  }
-
-  if (message.action === 'retryZip') {
-    const originTabId = sender.tab?.id ?? null;
-    sendResponse({ ok: true });
-    if (_pendingZip) {
-      Promise.resolve().then(() => _doZipAndSave(_pendingZip))
-        .catch((e) => notifyDownloadAllError(originTabId, 'ZIP retry failed: ' + (e?.message || 'unexpected error')));
-    } else {
-      notifyDownloadAllError(originTabId, 'Session expired - please restart Download All');
-    }
     return true;
   }
 
@@ -2762,11 +2926,11 @@ function chapterPdfMetadata(opts, chapterLabel, chapterUrl, mangaName) {
   };
 }
 
-const PDF_KEEPALIVE_INTERVAL_MS = 15000;
+const EXTENSION_KEEPALIVE_INTERVAL_MS = 15000;
 
-// A Manifest V3 service worker can be retired while pdf-lib is yielding during
-// a long serialization pass. Extension API activity resets Chrome's idle timer,
-// so keep the worker alive only for the lifetime of an active PDF build.
+// A Manifest V3 service worker can be retired while a long PDF, CBZ, or ZIP
+// serialization pass is yielding. Extension API activity resets Chrome's idle
+// timer, so keep the worker alive only for the lifetime of that active build.
 async function withExtensionKeepAlive(task) {
   const pulse = () => {
     try {
@@ -2778,7 +2942,7 @@ async function withExtensionKeepAlive(task) {
     } catch (_) {}
   };
   pulse();
-  const timer = setInterval(pulse, PDF_KEEPALIVE_INTERVAL_MS);
+  const timer = setInterval(pulse, EXTENSION_KEEPALIVE_INTERVAL_MS);
   try {
     return await task();
   } finally {
@@ -3038,13 +3202,11 @@ async function _zipToDownloadUrl(zip, onUpdate) {
   if (!_IS_FIREFOX) {
     // Build Chromium archives incrementally. JSZip's generateAsync({type:'blob'})
     // concatenates the full archive at 100%, causing a large allocation/GC pause.
-    try {
-      const blob = await generateChromiumZipBlob(zip, report);
-      const url  = URL.createObjectURL(blob);
-      return { url, revoke: () => URL.revokeObjectURL(url) };
-    } catch (_) {}
+    const blob = await generateChromiumZipBlob(zip, report);
+    const url  = URL.createObjectURL(blob);
+    return { url, revoke: () => URL.revokeObjectURL(url) };
   }
-  // Firefox (or fallback): base64 data URL
+  // Firefox: base64 data URL
   const base64 = await zip.generateAsync({ type: 'base64', compression: 'STORE' }, report);
   return { url: `data:application/zip;base64,${base64}`, revoke: () => {}, base64 };
 }
@@ -3112,6 +3274,46 @@ function tagDownloadError(error, phase) {
     return copy;
   }
   return tagged;
+}
+
+function describeArchiveFailure(error, failurePhase) {
+  const raw = downloadErrorText(error) || 'Unexpected archive error';
+  if (failurePhase === 'archive_save') {
+    const code = (raw.match(/\b(?:FILE|NETWORK|SERVER|USER)_[A-Z_]+\b/) || [])[0] || '';
+    const known = {
+      FILE_NO_SPACE: 'The device does not have enough free space for this ZIP.',
+      FILE_ACCESS_DENIED: 'The browser cannot write to the selected folder.',
+      FILE_NAME_TOO_LONG: 'The generated ZIP filename is too long for the selected folder.',
+      FILE_TOO_LARGE: 'The generated ZIP is too large for the selected destination.',
+      FILE_BLOCKED: 'The browser blocked the generated ZIP.',
+      FILE_SECURITY_CHECK_FAILED: 'The browser could not complete its security check for the ZIP.',
+      NETWORK_TIMEOUT: 'The browser timed out while saving the ZIP.',
+      NETWORK_DISCONNECTED: 'The network or download manager disconnected while saving the ZIP.',
+      USER_SHUTDOWN: 'The browser shut down before the ZIP could be saved.',
+    };
+    return {
+      errorTitle: 'Browser could not save the ZIP.',
+      errorKind: 'archive_save',
+      failurePhase,
+      message: known[code] || raw.replace(/^Download interrupted:\s*/i, ''),
+    };
+  }
+
+  if (failurePhase === 'chapter_packaging') {
+    return {
+      errorTitle: 'Chapter packaging failed.',
+      errorKind: 'chapter_packaging',
+      failurePhase,
+      message: `${raw} Lower the ZIP part size or switch formats, then resume from the last confirmed part.`,
+    };
+  }
+
+  return {
+    errorTitle: 'ZIP creation failed.',
+    errorKind: 'archive_build',
+    failurePhase: 'archive_build',
+    message: `${raw} Lower the ZIP part size if this happens again, then resume from the last confirmed part.`,
+  };
 }
 
 function downloadItemProgressPercent(item) {
@@ -3331,6 +3533,44 @@ function chaptersPerPartForFormat(cfg, format) {
   return Math.max(1, Number(cfg[key]) || fallback);
 }
 
+function downloadAllPartitionPolicy(cfg, format) {
+  cfg = cfg || {};
+  const splitMode = cfg['download.splitMode'] || 'multipart';
+  if (splitMode === 'single') {
+    return { splitMode, maxChapters: Infinity, maxBytes: Infinity, maxMb: Infinity };
+  }
+  const configuredMb = Number(cfg['download.mbPerPart']);
+  const maxMb = Number.isFinite(configuredMb) && configuredMb > 0
+    ? configuredMb
+    : ZIP_PART_MAX_BYTES / (1024 * 1024);
+  return {
+    splitMode,
+    maxChapters: chaptersPerPartForFormat(cfg, format),
+    maxBytes: maxMb * 1024 * 1024,
+    maxMb,
+  };
+}
+
+function downloadAllPartSplitReason(partChapters, partBytes, policy) {
+  if (!policy || policy.splitMode === 'single') return '';
+  const countReached = partChapters >= policy.maxChapters;
+  const sizeReached = partBytes >= policy.maxBytes;
+  if (countReached && sizeReached) return 'count_and_size_limit';
+  if (sizeReached) return 'size_limit';
+  if (countReached) return 'count_limit';
+  return '';
+}
+
+function downloadAllProjectedPartSplitReason(partChapters, partBytes, nextBytes, policy) {
+  if (!policy || policy.splitMode === 'single' || partChapters <= 0) return '';
+  const countExceeded = partChapters + 1 > policy.maxChapters;
+  const sizeExceeded = partBytes + Math.max(0, Number(nextBytes) || 0) > policy.maxBytes;
+  if (countExceeded && sizeExceeded) return 'count_and_size_limit';
+  if (sizeExceeded) return 'size_limit';
+  if (countExceeded) return 'count_limit';
+  return '';
+}
+
 // Top-level series folder name (Kavita/Komga layout groups everything under it).
 function seriesFolderName(mangaName) {
   if (typeof CDLSettings !== 'undefined') return CDLSettings.sanitizeFilename(mangaName, 100) || 'Series';
@@ -3425,23 +3665,40 @@ async function addChapterToOuter(zip, r, opts, mangaName) {
 }
 
 // Write the series cover + series.json into the outer ZIP (once, lands in part 1).
-async function addSeriesMetaToOuter(zip, opts, mangaName) {
-  if (!opts.includeSeriesMeta || !opts.seriesMeta) return;
+async function addSeriesMetaToOuter(zip, opts, mangaName, cfg) {
+  if (!opts.includeSeriesMeta || !opts.seriesMeta) return 0;
   const meta = opts.seriesMeta;
   const prefix = opts.folderLayout === 'kavita' ? `${seriesFolderName(mangaName)}/` : '';
-  try { zip.file(`${prefix}series.json`, JSON.stringify(meta, null, 2)); } catch (_) {}
+  let addedBytes = 0;
+  try {
+    const json = JSON.stringify(meta, null, 2);
+    zip.file(`${prefix}series.json`, json);
+    addedBytes += new TextEncoder().encode(json).byteLength;
+  } catch (_) {}
   if (meta.coverUrl) {
+    const controller = new AbortController();
+    const configuredTimeout = Number(cfg && cfg['perf.imageTimeoutMs']) || 30000;
+    const timeoutId = setTimeout(() => controller.abort(), Math.min(configuredTimeout, 30000));
     try {
-      const resp = await fetch(meta.coverUrl, { credentials: 'include', headers: { Referer: 'https://comix.to/' } });
+      const resp = await fetch(meta.coverUrl, {
+        signal: controller.signal,
+        credentials: 'include',
+        headers: { Referer: 'https://comix.to/' },
+      });
       if (resp.ok) {
         const ct = resp.headers.get('content-type') || '';
         const ext = /png/i.test(ct) ? 'png' : /webp/i.test(ct) ? 'webp' : 'jpg';
-        zip.file(`${prefix}cover.${ext}`, await resp.arrayBuffer());
+        const cover = await resp.arrayBuffer();
+        zip.file(`${prefix}cover.${ext}`, cover);
+        addedBytes += cover.byteLength || 0;
       }
     } catch (err) {
       cdlLog('warn', `Cover image could not be fetched: ${err.message}`);
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
+  return addedBytes;
 }
 
 // Record a successfully-downloaded chapter into the per-series manifest. Writes are
@@ -3856,9 +4113,8 @@ async function handleDownloadAllRequest(
   const padDigits = cfg['naming.imagePadDigits'] || 3;
   const imageRetries = cfg['retry.imageRetries'] || 0;
   const chapterRetries = cfg['retry.chapterRetries'] || 0;
-  const splitMode = cfg['download.splitMode'] || 'multipart';
-  const maxChapters = splitMode === 'single' ? Infinity : chaptersPerPartForFormat(cfg, opts.format);
-  const maxBytes = splitMode === 'single' ? Infinity : (cfg['download.mbPerPart'] || 300) * 1024 * 1024;
+  const partitionPolicy = downloadAllPartitionPolicy(cfg, opts.format);
+  const { maxChapters, maxBytes } = partitionPolicy;
 
   cdlLog('info', `${chapterOffset ? 'Download All resumed' : 'Download All started'}: "${mangaName}" - ${chapters.length} remaining of ${totalChapters} chapters${concurrency > 1 ? ` (${concurrency} at a time)` : ''}`);
 
@@ -3922,11 +4178,46 @@ async function handleDownloadAllRequest(
     return buffered.length;
   };
 
-  const saveCurrentZipPart = async (isFinal = false, checkpointIndex = chapterOffset) => {
+  const saveCurrentZipPart = async (
+    isFinal = false,
+    checkpointIndex = chapterOffset,
+    splitReason = isFinal ? 'final' : '',
+    splitTrigger = isFinal ? 'final' : 'reached'
+  ) => {
     if (zipPartChapters === 0) return true;
     archivePresentationActive = true;
     archiveCompletedSnapshot = checkpointIndex;
     const partName = zipPart === 1 && isFinal ? zipName : getZipPartName(zipName, zipPart);
+    const partChapters = zipPartChapters;
+    const partBytes = zipPartBytes;
+    const partUnit = opts.format === 'cbz'
+      ? 'CBZ files'
+      : opts.format === 'pdf'
+        ? 'PDF files'
+        : 'chapter folders';
+    const archiveContext = {
+      zipPart,
+      finalPart: isFinal,
+      splitReason,
+      splitTrigger,
+      outputFormat: opts.format,
+      partChapters,
+      partBytes,
+      maxPartChapters: Number.isFinite(maxChapters) ? maxChapters : null,
+      maxPartBytes: Number.isFinite(maxBytes) ? maxBytes : null,
+      maxPartMb: Number.isFinite(partitionPolicy.maxMb) ? partitionPolicy.maxMb : null,
+    };
+    if (!isFinal && splitReason) {
+      const reason = splitReason === 'size_limit'
+        ? `${partitionPolicy.maxMb} MB size limit`
+        : splitReason === 'count_limit'
+          ? `${maxChapters} ${partUnit} limit`
+          : `${maxChapters} ${partUnit} and ${partitionPolicy.maxMb} MB limits`;
+      const trigger = splitTrigger === 'projected'
+        ? `${reason} would be exceeded by the next chapter`
+        : `${reason} reached first`;
+      cdlLog('info', `Building ZIP part ${zipPart} with ${partChapters} ${partUnit}: ${trigger}.`);
+    }
 
     let lastZipPercent = -1;
     const onZipProgress = (metadata = {}) => {
@@ -3944,10 +4235,10 @@ async function handleDownloadAllRequest(
         chapterLabel: '',
         imagesDone: 0,
         imagesTotal: 0,
-        zipPart,
-        finalPart: isFinal,
+        ...archiveContext,
         zipPercent: Math.max(lastZipPercent, Math.round(percent)),
       });
+      if (metadata.reset) persistDownloadAllSession(true);
     };
 
     let lastSavePercent = -1;
@@ -3970,8 +4261,7 @@ async function handleDownloadAllRequest(
         chapterLabel: '',
         imagesDone: 0,
         imagesTotal: 0,
-        zipPart,
-        finalPart: isFinal,
+        ...archiveContext,
         zipPercent: 100,
         savePercent: wholePercent,
         saveState: state,
@@ -3987,6 +4277,14 @@ async function handleDownloadAllRequest(
       mangaName,
       zipPart,
       finalPart: isFinal,
+      splitReason,
+      splitTrigger,
+      outputFormat: opts.format,
+      partChapters,
+      partBytes,
+      maxPartChapters: archiveContext.maxPartChapters,
+      maxPartBytes: archiveContext.maxPartBytes,
+      maxPartMb: archiveContext.maxPartMb,
       onZipProgress,
       onSaveProgress,
       notifyDone: false,
@@ -4340,18 +4638,50 @@ async function handleDownloadAllRequest(
       const r = results[i];
       results[i] = null;   // release buffers as soon as they're packed
 
+      const packageable = r && r.status === 'done' &&
+        (r.files.length || (r.pdfBytes && r.pdfBytes.byteLength));
+      if (packageable) {
+        const estimatedBytes = r.pdfBytes && r.pdfBytes.byteLength
+          ? r.pdfBytes.byteLength
+          : Math.max(0, Number(r.bytes) || 0);
+        const projectedReason = downloadAllProjectedPartSplitReason(
+          zipPartChapters, zipPartBytes, estimatedBytes, partitionPolicy
+        );
+        if (projectedReason) {
+          // The current chapter is not in this part yet, so the confirmed
+          // checkpoint remains immediately before it.
+          const ok = await saveCurrentZipPart(
+            false, chapterOffset + i, projectedReason, 'projected'
+          );
+          if (!ok) { packFailed = true; _signalDownloadAllAbort(); return; }
+        }
+      }
+
       if (r && Object.prototype.hasOwnProperty.call(terminalCounts, r.status)) {
         terminalCounts[r.status]++;
         if (r.status === 'error' && !firstChapterError && r.error) firstChapterError = r.error;
       }
 
-      if (r && r.status === 'done' && (r.files.length || (r.pdfBytes && r.pdfBytes.byteLength))) {
-        const added = await addChapterToOuter(zip, r, opts, mangaName);
+      if (packageable) {
+        let added;
+        try {
+          added = await withExtensionKeepAlive(() => addChapterToOuter(zip, r, opts, mangaName));
+        } catch (error) {
+          const failure = describeArchiveFailure(error, 'chapter_packaging');
+          cdlLog('error', `${r.chapterLabel} packaging failed: ${failure.message}`);
+          notifyDownloadAllError(originTabId, failure.message, failure);
+          packFailed = true;
+          _signalDownloadAllAbort();
+          return;
+        }
         zipPartChapters++;
         zipPartBytes += added;
         zipPartChapterRecords.push({ chapterLabel: r.chapterLabel });
-        if (i < chapters.length - 1 && (zipPartChapters >= maxChapters || zipPartBytes >= maxBytes)) {
-          const ok = await saveCurrentZipPart(false, chapterOffset + i + 1);
+        const splitReason = downloadAllPartSplitReason(zipPartChapters, zipPartBytes, partitionPolicy);
+        if (i < chapters.length - 1 && splitReason) {
+          const ok = await saveCurrentZipPart(
+            false, chapterOffset + i + 1, splitReason, 'reached'
+          );
           if (!ok) { packFailed = true; _signalDownloadAllAbort(); return; }
         }
       }
@@ -4364,7 +4694,12 @@ async function handleDownloadAllRequest(
   };
 
   // Series cover + series.json go in first (so they land in ZIP part 1).
-  if (zipPart === 1) await addSeriesMetaToOuter(zip, opts, mangaName);
+  if (zipPart === 1) {
+    const metadataBytes = await withExtensionKeepAlive(
+      () => addSeriesMetaToOuter(zip, opts, mangaName, cfg)
+    );
+    zipPartBytes += Math.max(0, Number(metadataBytes) || 0);
+  }
 
   const workers = [];
   for (let w = 0; w < concurrency; w++) workers.push(worker());
@@ -4382,7 +4717,7 @@ async function handleDownloadAllRequest(
   }
 
   // Final ZIP part.
-  const saved = await saveCurrentZipPart(true, totalChapters);
+  const saved = await saveCurrentZipPart(true, totalChapters, 'final');
   if (!saved) return;
 
   // Let queued library pushes drain before reporting done (also keeps the MV3
@@ -4415,13 +4750,14 @@ async function _doZipAndSave(pending) {
   } = pending;
   const notifyDone = pending.notifyDone !== false;
   const filename = sanitizeFilename(zipName);
+  let failurePhase = 'archive_build';
   try {
     let generated = pending.generatedArchive;
     if (!generated) {
       if (typeof onZipProgress === 'function') {
         try { onZipProgress({ percent: 0, currentFile: '', reset: true }); } catch (_) {}
       }
-      const result = await _zipToDownloadUrl(zip, onZipProgress);
+      const result = await withExtensionKeepAlive(() => _zipToDownloadUrl(zip, onZipProgress));
       if (typeof onZipProgress === 'function') {
         try { onZipProgress({ percent: 100, currentFile: '' }); } catch (_) {}
       }
@@ -4435,6 +4771,7 @@ async function _doZipAndSave(pending) {
 
     let delivery = null;
     let manualSaveAttempt = false;
+    failurePhase = 'archive_save';
     while (!delivery) {
       try {
         delivery = await saveGeneratedArchive({
@@ -4491,16 +4828,15 @@ async function _doZipAndSave(pending) {
     };
   } catch (err) {
     releasePendingGeneratedArchive(pending);
+    if (_pendingZip === pending) _pendingZip = null;
     if (isDownloadCancelledError(err)) {
       cdlLog('info', `Download All save cancelled: ${sanitizeFilename(zipName)}`);
       notifyDownloadAllCancelled(originTabId);
       return null;
     }
-    // A subsequent Retry ZIP action is a standalone recovery after this caller
-    // has unwound, so it must report its own terminal result.
-    pending.notifyDone = true;
-    cdlLog('error', `Download All ZIP error: ${err.message}`);
-    notifyDownloadAllError(originTabId, err.message, true);
+    const failure = describeArchiveFailure(err, failurePhase);
+    cdlLog('error', `Download All ${failure.errorKind}: ${failure.message}`);
+    notifyDownloadAllError(originTabId, failure.message, failure);
     return null;
   }
 }
@@ -4849,7 +5185,11 @@ async function autoDownloadNew(slug, mangaName, newOnes, cfg, seriesTotal) {
 }
 
 if (chrome.alarms && chrome.alarms.onAlarm) {
-  chrome.alarms.onAlarm.addListener((a) => { if (a && a.name === SUBSCRIBE_ALARM) checkAllSubscriptions(); });
+  chrome.alarms.onAlarm.addListener((a) => {
+    if (!a) return;
+    if (a.name === SUBSCRIBE_ALARM) checkAllSubscriptions();
+    else if (a.name === UPDATE_CHECK_ALARM) runScheduledUpdateCheck().catch(() => {});
+  });
 }
 chrome.runtime.onInstalled.addListener(setupSubscribeAlarm);
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(setupSubscribeAlarm);

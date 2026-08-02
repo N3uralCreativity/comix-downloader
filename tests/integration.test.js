@@ -127,6 +127,19 @@ check('cancelled Save state offers an explicit Save again action',
   contentTitleSource.includes("action: 'retryArchiveSave'"));
 check('Download All frame handles the post-archive resuming state',
   contentTitleSource.includes("phase === 'resuming'"));
+check('Download All explains which configured partition threshold started a ZIP part',
+  backgroundSource.includes('downloadAllPartSplitReason') &&
+  backgroundSource.includes('splitReason') &&
+  contentTitleSource.includes('_dlAllPartBoundaryText'));
+check('recoverable archive errors keep their checkpoint without masquerading as interruptions',
+  backgroundSource.includes("errorKind: 'archive_save'") &&
+  contentTitleSource.includes('if (message.canResumeDownload) updateDownloadAllPopupInterrupted(message)'));
+check('a single-chapter setup error cannot terminate an active Download All session', (() => {
+  const start = backgroundSource.indexOf("message.action === 'downloadChapter'");
+  const end = backgroundSource.indexOf("message.action === 'downloadAllChapters'", start);
+  const block = backgroundSource.slice(start, end);
+  return block.includes("action: 'downloadError'") && !block.includes('notifyDownloadAllError');
+})());
 check('interrupted Download All sessions expose Resume download and Discard actions',
   contentTitleSource.includes('<span>Resume download</span>') &&
   contentTitleSource.includes("action: 'resumeDownloadAll'") &&

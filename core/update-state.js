@@ -46,6 +46,25 @@
     }, currentVersion);
   }
 
+  // Chromium's callback API returns (status, details), while newer Promise-based
+  // implementations return { status, version }. Normalize both without tying the
+  // update UI to one browser's calling convention.
+  function normalizeUpdateCheckResult(resultOrStatus, details) {
+    var result = resultOrStatus && typeof resultOrStatus === 'object'
+      ? resultOrStatus
+      : {};
+    var extra = details && typeof details === 'object' ? details : {};
+    var status = typeof resultOrStatus === 'string'
+      ? resultOrStatus
+      : (typeof result.status === 'string' ? result.status : '');
+    var allowed = ['update_available', 'no_update', 'throttled', 'unsupported'];
+    if (allowed.indexOf(status) === -1) status = 'unknown';
+    var version = typeof result.version === 'string'
+      ? result.version.trim()
+      : (typeof extra.version === 'string' ? extra.version.trim() : '');
+    return { status: status, version: version };
+  }
+
   function hasActiveDownloadWork(activity) {
     var state = activity && typeof activity === 'object' ? activity : {};
     return state.downloadAllActive === true ||
@@ -60,6 +79,7 @@
     compareVersions: compareVersions,
     normalizeAvailableUpdate: normalizeAvailableUpdate,
     createAvailableUpdate: createAvailableUpdate,
+    normalizeUpdateCheckResult: normalizeUpdateCheckResult,
     hasActiveDownloadWork: hasActiveDownloadWork,
   };
 });

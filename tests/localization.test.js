@@ -20,6 +20,13 @@ const requiredMessages = [
   'updateBusy',
   'updateFailed',
   'updateToolbarTitle',
+  'updateCheckAction',
+  'updateChecking',
+  'updateUpToDate',
+  'updateCheckThrottled',
+  'updateCheckUnsupported',
+  'updateCheckFailed',
+  'updateAvailableShort',
 ];
 
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));

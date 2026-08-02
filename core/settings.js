@@ -168,13 +168,13 @@
       options: { multipart: 'Multiple parts (recommended)', single: 'One single ZIP' },
       warn: 'A single ZIP for a whole series can exhaust memory and fail to download or unzip on large titles. Multi-part is much safer.' },
     'download.chaptersPerPart': { type: 'int', min: 1, max: 50, risk: 'none',
-      label: 'ZIP chapters per part', help: 'For ZIP output, start a new outer ZIP part after this many chapters.' },
+      label: 'Chapter folders per ZIP part', help: 'Maximum for ZIP output. A part starts sooner when the shared size limit is reached first.' },
     'download.cbzChaptersPerPart': { type: 'int', min: 1, max: 50, risk: 'none',
-      label: 'CBZ chapters per part', help: 'For CBZ output, place this many chapter CBZ files in each outer ZIP part.' },
+      label: 'CBZ files per ZIP part', help: 'Each chapter stays in its own CBZ. Download All places up to this many CBZ files in an outer ZIP part, or fewer when the shared size limit is reached first.' },
     'download.pdfChaptersPerPart': { type: 'int', min: 1, max: 50, risk: 'none',
       label: 'PDF chapters per part', help: 'For PDF output, place this many chapter PDF files in each outer ZIP part.' },
     'download.mbPerPart': { type: 'int', min: 50, max: 2000, risk: 'glitchy',
-      label: 'Max size per part (MB)', help: 'Start a new ZIP part after this size.',
+      label: 'ZIP part size limit (MB)', help: 'Shared by ZIP and CBZ output. The chapter/file count and this size limit both apply; whichever is reached first starts the next part. A single large chapter can exceed the target.',
       warn: 'Parts larger than ~800 MB may strain memory while the ZIP is being built.' },
     'download.concurrentChapters': { type: 'int', min: 1, max: 10, risk: 'risky',
       label: 'Chapters at once', help: 'How many chapters can download at the same time. This applies to "Download All" and to separate chapter buttons. The default is 2; raise it to download faster, or use 1 to process chapters one at a time. Up to 10.',
@@ -183,7 +183,7 @@
       label: 'Skip already-downloaded', help: 'In "Download All", default to only the chapters you have not downloaded yet. You can still choose "All" in the panel to re-download everything.' },
 
     'output.format': { type: 'enum', enum: OUTPUT_FORMATS, risk: 'none',
-      label: 'Download format', help: 'ZIP keeps folders of images. CBZ creates a comic archive per chapter.',
+      label: 'Download format', help: 'ZIP keeps chapter folders of images. CBZ creates one comic archive per chapter; Download All then delivers those CBZ files inside one or more ZIP parts.',
       options: OUTPUT_FORMAT_OPTIONS },
     'output.includeComicInfo': { type: 'bool', risk: 'none',
       label: 'Include ComicInfo.xml', help: 'Add a ComicInfo.xml (series, number, count, summary, tags…) to each chapter so library servers index it correctly.' },
@@ -499,19 +499,42 @@
     }).catch(function () { return validate({}); });
   }
 
-  function saveSettings(obj) {
-    var clean = validate(obj);
+  // Serialize writes in this context. The embedded settings page saves controls
+  // immediately; without a queue, two fast read-modify-write patches can both
+  // read the same old object and silently overwrite one another.
+  var settingsWriteQueue = Promise.resolve();
+
+  function enqueueSettingsWrite(task) {
+    var run = settingsWriteQueue.catch(function () {}).then(task);
+    settingsWriteQueue = run.catch(function () {});
+    return run;
+  }
+
+  function writeValidatedSettings(clean) {
     var payload = {};
     payload[STORAGE_KEY] = clean;
     return storageSet(payload).then(function () { return clean; });
   }
 
+  function saveSettings(obj) {
+    var clean = validate(obj);
+    return enqueueSettingsWrite(function () { return writeValidatedSettings(clean); });
+  }
+
   function patchSettings(partial) {
-    return getSettings().then(function (cur) {
-      var next = {};
-      for (var k in cur) { if (Object.prototype.hasOwnProperty.call(cur, k)) next[k] = cur[k]; }
-      if (partial) { for (var p in partial) { if (Object.prototype.hasOwnProperty.call(partial, p)) next[p] = partial[p]; } }
-      return saveSettings(next);
+    var patch = {};
+    if (partial) {
+      for (var key in partial) {
+        if (Object.prototype.hasOwnProperty.call(partial, key)) patch[key] = partial[key];
+      }
+    }
+    return enqueueSettingsWrite(function () {
+      return getSettings().then(function (cur) {
+        var next = {};
+        for (var k in cur) { if (Object.prototype.hasOwnProperty.call(cur, k)) next[k] = cur[k]; }
+        for (var p in patch) { if (Object.prototype.hasOwnProperty.call(patch, p)) next[p] = patch[p]; }
+        return writeValidatedSettings(validate(next));
+      });
     });
   }
 

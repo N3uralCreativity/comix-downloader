@@ -47,6 +47,7 @@
   var fallbackTracked = false;
   var fallbackDeadline = 0;
   var fallbackMonitorTimer = null;
+  var embeddedUpdateRefresh = null;
 
   // Sample context for live naming-template previews (mirrors the options page).
   var PREVIEW_CTX = {
@@ -127,6 +128,10 @@
   }
   function setLocal(key, val) { var o = {}; o[key] = val; try { chrome.storage.local.set(o); } catch (_) {} }
   function send(msg) { return new Promise(function (res) { try { chrome.runtime.sendMessage(msg, function (r) { res(chrome.runtime.lastError ? null : r); }); } catch (_) { res(null); } }); }
+  function i18n(name, fallback, substitutions) {
+    try { return chrome.i18n.getMessage(name, substitutions) || fallback; }
+    catch (_) { return fallback; }
+  }
   function extensionAsset(name) {
     try { return chrome.runtime.getURL('assets/settings-outro/' + name); }
     catch (_) { return ''; }
@@ -341,6 +346,28 @@
       '#' + VIEW_ID + ' .cdl-btn.primary{background:var(--accent,#8765eb);border-color:var(--accent,#8765eb);color:var(--accent-ink,#1a1133);}' +
       '#' + VIEW_ID + ' .cdl-btn.danger{color:#ef9a9a;border-color:rgba(239,68,68,.32);background:rgba(239,68,68,.08);}' +
       '#' + VIEW_ID + ' .cdl-status{margin-top:4px;font-size:12px;color:var(--text-2,#a0a0a0);min-height:16px;}' +
+      '#' + VIEW_ID + ' .cdl-settings-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;}' +
+      '#' + VIEW_ID + ' .cdl-settings-head-copy{min-width:0;}' +
+      '#' + VIEW_ID + ' .cdl-update-head-actions{display:flex;align-items:center;gap:9px;flex:0 0 auto;}' +
+      '#' + VIEW_ID + ' .cdl-update-check.is-checking svg{animation:cdl-update-spin .85s linear infinite;}' +
+      '#' + VIEW_ID + ' .cdl-update-check:disabled{opacity:.68;cursor:wait;}' +
+      '#' + VIEW_ID + ' .cdl-update-check-status{font-size:11.5px;color:var(--text-3,#8a8a8a);max-width:190px;}' +
+      '#' + VIEW_ID + ' .cdl-update-panel{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:8px 12px;' +
+        'margin:0 0 18px;padding:12px 14px;border:1px solid rgba(234,179,8,.3);border-radius:var(--radius,6px);background:rgba(234,179,8,.08);}' +
+      '#' + VIEW_ID + ' .cdl-update-panel[hidden]{display:none;}' +
+      '#' + VIEW_ID + ' .cdl-update-icon{grid-row:1 / span 2;width:32px;height:32px;display:grid;place-items:center;color:#eab308;' +
+        'border:1px solid rgba(234,179,8,.32);border-radius:var(--radius,6px);background:var(--surface,#202326);}' +
+      '#' + VIEW_ID + ' .cdl-update-copy{min-width:0;display:flex;flex-direction:column;}' +
+      '#' + VIEW_ID + ' .cdl-update-title{font-size:13px;font-weight:700;color:var(--text-emphasis,#f5f5f5);}' +
+      '#' + VIEW_ID + ' .cdl-update-message{font-size:12px;color:var(--text-2,#a0a0a0);}' +
+      '#' + VIEW_ID + ' .cdl-update-action{grid-column:3;grid-row:1 / span 2;}' +
+      '#' + VIEW_ID + ' .cdl-update-action-status{grid-column:2;min-height:15px;font-size:11px;color:#eab308;}' +
+      '@keyframes cdl-update-spin{to{transform:rotate(360deg);}}' +
+      '@media(max-width:700px){#' + VIEW_ID + ' .cdl-settings-head{flex-direction:column;}' +
+        '#' + VIEW_ID + ' .cdl-update-head-actions{width:100%;flex-wrap:wrap;}' +
+        '#' + VIEW_ID + ' .cdl-update-panel{grid-template-columns:32px minmax(0,1fr);}' +
+        '#' + VIEW_ID + ' .cdl-update-action{grid-column:2;grid-row:auto;width:fit-content;}' +
+        '#' + VIEW_ID + ' .cdl-update-action-status{grid-column:2;}}' +
       '#' + VIEW_ID + ' .cdl-sub-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid rgba(255,255,255,.06);}' +
       '#' + VIEW_ID + ' .cdl-sub-name{font-weight:600;color:var(--text,#d4d4d4);}' +
       '#' + VIEW_ID + ' .cdl-sub-meta{font-size:11.5px;color:var(--text-3,#8a8a8a);margin-left:auto;}' +
@@ -372,7 +399,7 @@
         'object-fit:contain;object-position:center bottom;}' +
       '#' + VIEW_ID + ' .cdl-outro-audio{display:none;}' +
       '@media (prefers-reduced-motion:reduce){#' + VIEW_ID + ' .cdl-outro{opacity:1!important;transform:none!important;will-change:auto;}' +
-        '#' + VIEW_ID + ' .cdl-outro-media{display:none;}}' +
+        '#' + VIEW_ID + ' .cdl-outro-media{display:none;}#' + VIEW_ID + ' .cdl-update-check.is-checking svg{animation:none;}}' +
       '#cdl-saved-toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,8px);z-index:2147483647;' +
         'background:var(--surface-2,#282c30);color:var(--text-emphasis,#f5f5f5);border:1px solid rgba(255,255,255,.12);' +
         'border-radius:8px;padding:8px 16px;font:600 13px/1 system-ui,sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.45);' +
@@ -923,6 +950,98 @@
   }
 
   // ── build the whole extension settings view ─────────────────────────────────
+  function makeEmbeddedUpdateControls() {
+    var checkLabel = i18n('updateCheckAction', 'Check for updates');
+    var checkStatus = el('span', { class: 'cdl-update-check-status', role: 'status', 'aria-live': 'polite' });
+    var checkBtn = el('button', { type: 'button', class: 'cdl-btn cdl-update-check', title: checkLabel, 'aria-label': checkLabel }, [
+      svg(['M20 6v5h-5', 'M4 18v-5h5', 'M6.1 9a7 7 0 0 1 11.5-2.6L20 11', 'm4 13 2.4 4.6A7 7 0 0 0 17.9 15'], 15),
+      el('span', { text: checkLabel }),
+    ]);
+
+    var updateTitle = el('strong', { class: 'cdl-update-title', text: i18n('updateAvailableTitle', 'Your extension is outdated') });
+    updateTitle.id = 'cdl-settings-update-title';
+    var updateMessage = el('span', { class: 'cdl-update-message' });
+    var updateStatus = el('span', { class: 'cdl-update-action-status', role: 'status', 'aria-live': 'polite' });
+    var updateAction = el('button', { type: 'button', class: 'cdl-btn primary cdl-update-action', text: i18n('updateAvailableAction', 'Update now') });
+    var panel = el('section', { class: 'cdl-update-panel', 'aria-labelledby': updateTitle.id }, [
+      el('span', { class: 'cdl-update-icon' }, [svg(['M12 3v12', 'm7 10 5 5 5-5', 'M5 21h14'], 17)]),
+      el('div', { class: 'cdl-update-copy' }, [updateTitle, updateMessage]),
+      updateAction,
+      updateStatus,
+    ]);
+    panel.hidden = true;
+
+    function show(update) {
+      if (!update || !update.version) { panel.hidden = true; return false; }
+      updateMessage.textContent = i18n(
+        'updateAvailableMessage',
+        'Version ' + update.version + ' is ready. Your settings and history will stay intact.',
+        update.version
+      );
+      updateAction.textContent = i18n('updateAvailableAction', 'Update now');
+      updateAction.disabled = false;
+      updateStatus.textContent = '';
+      panel.hidden = false;
+      return true;
+    }
+
+    function refresh() {
+      return send({ action: 'getAvailableUpdate' }).then(function (result) {
+        return show(result && result.ok ? result.update : null);
+      });
+    }
+
+    checkBtn.addEventListener('click', function () {
+      if (checkBtn.disabled) return;
+      checkBtn.disabled = true;
+      checkBtn.classList.add('is-checking');
+      checkBtn.setAttribute('aria-busy', 'true');
+      checkStatus.textContent = i18n('updateChecking', 'Checking for updates...');
+      send({ action: 'checkForUpdate' }).then(function (result) {
+        if (result && result.update && result.update.version) {
+          show(result.update);
+          checkStatus.textContent = i18n('updateAvailableShort', 'Update ' + result.update.version + ' is ready', result.update.version);
+        } else if (result && result.ok && result.status === 'no_update') {
+          checkStatus.textContent = i18n('updateUpToDate', 'You are up to date');
+        } else if (result && result.ok && result.status === 'throttled') {
+          checkStatus.textContent = i18n('updateCheckThrottled', 'Checked recently - try again later');
+        } else if (result && result.ok && result.status === 'unsupported') {
+          checkStatus.textContent = i18n('updateCheckUnsupported', 'Manual checks are unavailable in this browser');
+        } else {
+          checkStatus.textContent = i18n('updateCheckFailed', 'Could not check for updates');
+        }
+      }).finally(function () {
+        checkBtn.disabled = false;
+        checkBtn.classList.remove('is-checking');
+        checkBtn.removeAttribute('aria-busy');
+      });
+    });
+
+    updateAction.addEventListener('click', function () {
+      updateAction.disabled = true;
+      updateAction.textContent = i18n('updateInstalling', 'Updating...');
+      updateStatus.textContent = '';
+      send({ action: 'installAvailableUpdate' }).then(function (result) {
+        if (result && result.ok) {
+          updateStatus.textContent = i18n('updateInstalling', 'Updating...');
+          return;
+        }
+        updateAction.disabled = false;
+        updateAction.textContent = i18n('updateAvailableAction', 'Update now');
+        if (result && result.noUpdate) { panel.hidden = true; return; }
+        updateStatus.textContent = result && result.busy
+          ? i18n('updateBusy', 'Finish or discard the current download, then try again.')
+          : i18n('updateFailed', 'Could not start the update. Reopen the settings page and try again.');
+      });
+    });
+
+    return {
+      head: el('div', { class: 'cdl-update-head-actions' }, [checkBtn, checkStatus]),
+      panel: panel,
+      refresh: refresh,
+    };
+  }
+
   function buildView(cur, lib, subs) {
     var draft = Object.assign({}, S.DEFAULTS, cur);
     var rowEls = {};
@@ -932,15 +1051,30 @@
     var onChange = function (key, value) {
       draft[key] = value;
       var p = {}; p[key] = value;
-      try { var r = S.patchSettings(p); if (r && r.then) r.catch(function () {}); } catch (_) {}
-      flashSaved(); applyDeps();
+      try {
+        var r = S.patchSettings(p);
+        if (r && r.then) {
+          r.then(function () { flashSaved(); })
+            .catch(function () { flashSaved('Could not save'); });
+        } else {
+          flashSaved();
+        }
+      } catch (_) { flashSaved('Could not save'); }
+      applyDeps();
     };
+    var updateControls = makeEmbeddedUpdateControls();
     var view = el('div', { class: 'uview', id: VIEW_ID }, [
-      el('div', { class: 'uview__head' }, [
-        el('h2', { class: 'uview__title', text: 'Comix Downloader' }),
-        el('p', { class: 'uview__sub', text: 'Settings for the browser extension — separate from comix.to, saved instantly on your device.' }),
+      el('div', { class: 'uview__head cdl-settings-head' }, [
+        el('div', { class: 'cdl-settings-head-copy' }, [
+          el('h2', { class: 'uview__title', text: 'Comix Downloader' }),
+          el('p', { class: 'uview__sub', text: 'Settings for the browser extension — separate from comix.to, saved instantly on your device.' }),
+        ]),
+        updateControls.head,
       ]),
+      updateControls.panel,
     ]);
+    embeddedUpdateRefresh = updateControls.refresh;
+    updateControls.refresh();
     (S.TABS || []).forEach(function (tab) {
       var keys = (tab.keys || []).filter(function (k) { return S.SCHEMA[k]; });
       if (keys.length) {
@@ -1017,6 +1151,7 @@
 
   function deactivate() {
     stopOutro();
+    embeddedUpdateRefresh = null;
     var v = document.getElementById(VIEW_ID); if (v) v.remove();
     if (hiddenComixView) { try { hiddenComixView.style.display = ''; } catch (_) {} hiddenComixView = null; }
     setActiveNav(false);
@@ -1180,5 +1315,10 @@
   sync();
   installQuickDialogWatcher();
   installThemeWatcher();
+  try {
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area === 'local' && changes.cdlUpdateAvailable && embeddedUpdateRefresh) embeddedUpdateRefresh();
+    });
+  } catch (_) {}
   beginSettingsNavigationProbe();
 })();

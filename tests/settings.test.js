@@ -54,6 +54,9 @@ check('ZIP chapters per part defaults to 5', S.validate({})['download.chaptersPe
 check('CBZ chapters per part defaults independently to 10', S.validate({})['download.cbzChaptersPerPart'] === 10);
 check('PDF chapters per part defaults independently to 5', S.validate({})['download.pdfChaptersPerPart'] === 5);
 check('CBZ chapters per part clamps high', S.validate({ 'download.cbzChaptersPerPart': 999 })['download.cbzChaptersPerPart'] === 50);
+check('partition settings explain that count and size limits compete',
+  /reached first/i.test(S.SCHEMA['download.cbzChaptersPerPart'].help) &&
+  /whichever is reached first/i.test(S.SCHEMA['download.mbPerPart'].help));
 check('PDF chapters per part clamps low', S.validate({ 'download.pdfChaptersPerPart': 0 })['download.pdfChaptersPerPart'] === 1);
 check('concurrentChapters clamp high', S.validate({ 'download.concurrentChapters': 99 })['download.concurrentChapters'] === 10);
 check('concurrentChapters clamp low', S.validate({ 'download.concurrentChapters': 0 })['download.concurrentChapters'] === 1);
@@ -153,6 +156,14 @@ check('home.sections garbage -> default selection', (function () {
   await S.patchSettings({ 'frame.width': 420 });
   got = await S.getSettings();
   check('patch preserves other keys', got['perf.batchSize'] === 6 && got['frame.width'] === 420);
+
+  await Promise.all([
+    S.patchSettings({ 'download.cbzChaptersPerPart': 50 }),
+    S.patchSettings({ 'download.mbPerPart': 900 }),
+  ]);
+  got = await S.getSettings();
+  check('concurrent instant patches cannot overwrite one another',
+    got['download.cbzChaptersPerPart'] === 50 && got['download.mbPerPart'] === 900);
 
   await S.resetDefaults();
   got = await S.getSettings();

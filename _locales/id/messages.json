@@ -45,5 +45,15 @@
   "updateToolbarTitle": {
     "message": "Comix Downloader - pembaruan $VERSION$ siap",
     "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateCheckAction": { "message": "Periksa pembaruan" },
+  "updateChecking": { "message": "Memeriksa pembaruan..." },
+  "updateUpToDate": { "message": "Anda sudah menggunakan versi terbaru" },
+  "updateCheckThrottled": { "message": "Baru saja diperiksa - coba lagi nanti" },
+  "updateCheckUnsupported": { "message": "Pemeriksaan pembaruan manual tidak tersedia di browser ini" },
+  "updateCheckFailed": { "message": "Tidak dapat memeriksa pembaruan" },
+  "updateAvailableShort": {
+    "message": "Pembaruan $VERSION$ siap",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.20" } }
   }
 }

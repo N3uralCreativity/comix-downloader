@@ -15,6 +15,13 @@
           <h1>Comix Downloader</h1>
           <span class="brand-sub">Settings</span>
         </div>
+        <button class="topbar-update-check" id="btn-check-update" type="button" title="Check for updates" aria-label="Check for updates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 6v5h-5"/><path d="M4 18v-5h5"/>
+            <path d="M6.1 9a7 7 0 0 1 11.5-2.6L20 11"/>
+            <path d="m4 13 2.4 4.6A7 7 0 0 0 17.9 15"/>
+          </svg>
+        </button>
         <span class="ver" id="ver">v4.2.20</span>
       </div>
       <div class="topbar-note">
@@ -22,6 +29,20 @@
         <span class="hl warn">Glitchy</span> and <span class="hl">risky</span> options are marked.
       </div>
     </header>
+
+    <section class="settings-update-panel" id="settings-update-panel" aria-labelledby="settings-update-title" hidden>
+      <span class="settings-update-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>
+        </svg>
+      </span>
+      <div class="settings-update-copy">
+        <strong id="settings-update-title">Your extension is outdated</strong>
+        <span id="settings-update-message">A browser-approved update is ready. Your settings and history will stay intact.</span>
+      </div>
+      <button class="btn settings-update-action" id="settings-update-action" type="button">Update now</button>
+      <span class="settings-update-status" id="settings-update-status" role="status" aria-live="polite"></span>
+    </section>
 
     <div class="layout">
       <nav class="sidebar" id="sidebar" aria-label="Settings sections"></nav>

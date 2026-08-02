@@ -45,5 +45,15 @@
   "updateToolbarTitle": {
     "message": "Comix Downloader - actualización $VERSION$ lista",
     "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateCheckAction": { "message": "Buscar actualizaciones" },
+  "updateChecking": { "message": "Buscando actualizaciones..." },
+  "updateUpToDate": { "message": "Tienes la versión más reciente" },
+  "updateCheckThrottled": { "message": "Se comprobó recientemente; inténtalo de nuevo más tarde" },
+  "updateCheckUnsupported": { "message": "Las comprobaciones manuales no están disponibles en este navegador" },
+  "updateCheckFailed": { "message": "No se pudieron buscar actualizaciones" },
+  "updateAvailableShort": {
+    "message": "La actualización $VERSION$ está lista",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.20" } }
   }
 }

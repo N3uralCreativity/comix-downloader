@@ -117,6 +117,8 @@ const allEvents = {
 let fetchMode = 'fail';
 let extractMode = 'pass';
 let chaptersPerPart = 30;
+let cbzChaptersPerPart = 10;
+let mbPerPart = 300;
 let chapterRetriesSetting = 1;
 let archiveDeliveryMode = 'confirmed';
 let outputFormat = 'zip';
@@ -132,17 +134,20 @@ const extractCalls = new Map();
 const allContext = {
   BATCH_SIZE: 4,
   ZIP_PART_MAX_CHAPTERS: 30,
+  ZIP_PART_MAX_BYTES: 300 * 1024 * 1024,
   JSZip: ZipStub,
   loadCfg: async () => ({
     'perf.batchSize': 4,
     'perf.rateLimitMode': 'off',
     'download.concurrentChapters': 2,
     'download.chaptersPerPart': chaptersPerPart,
+    'download.cbzChaptersPerPart': cbzChaptersPerPart,
+    'download.mbPerPart': mbPerPart,
+    'download.splitMode': 'multipart',
     'retry.imageRetries': 1,
     'retry.chapterRetries': chapterRetriesSetting,
   }),
   resolveOutputOptions: (_cfg, options) => ({ format: outputFormat, slug: 'series', ...(options || {}) }),
-  chaptersPerPartForFormat: (cfg) => cfg['download.chaptersPerPart'] || 30,
   getLibraryConfig: async () => null,
   chapterConcurrencyLimit: () => 2,
   createDownloadAllResumeData({ chapters, mangaName, zipName, options, resumeState }) {
@@ -251,6 +256,13 @@ const allContext = {
     allEvents.packed.push({ chapterLabel: result.chapterLabel, hasPdf: !!result.pdfBytes });
     return result.pdfBytes ? result.pdfBytes.byteLength : result.bytes;
   },
+  withExtensionKeepAlive: (task) => task(),
+  describeArchiveFailure: (error, failurePhase) => ({
+    errorTitle: 'Archive failed.',
+    errorKind: failurePhase,
+    failurePhase,
+    message: error.message,
+  }),
   _signalDownloadAllAbort() {},
   addSeriesMetaToOuter: async () => {},
   notifyDownloadAllCancelled() {},
@@ -266,8 +278,17 @@ vm.runInContext(`
   ${extractFunction('formatImageDownloadFailure')}
   ${extractFunction('downloadAllResumeSlug')}
   ${extractFunction('isArchiveDeliveryAccepted')}
+  ${extractFunction('chaptersPerPartForFormat')}
+  ${extractFunction('downloadAllPartitionPolicy')}
+  ${extractFunction('downloadAllPartSplitReason')}
+  ${extractFunction('downloadAllProjectedPartSplitReason')}
   ${extractFunction('handleDownloadAllRequest')}
   globalThis.handleDownloadAllRequest = handleDownloadAllRequest;
+  globalThis.partitionApi = {
+    downloadAllPartitionPolicy,
+    downloadAllPartSplitReason,
+    downloadAllProjectedPartSplitReason,
+  };
 `, allContext);
 
 function resetAllEvents() {
@@ -275,12 +296,30 @@ function resetAllEvents() {
   imageFetchCalls.clear();
   extractCalls.clear();
   outputFormat = 'zip';
+  mbPerPart = 300;
   pipelineTestActive = false;
   activePdfBuilds = 0;
   maxActivePdfBuilds = 0;
 }
 
 async function run() {
+  const cbzPolicy = allContext.partitionApi.downloadAllPartitionPolicy({
+    'download.splitMode': 'multipart',
+    'download.chaptersPerPart': 5,
+    'download.cbzChaptersPerPart': 50,
+    'download.mbPerPart': 300,
+  }, 'cbz');
+  check('CBZ partitioning uses its own configured file count instead of the ZIP folder count',
+    cbzPolicy.maxChapters === 50 && cbzPolicy.maxMb === 300);
+  check('the shared size threshold can intentionally split before the CBZ file count',
+    allContext.partitionApi.downloadAllPartSplitReason(
+      12, 301 * 1024 * 1024, cbzPolicy
+    ) === 'size_limit');
+  check('a part closes before adding a chapter that would substantially overshoot its size limit',
+    allContext.partitionApi.downloadAllProjectedPartSplitReason(
+      11, 290 * 1024 * 1024, 40 * 1024 * 1024, cbzPolicy
+    ) === 'size_limit');
+
   retryContext.fetchCalls = 0;
   retryContext.cooldowns.length = 0;
   retryContext.fetchImageForZip = async () => {
@@ -439,6 +478,38 @@ async function run() {
     const counts = new Set(allEvents.progress.slice(firstZip, firstSaveEnd + 1).map((event) => event.completed));
     return firstZip >= 0 && firstSaveEnd > firstZip && counts.size === 1 && counts.has(2);
   })());
+
+  resetAllEvents();
+  fetchMode = 'pass';
+  outputFormat = 'cbz';
+  chaptersPerPart = 2;
+  cbzChaptersPerPart = 3;
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },
+    { chapterUrl: 'https://comix.to/title/series/good/3', chapterLabel: 'Ch3' },
+    { chapterUrl: 'https://comix.to/title/series/good/4', chapterLabel: 'Ch4' },
+  ], 'Series', 'series.zip', 7, {});
+  const firstCbzPart = allEvents.progress.find((event) =>
+    event.phase === 'zipping' && event.zipPart === 1 && event.splitReason === 'count_limit');
+  check('the Download All pipeline respects the CBZ-specific files-per-part setting',
+    firstCbzPart && firstCbzPart.partChapters === 3 && firstCbzPart.maxPartChapters === 3 &&
+    firstCbzPart.outputFormat === 'cbz');
+
+  resetAllEvents();
+  fetchMode = 'pass';
+  outputFormat = 'zip';
+  chaptersPerPart = 50;
+  mbPerPart = 6 / (1024 * 1024); // synthetic six-byte boundary; each stub chapter is four bytes
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },
+  ], 'Series', 'series.zip', 7, {});
+  const projectedSizePart = allEvents.progress.find((event) =>
+    event.phase === 'zipping' && event.zipPart === 1 && event.splitTrigger === 'projected');
+  check('the pipeline closes a part before the next chapter would overshoot the size setting',
+    projectedSizePart && projectedSizePart.splitReason === 'size_limit' &&
+    projectedSizePart.partChapters === 1 && projectedSizePart.partBytes === 4);
 
   resetAllEvents();
   fetchMode = 'pass';

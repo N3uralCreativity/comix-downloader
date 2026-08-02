@@ -135,6 +135,7 @@ let zipDeliverySequence = [];
 let zipGenerationCalls = 0;
 let zipSaveOptions = [];
 let zipSaveCancellationDecision = false;
+let zipKeepAliveCalls = 0;
 const zipContext = {
   _pendingZip: {},
   _zipToDownloadUrl: async () => {
@@ -148,10 +149,14 @@ const zipContext = {
     if (next) throw next;
     return zipDelivery;
   },
+  withExtensionKeepAlive: async (task) => {
+    zipKeepAliveCalls++;
+    return task();
+  },
   recordChapterDownloaded: (_slug, label) => zipEvents.records.push(label),
   cdlLog() {},
   notifyDownloadAllDone: (_tabId, filename, warning) => zipEvents.done.push({ filename, warning }),
-  notifyDownloadAllError: (_tabId, error) => zipEvents.errors.push(error),
+  notifyDownloadAllError: (_tabId, error, options) => zipEvents.errors.push({ error, options }),
   notifyDownloadAllSaveCancelled: () => {
     zipEvents.saveCancelled++;
     setTimeout(() => zipContext.resolvePendingArchiveSaveDecision(zipSaveCancellationDecision), 0);
@@ -163,6 +168,7 @@ const zipContext = {
 vm.createContext(zipContext);
 vm.runInContext(`
   ${extractFunction('downloadErrorText')}
+  ${extractFunction('describeArchiveFailure')}
   ${extractFunction('isDownloadCancelledError')}
   ${extractFunction('isArchiveDeliveryAccepted')}
   ${extractFunction('releasePendingGeneratedArchive')}
@@ -174,6 +180,7 @@ vm.runInContext(`
     _pendingZip = pending;
     return _doZipAndSave(pending);
   };
+  globalThis.hasPendingZip = () => !!_pendingZip;
 `, zipContext);
 
 function resetZipEvents() {
@@ -187,6 +194,7 @@ function resetZipEvents() {
   zipGenerationCalls = 0;
   zipSaveOptions = [];
   zipSaveCancellationDecision = false;
+  zipKeepAliveCalls = 0;
 }
 
 async function run() {
@@ -224,6 +232,23 @@ async function run() {
     streamedUrl.url === 'blob:generated' && streamOptions.type === 'uint8array' &&
     streamOptions.compression === 'STORE' && streamOptions.streamFiles === true &&
     streamUpdates.join(',') === '50,100');
+
+  let hiddenFallbackCalls = 0;
+  let streamFailure = null;
+  try {
+    await zipGenerationContext.zipToDownloadUrl({
+      generateInternalStream() {
+        const handlers = {};
+        return {
+          on(event, handler) { handlers[event] = handler; return this; },
+          resume() { handlers.error(new Error('allocation failed')); },
+        };
+      },
+      async generateAsync() { hiddenFallbackCalls++; return 'AA=='; },
+    });
+  } catch (error) { streamFailure = error; }
+  check('Chromium surfaces ZIP generation failures without a hidden base64 rebuild',
+    streamFailure && streamFailure.message === 'allocation failed' && hiddenFallbackCalls === 0);
 
   archiveError = null;
   archiveErrors = [];
@@ -379,6 +404,7 @@ async function run() {
   check('each ZIP attempt resets visible archive progress to zero',
     doZipProgress.length >= 2 && doZipProgress[0].reset === true &&
     doZipProgress[0].percent === 0 && doZipProgress.at(-1).percent === 100);
+  check('ZIP construction uses a scoped extension-worker keep-alive', zipKeepAliveCalls === 1);
 
   resetZipEvents();
   zipDelivery = { confirmed: false, fallback: true, downloadId: null };
@@ -425,6 +451,22 @@ async function run() {
   check('closing the recovery state abandons the pending archive and records nothing',
     cancelledZip === null && zipEvents.saveCancelled === 1 && zipEvents.cancelled === 1 &&
     zipEvents.records.length === 0 && zipEvents.errors.length === 0);
+
+  resetZipEvents();
+  zipDeliveryError = Object.assign(new Error('Download interrupted: FILE_NO_SPACE'), {
+    downloadPhase: 'transfer',
+  });
+  const failedSave = await zipContext.doZipAndSave({
+    zip: {}, zipName: 'series.zip', originTabId: 4, notifyDone: false,
+    chapterRecords: [{ chapterLabel: 'Ch6' }], slug: 'series', mangaName: 'Series',
+  });
+  check('a browser save failure is classified separately from a runtime interruption',
+    failedSave === null && zipEvents.errors.length === 1 &&
+    zipEvents.errors[0].options.errorKind === 'archive_save' &&
+    zipEvents.errors[0].options.errorTitle === 'Browser could not save the ZIP.' &&
+    zipEvents.errors[0].error.includes('enough free space'));
+  check('a failed archive is released instead of leaving a broken retry object',
+    !zipContext.hasPendingZip() && zipEvents.records.length === 0);
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);

@@ -44,7 +44,7 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(`
-  const PDF_KEEPALIVE_INTERVAL_MS = 15000;
+  const EXTENSION_KEEPALIVE_INTERVAL_MS = 15000;
   ${extractFunction('withExtensionKeepAlive')}
   globalThis.withExtensionKeepAlive = withExtensionKeepAlive;
 `, context);
@@ -58,14 +58,14 @@ async function run() {
   });
 
   if (pulses !== 1 || intervalMs !== 15000 || typeof intervalCallback !== 'function') {
-    throw new Error('PDF keep-alive did not start immediately at the expected interval.');
+    throw new Error('Extension build keep-alive did not start immediately at the expected interval.');
   }
   intervalCallback();
-  if (pulses !== 2) throw new Error('PDF keep-alive did not pulse during finalization.');
+  if (pulses !== 2) throw new Error('Extension build keep-alive did not pulse during serialization.');
 
   release();
   if (await active !== 'complete') throw new Error('PDF keep-alive changed the task result.');
-  if (cleared !== 1) throw new Error('PDF keep-alive timer was not cleared after success.');
+  if (cleared !== 1) throw new Error('Extension build keep-alive timer was not cleared after success.');
 
   let rejection = '';
   try {
@@ -74,7 +74,7 @@ async function run() {
     rejection = error.message;
   }
   if (rejection !== 'expected failure' || cleared !== 2) {
-    throw new Error('PDF keep-alive did not preserve errors or clear after failure.');
+    throw new Error('Extension build keep-alive did not preserve errors or clear after failure.');
   }
 
   console.log('\nRESULT: 5 passed, 0 failed');

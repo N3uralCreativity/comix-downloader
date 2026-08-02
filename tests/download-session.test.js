@@ -118,11 +118,54 @@ check('interrupted sessions resume at the chapter after the checkpoint',
   session.completed === 2 && session.resumeFromChapter === 3 && session.resumeChapterLabel === 'Ch3');
 check('interrupted sessions bind to the matching restored tab', session.originTabId === 9);
 
+const zippingSession = {
+  active: true,
+  status: 'running',
+  phase: 'zipping',
+  resumeData: { ...resume, checkpointIndex: 0, nextZipPart: 1, savedZipNames: [] },
+};
+context.api.prepareInterruptedDownloadAllSession(zippingSession, 9);
+check('a worker restart during ZIP creation is identified by its real stage',
+  zippingSession.errorTitle === 'ZIP creation was interrupted.' &&
+  zippingSession.failurePhase === 'zipping' &&
+  zippingSession.errorKind === 'runtime_interruption');
+
 const serialized = context.api.serialize(session);
 check('the live session snapshot omits the full chapter checkpoint payload',
   !Object.prototype.hasOwnProperty.call(serialized, 'resumeData'));
 check('the live session snapshot preserves resume UI fields',
   serialized.canResumeDownload && serialized.resumeChapterLabel === 'Ch3');
+
+const recoverableContext = {
+  resumeData: { ...resume, checkpointIndex: 1, savedZipNames: ['series-part1.zip'] },
+  terminal: null,
+  sent: null,
+  restoredBadge: false,
+};
+vm.createContext(recoverableContext);
+vm.runInContext(`
+  const DOWNLOAD_ALL_RESUME_VERSION = 1;
+  let downloadAllSession = { phase: 'zipping', resumeData };
+  function recordDownloadAllTerminal(status, patch) { terminal = { status, ...patch }; }
+  function restoreIdleBadge() { restoredBadge = true; }
+  function notifyTab(_tabId, message) { sent = message; }
+  ${extractFunction('isValidDownloadAllResumeData')}
+  ${extractFunction('notifyDownloadAllError')}
+  globalThis.report = () => notifyDownloadAllError(7, 'allocation failed', {
+    errorTitle: 'ZIP creation failed.',
+    errorKind: 'archive_build',
+    failurePhase: 'archive_build',
+  });
+`, recoverableContext);
+recoverableContext.report();
+check('recoverable archive failures remain errors rather than generic interruptions',
+  recoverableContext.sent.action === 'downloadAllError' &&
+  recoverableContext.sent.errorTitle === 'ZIP creation failed.' &&
+  recoverableContext.terminal.status === 'error');
+check('recoverable archive failures expose the last confirmed checkpoint immediately',
+  recoverableContext.sent.canResumeDownload === true &&
+  recoverableContext.sent.resumeChapterLabel === 'Ch2' &&
+  recoverableContext.sent.completed === 1 && recoverableContext.restoredBadge);
 
 const awaitingSave = {
   active: true,

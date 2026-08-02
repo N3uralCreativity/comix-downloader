@@ -45,5 +45,15 @@
   "updateToolbarTitle": {
     "message": "Comix Downloader - 更新 $VERSION$ の準備完了",
     "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateCheckAction": { "message": "更新を確認" },
+  "updateChecking": { "message": "更新を確認しています..." },
+  "updateUpToDate": { "message": "最新バージョンです" },
+  "updateCheckThrottled": { "message": "最近確認済みです。しばらくしてからもう一度お試しください" },
+  "updateCheckUnsupported": { "message": "このブラウザーでは手動の更新確認を利用できません" },
+  "updateCheckFailed": { "message": "更新を確認できませんでした" },
+  "updateAvailableShort": {
+    "message": "更新 $VERSION$ を適用できます",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.20" } }
   }
 }

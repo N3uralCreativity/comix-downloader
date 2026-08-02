@@ -200,8 +200,57 @@ async function showAvailableUpdate() {
       ? i18n('updateBusy', 'Finish or discard the current download, then try again.')
       : i18n('updateFailed', 'Could not start the update. Reopen the popup and try again.');
   };
+  const reviewPrompt = document.getElementById('review-prompt');
+  if (reviewPrompt) reviewPrompt.hidden = true;
   panel.hidden = false;
   return true;
+}
+
+let updateCheckFeedbackTimer = 0;
+
+function showUpdateCheckFeedback(message) {
+  const subtitle = document.getElementById('header-sub');
+  if (!subtitle) return;
+  window.clearTimeout(updateCheckFeedbackTimer);
+  subtitle.textContent = message || 'comix.to chapter downloader';
+  if (!message) return;
+  updateCheckFeedbackTimer = window.setTimeout(() => {
+    subtitle.textContent = 'comix.to chapter downloader';
+  }, 3200);
+}
+
+async function checkForUpdateManually() {
+  const button = document.getElementById('btn-check-update');
+  if (!button || button.disabled) return;
+
+  button.disabled = true;
+  button.classList.add('is-checking');
+  button.setAttribute('aria-busy', 'true');
+  showUpdateCheckFeedback(i18n('updateChecking', 'Checking for updates...'));
+
+  try {
+    const result = await sendRuntimeMessage({ action: 'checkForUpdate' });
+    if (result && result.update && result.update.version) {
+      await showAvailableUpdate();
+      showUpdateCheckFeedback(i18n(
+        'updateAvailableShort',
+        `Update ${result.update.version} is ready`,
+        result.update.version
+      ));
+    } else if (result && result.ok && result.status === 'no_update') {
+      showUpdateCheckFeedback(i18n('updateUpToDate', 'You are up to date'));
+    } else if (result && result.ok && result.status === 'throttled') {
+      showUpdateCheckFeedback(i18n('updateCheckThrottled', 'Checked recently - try again later'));
+    } else if (result && result.ok && result.status === 'unsupported') {
+      showUpdateCheckFeedback(i18n('updateCheckUnsupported', 'Manual checks are unavailable here'));
+    } else {
+      showUpdateCheckFeedback(i18n('updateCheckFailed', 'Could not check for updates'));
+    }
+  } finally {
+    button.disabled = false;
+    button.classList.remove('is-checking');
+    button.removeAttribute('aria-busy');
+  }
 }
 
 // ── Logs rendering ──────────────────────────────────────────────────────────
@@ -305,6 +354,12 @@ async function init() {
 
   // Settings button → options page (opens in a browser tab)
   document.getElementById('btn-settings').addEventListener('click', openSettings);
+
+  const checkUpdateButton = document.getElementById('btn-check-update');
+  const checkUpdateLabel = i18n('updateCheckAction', 'Check for updates');
+  checkUpdateButton.title = checkUpdateLabel;
+  checkUpdateButton.setAttribute('aria-label', checkUpdateLabel);
+  checkUpdateButton.addEventListener('click', checkForUpdateManually);
 
   // GitHub button
   const btnGithub = document.getElementById('btn-github');

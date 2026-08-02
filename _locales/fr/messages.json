@@ -45,5 +45,15 @@
   "updateToolbarTitle": {
     "message": "Comix Downloader - mise à jour $VERSION$ prête",
     "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateCheckAction": { "message": "Rechercher des mises à jour" },
+  "updateChecking": { "message": "Recherche de mises à jour..." },
+  "updateUpToDate": { "message": "L’extension est à jour" },
+  "updateCheckThrottled": { "message": "Vérification récente - réessayez plus tard" },
+  "updateCheckUnsupported": { "message": "La recherche manuelle des mises à jour n’est pas disponible dans ce navigateur" },
+  "updateCheckFailed": { "message": "Impossible de rechercher des mises à jour" },
+  "updateAvailableShort": {
+    "message": "La mise à jour $VERSION$ est prête",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.20" } }
   }
 }

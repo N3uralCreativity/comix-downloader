@@ -97,6 +97,17 @@
       background: var(--accent-bg); border: 1px solid var(--accent-line);
       border-radius: 5px; padding: 2px 6px; flex-shrink: 0;
     }
+    .header-update-check {
+      width: 27px; height: 27px; flex: 0 0 27px; display: grid; place-items: center;
+      border: 1px solid var(--line-2); border-radius: 50%; color: var(--muted);
+      background: rgba(255,255,255,.04); cursor: pointer;
+      transition: color .15s, background .15s, border-color .15s;
+    }
+    .header-update-check:hover { color: var(--accent); background: var(--accent-bg); border-color: var(--accent-line); }
+    .header-update-check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .header-update-check:disabled { cursor: wait; opacity: .72; }
+    .header-update-check.is-checking svg { animation: update-check-spin .85s linear infinite; }
+    @keyframes update-check-spin { to { transform: rotate(360deg); } }
 
     /* ── Browser-ready extension update ── */
     .update-panel {
@@ -209,7 +220,8 @@
     }
     @keyframes footer-status-pulse { 50% { opacity: .45; transform: scale(.72); } }
     @media (prefers-reduced-motion: reduce) {
-      .footer-status[data-state="downloading"] .footer-dot { animation: none; }
+      .footer-status[data-state="downloading"] .footer-dot,
+      .header-update-check.is-checking svg { animation: none; }
     }
   </style>
 </head>
@@ -222,8 +234,16 @@
     </svg>
     <div class="header-info">
       <div class="header-title">Comix Downloader</div>
-      <div class="header-sub">comix.to chapter downloader</div>
+      <div class="header-sub" id="header-sub">comix.to chapter downloader</div>
     </div>
+    <button class="header-update-check" id="btn-check-update" type="button" title="Check for updates" aria-label="Check for updates">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 6v5h-5"/>
+        <path d="M4 18v-5h5"/>
+        <path d="M6.1 9a7 7 0 0 1 11.5-2.6L20 11"/>
+        <path d="m4 13 2.4 4.6A7 7 0 0 0 17.9 15"/>
+      </svg>
+    </button>
     <span class="header-version" id="ext-version">v4.2.20</span>
   </div>
 

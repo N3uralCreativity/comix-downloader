@@ -864,7 +864,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   } else if (message.action === 'downloadAllError') {
     stopDownloadAllSessionSync();
-    updateDownloadAllPopupError(message.error || 'Unknown error', { canRetryZip: !!message.canRetryZip });
+    if (message.canResumeDownload) updateDownloadAllPopupInterrupted(message);
+    else updateDownloadAllPopupError(message.error || 'Unknown error', {
+      canRetryZip: !!message.canRetryZip,
+      errorTitle: message.errorTitle,
+    });
 
   } else if (message.action === 'downloadAllCancelled') {
     stopDownloadAllSessionSync();
@@ -1995,7 +1999,23 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
     const mb = Math.max(1, Math.round(n * 6)); // ~6 MB/chapter, very rough
     const lib = (format === 'cbz' && libPushEnabled) ? ' · each CBZ will also be pushed to your library server' : '';
     const pdf = format === 'pdf' ? ' · WebP/AVIF pages are converted losslessly for PDF compatibility' : '';
-    q('#cdl-op-estimate').textContent = `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title)${lib}${pdf}`;
+    const splitMode = CFG['download.splitMode'] || 'multipart';
+    let packaging;
+    if (splitMode === 'single') {
+      packaging = 'one ZIP for all selected chapters';
+    } else {
+      const countKey = format === 'cbz'
+        ? 'download.cbzChaptersPerPart'
+        : format === 'pdf'
+          ? 'download.pdfChaptersPerPart'
+          : 'download.chaptersPerPart';
+      const fallback = format === 'cbz' ? 10 : 5;
+      const count = Math.max(1, Number(CFG[countKey]) || fallback);
+      const size = Math.max(1, Number(CFG['download.mbPerPart']) || 300);
+      const unit = format === 'cbz' ? 'CBZ files' : format === 'pdf' ? 'PDF files' : 'chapter folders';
+      packaging = `up to ${count} ${unit} or ${size} MB per ZIP part, whichever comes first`;
+    }
+    q('#cdl-op-estimate').textContent = `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title) · ${packaging}${lib}${pdf}`;
     q('#cdl-op-start').disabled = n === 0;
   };
   panel.querySelectorAll('input[name="cdl-op-scope"], #cdl-op-from, #cdl-op-to')
@@ -2261,6 +2281,7 @@ function _dlAllSetFooterResume(popup, interrupted) {
         if (chrome.runtime.lastError || !response?.ok) {
           updateDownloadAllPopupInterrupted({
             ...interrupted,
+            errorTitle: 'Resume failed.',
             error: response?.error || 'The extension could not reopen the download checkpoint.',
           });
           return;
@@ -2279,6 +2300,7 @@ function _dlAllSetFooterResume(popup, interrupted) {
     } catch (_) {
       updateDownloadAllPopupInterrupted({
         ...interrupted,
+        errorTitle: 'Resume failed.',
         error: 'The extension was reloaded. Refresh this page to reopen the checkpoint.',
       });
     }
@@ -2375,6 +2397,38 @@ function _dlAllFormatBytes(value) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function _dlAllPartBoundaryText(message = {}) {
+  const reason = String(message.splitReason || '');
+  if (!reason || reason === 'final') return '';
+  const count = Math.max(0, Number(message.partChapters) || 0);
+  const limit = Math.max(0, Number(message.maxPartChapters) || 0);
+  const bytes = _dlAllFormatBytes(message.partBytes);
+  const maxMb = Math.max(0, Number(message.maxPartMb) || 0);
+  const unit = message.outputFormat === 'cbz'
+    ? 'CBZ files'
+    : message.outputFormat === 'pdf'
+      ? 'PDF files'
+      : 'chapter folders';
+  if (message.splitTrigger === 'projected') {
+    const limits = reason === 'size_limit'
+      ? (maxMb ? `${maxMb} MB` : '')
+      : reason === 'count_limit'
+        ? (limit ? `${limit} ${unit}` : '')
+        : [maxMb ? `${maxMb} MB` : '', limit ? `${limit} ${unit}` : '']
+          .filter(Boolean).join(' / ');
+    return `Part closed${bytes ? ` at ${bytes}` : ''} before the next chapter would exceed${limits ? ` ${limits}` : ' its limit'}`;
+  }
+  if (reason === 'size_limit') {
+    return `Size limit reached${bytes ? ` at ${bytes}` : ''}` +
+      `${limit ? ` (${count}/${limit} ${unit})` : ''}`;
+  }
+  if (reason === 'count_limit') {
+    return `${limit || count} ${unit} limit reached${bytes ? ` at ${bytes}` : ''}`;
+  }
+  return `Part limits reached${maxMb ? ` (${maxMb} MB` : ''}` +
+    `${limit ? `${maxMb ? ', ' : ' ('}${limit} ${unit}` : ''}${maxMb || limit ? ')' : ''}`;
+}
+
 function updateDownloadAllPopupDone(zipName, warning = '') {
   stopDownloadAllSessionSync();
   const popup = document.getElementById('cdl-all-popup');
@@ -2446,7 +2500,7 @@ function updateDownloadAllPopupInterrupted(message = {}) {
 
   const status = document.getElementById('cdl-ap-chapter-status');
   if (status) {
-    status.textContent = 'Download interrupted.';
+    status.textContent = message.errorTitle || 'Download interrupted.';
     status.classList.remove('error');
     status.classList.add('warning');
   }
@@ -2620,6 +2674,7 @@ function updateDownloadAllPopup(msg) {
   } else if (phase === 'zipping') {
     const percent = Number.isFinite(Number(msg.zipPercent)) ? Number(msg.zipPercent) : 0;
     const partText = msg.zipPart > 1 || !msg.finalPart ? ` part ${msg.zipPart || 1}` : '';
+    const boundary = _dlAllPartBoundaryText(msg);
     _dlAllSetStage(popup, 'zip');
     const packageStage = popup.querySelector('.cdl-ap-stage[data-stage="zip"] span:last-child');
     if (packageStage) packageStage.textContent = 'ZIP';
@@ -2628,7 +2683,7 @@ function updateDownloadAllPopup(msg) {
       stage: 'zip', percent, zipPart: msg.zipPart, finalPart: msg.finalPart,
     });
     status.textContent = `Building ZIP${partText}…`;
-    el('cdl-ap-img-status').textContent = `Packing archive: ${Math.round(percent)}%`;
+    el('cdl-ap-img-status').textContent = `${boundary ? `${boundary} · ` : ''}Packing archive: ${Math.round(percent)}%`;
     clearTimeout(popup._cdlRetryTimer);
 
   } else if (phase === 'saving' || phase === 'savingPart') {
@@ -2685,43 +2740,18 @@ function updateDownloadAllPopupError(errMsg, options = {}) {
   _dlAllSetStage(popup, popup.dataset.stage || 'download', 'error');
   _dlAllHideArchiveProgress();
   const s = document.getElementById('cdl-ap-chapter-status');
-  if (s) { s.textContent = `Error: ${errMsg}`; s.classList.add('error'); }
+  if (s) {
+    s.textContent = options.errorTitle || `Error: ${errMsg}`;
+    s.classList.add('error');
+  }
+  const detail = document.getElementById('cdl-ap-img-status');
+  if (detail && options.errorTitle) detail.textContent = errMsg;
 
   const footer = popup.querySelector('.cdl-ap-footer');
   if (!footer) return;
   footer.innerHTML = '';
 
-  if (options.canRetryZip) {
-    const retryBtn = document.createElement('button');
-    retryBtn.className = 'cdl-ap-retry-btn';
-    retryBtn.textContent = 'Retry ZIP';
-    retryBtn.addEventListener('click', () => {
-      retryBtn.disabled = true;
-      retryBtn.textContent = 'Retrying...';
-      const status = document.getElementById('cdl-ap-chapter-status');
-      if (status) {
-        status.textContent = 'Building ZIP file…';
-        status.classList.remove('error');
-      }
-      _dlAllSetStage(popup, 'zip');
-      _dlAllSetArchiveProgress({ stage: 'zip', percent: 0, zipPart: 1, finalPart: true });
-      const detail = document.getElementById('cdl-ap-img-status');
-      if (detail) detail.textContent = 'Packing archive: 0%';
-      try {
-        startDownloadAllSessionSync(250);
-        chrome.runtime.sendMessage({ action: 'retryZip' }, () => {
-          if (chrome.runtime.lastError) updateDownloadAllPopupError('Connection to the extension failed');
-          else {
-            retryBtn.disabled = false;
-            retryBtn.textContent = 'Retry ZIP';
-          }
-        });
-      } catch (_) {
-        updateDownloadAllPopupError('Extension reloaded — refresh the page');
-      }
-    });
-    footer.appendChild(retryBtn);
-  } else if (_lastDlAllParams) {
+  if (_lastDlAllParams) {
     const retryBtn = document.createElement('button');
     retryBtn.className = 'cdl-ap-retry-btn';
     retryBtn.textContent = '↺ Retry';
@@ -2790,9 +2820,14 @@ function restoreDownloadAllPopupFromSession(session) {
     (session.status === 'interrupted' || session.status === 'error') &&
     session.canResumeDownload
   ) {
-    updateDownloadAllPopupInterrupted(session.lastInterrupted || session);
+    updateDownloadAllPopupInterrupted(
+      session.status === 'error' ? (session.lastError || session) : (session.lastInterrupted || session)
+    );
   } else if (session.status === 'error') {
-    updateDownloadAllPopupError(session.error || 'Unknown error', { canRetryZip: !!session.canRetryZip });
+    updateDownloadAllPopupError(session.error || 'Unknown error', {
+      canRetryZip: !!session.canRetryZip,
+      errorTitle: session.errorTitle,
+    });
   } else if (session.status === 'awaiting_save' && session.canRetrySave) {
     updateDownloadAllPopupSaveCancelled(
       session.saveFilename || session.zipName || 'manga.zip',

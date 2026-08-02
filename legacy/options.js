@@ -46,6 +46,20 @@
     return node;
   }
   function clone(o) { var r = {}; for (var k in o) r[k] = o[k]; return r; }
+  function i18n(name, fallback, substitutions) {
+    try { return chrome.i18n.getMessage(name, substitutions) || fallback; }
+    catch (_) { return fallback; }
+  }
+  function sendRuntimeMessage(message) {
+    return new Promise(function (resolve) {
+      try {
+        chrome.runtime.sendMessage(message, function (response) {
+          void chrome.runtime.lastError;
+          resolve(response || null);
+        });
+      } catch (_) { resolve(null); }
+    });
+  }
 
   var ICONS = {
     box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/>',
@@ -63,7 +77,7 @@
 
   // Tabs that need extra (non-schema) content appended.
   var TAB_INTRO = {
-    download: 'How "Download All" packages a full series into ZIP files.',
+    download: 'How "Download All" packages a full series. In multi-part mode, the format-specific chapter count and the shared MB limit both apply; the first limit reached starts the next ZIP part.',
     output: 'Output format and metadata — make downloads drop-in ready for Komga, Kavita, Mihon, YACReader. You can also pick these per-download from the on-page panel.',
     perf: 'Network pacing and timeouts. The defaults are tuned for comix.to — change them only if you have a reason to.',
     retry: 'What happens when an image or chapter fails to download.',
@@ -650,6 +664,80 @@
     setTimeout(function () { t.remove(); }, 2600);
   }
 
+  // ── Browser-approved extension updates ───────────────────────────────────
+  function showSettingsUpdate(update) {
+    var panel = document.getElementById('settings-update-panel');
+    if (!panel) return false;
+    if (!update || !update.version) { panel.hidden = true; return false; }
+    document.getElementById('settings-update-title').textContent =
+      i18n('updateAvailableTitle', 'Your extension is outdated');
+    document.getElementById('settings-update-message').textContent = i18n(
+      'updateAvailableMessage',
+      'Version ' + update.version + ' is ready. Your settings and history will stay intact.',
+      update.version
+    );
+    var action = document.getElementById('settings-update-action');
+    var status = document.getElementById('settings-update-status');
+    action.textContent = i18n('updateAvailableAction', 'Update now');
+    action.disabled = false;
+    status.textContent = '';
+    panel.hidden = false;
+    return true;
+  }
+
+  function refreshSettingsUpdate() {
+    return sendRuntimeMessage({ action: 'getAvailableUpdate' }).then(function (result) {
+      return showSettingsUpdate(result && result.ok ? result.update : null);
+    });
+  }
+
+  function installSettingsUpdate() {
+    var panel = document.getElementById('settings-update-panel');
+    var action = document.getElementById('settings-update-action');
+    var status = document.getElementById('settings-update-status');
+    action.disabled = true;
+    action.textContent = i18n('updateInstalling', 'Updating...');
+    status.textContent = '';
+    sendRuntimeMessage({ action: 'installAvailableUpdate' }).then(function (result) {
+      if (result && result.ok) {
+        status.textContent = i18n('updateInstalling', 'Updating...');
+        return;
+      }
+      action.disabled = false;
+      action.textContent = i18n('updateAvailableAction', 'Update now');
+      if (result && result.noUpdate) { panel.hidden = true; return; }
+      status.textContent = result && result.busy
+        ? i18n('updateBusy', 'Finish or discard the current download, then try again.')
+        : i18n('updateFailed', 'Could not start the update. Reopen the settings page and try again.');
+    });
+  }
+
+  function checkForUpdateManually() {
+    var button = document.getElementById('btn-check-update');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    button.classList.add('is-checking');
+    button.setAttribute('aria-busy', 'true');
+    sendRuntimeMessage({ action: 'checkForUpdate' }).then(function (result) {
+      if (result && result.update && result.update.version) {
+        showSettingsUpdate(result.update);
+        toast(i18n('updateAvailableShort', 'Update ' + result.update.version + ' is ready', result.update.version));
+      } else if (result && result.ok && result.status === 'no_update') {
+        toast(i18n('updateUpToDate', 'You are up to date'), 'ok');
+      } else if (result && result.ok && result.status === 'throttled') {
+        toast(i18n('updateCheckThrottled', 'Checked recently - try again later'));
+      } else if (result && result.ok && result.status === 'unsupported') {
+        toast(i18n('updateCheckUnsupported', 'Manual checks are unavailable in this browser'));
+      } else {
+        toast(i18n('updateCheckFailed', 'Could not check for updates'), 'error');
+      }
+    }).finally(function () {
+      button.disabled = false;
+      button.classList.remove('is-checking');
+      button.removeAttribute('aria-busy');
+    });
+  }
+
   // ── "New Additional Features page" one-time notice ────────────────────────
   function readFeaturesNotice() {
     try {
@@ -760,6 +848,13 @@
     document.getElementById('btn-save').addEventListener('click', onSave);
     document.getElementById('btn-discard').addEventListener('click', onDiscard);
     document.getElementById('import-file').addEventListener('change', onImportFile);
+    var checkUpdateButton = document.getElementById('btn-check-update');
+    var checkUpdateLabel = i18n('updateCheckAction', 'Check for updates');
+    checkUpdateButton.title = checkUpdateLabel;
+    checkUpdateButton.setAttribute('aria-label', checkUpdateLabel);
+    checkUpdateButton.addEventListener('click', checkForUpdateManually);
+    document.getElementById('settings-update-action').addEventListener('click', installSettingsUpdate);
+    refreshSettingsUpdate();
 
     document.getElementById('modal-confirm').addEventListener('click', function () {
       var cb = modalConfirmCb; closeModal(false); if (cb) cb();
@@ -775,6 +870,11 @@
     window.addEventListener('beforeunload', function (e) {
       if (changedKeys().length) { e.preventDefault(); e.returnValue = ''; }
     });
+    try {
+      chrome.storage.onChanged.addListener(function (changes, area) {
+        if (area === 'local' && changes.cdlUpdateAvailable) refreshSettingsUpdate();
+      });
+    } catch (_) {}
 
     S.getSettings().then(function (loaded) {
       current = clone(loaded);

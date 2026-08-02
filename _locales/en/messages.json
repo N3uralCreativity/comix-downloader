@@ -52,5 +52,28 @@
     "message": "Comix Downloader - update $VERSION$ ready",
     "description": "Toolbar tooltip shown for an available update.",
     "placeholders": { "version": { "content": "$1", "example": "4.2.17" } }
+  },
+  "updateCheckAction": {
+    "message": "Check for updates",
+    "description": "Accessible label for the manual update check button."
+  },
+  "updateChecking": {
+    "message": "Checking for updates..."
+  },
+  "updateUpToDate": {
+    "message": "You are up to date"
+  },
+  "updateCheckThrottled": {
+    "message": "Checked recently - try again later"
+  },
+  "updateCheckUnsupported": {
+    "message": "Manual update checks are unavailable in this browser"
+  },
+  "updateCheckFailed": {
+    "message": "Could not check for updates"
+  },
+  "updateAvailableShort": {
+    "message": "Update $VERSION$ is ready",
+    "placeholders": { "version": { "content": "$1", "example": "4.2.20" } }
   }
 }
