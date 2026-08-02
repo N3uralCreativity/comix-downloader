@@ -245,19 +245,21 @@ function renderLogs(logs) {
 }
 
 // Settings opens comix.to's own settings page, where the extension injects its
-// settings natively. A short-lived flag tells the in-page content script to
-// auto-open the "Comix Downloader" section on arrival. (The standalone options
-// page is still reachable from the browser's extension menu → Options.)
+// settings natively. The background tracks that exact tab so a redirect can
+// offer the standalone extension settings page without affecting other tabs.
 var COMIX_SETTINGS_URL = 'https://comix.to/user?tab=settings';
-function openSettings() {
+async function openSettings() {
   // Dismiss the "NEW" indicator the instant Settings is opened: hide the pill
   // now, and let the background clear the notices + toolbar badge (it persists
   // even as this popup closes).
   var pill = document.getElementById('settings-new');
   if (pill) pill.hidden = true;
   try { chrome.runtime.sendMessage({ action: 'dismissNew' }); } catch (e) {}
-  var go = function () { chrome.tabs.create({ url: COMIX_SETTINGS_URL }); window.close(); };
-  try { chrome.storage.local.set({ cdlOpenExtSettings: Date.now() }, go); } catch (e) { go(); }
+  const result = await sendRuntimeMessage({ action: 'cdlOpenComixSettings' });
+  if (!result || !result.ok) {
+    try { chrome.tabs.create({ url: COMIX_SETTINGS_URL }); } catch (_) {}
+  }
+  window.close();
 }
 
 // Apply comix.to's theme to the popup so it matches the site. We try three

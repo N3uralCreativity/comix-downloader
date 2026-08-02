@@ -54,6 +54,82 @@ async function loadCfg() {
   return {};
 }
 
+// The in-site settings page is preferred, but comix.to may redirect it to the
+// homepage even for an apparently signed-in user. Track only the exact tab that
+// the extension opened so unrelated comix.to tabs never receive the fallback.
+const CDL_COMIX_SETTINGS_URL = 'https://comix.to/user?tab=settings';
+const CDL_SETTINGS_NAVIGATION_KEY = 'cdlSettingsNavigationAttempt';
+const CDL_SETTINGS_NAVIGATION_TTL_MS = 90 * 1000;
+let _settingsNavigationTabId = null;
+
+function isFreshSettingsNavigationAttempt(attempt, tabId, now = Date.now()) {
+  const expectedTabId = Number(tabId);
+  const attemptTabId = Number(attempt && attempt.tabId);
+  const startedAt = Number(attempt && attempt.startedAt);
+  const age = Number(now) - startedAt;
+  return Number.isInteger(expectedTabId) && expectedTabId >= 0 &&
+    Number.isInteger(attemptTabId) && attemptTabId === expectedTabId &&
+    Number.isFinite(startedAt) && startedAt > 0 &&
+    Number.isFinite(age) && age >= 0 && age <= CDL_SETTINGS_NAVIGATION_TTL_MS;
+}
+
+async function recordSettingsNavigationAttempt(tabId) {
+  const id = Number(tabId);
+  if (!Number.isInteger(id) || id < 0) throw new Error('Invalid settings tab');
+  const startedAt = Date.now();
+  await chrome.storage.local.set({
+    cdlOpenExtSettings: startedAt,
+    [CDL_SETTINGS_NAVIGATION_KEY]: { tabId: id, startedAt },
+  });
+  _settingsNavigationTabId = id;
+  return { tabId: id, startedAt };
+}
+
+async function clearSettingsNavigationAttempt(tabId) {
+  const id = Number(tabId);
+  if (tabId == null || !Number.isInteger(id) || id < 0) return false;
+  const stored = await chrome.storage.local.get(CDL_SETTINGS_NAVIGATION_KEY);
+  const attempt = stored && stored[CDL_SETTINGS_NAVIGATION_KEY];
+  if (!attempt) {
+    if (_settingsNavigationTabId === id) _settingsNavigationTabId = null;
+    return false;
+  }
+  if (Number(attempt.tabId) !== id) return false;
+  await chrome.storage.local.remove([CDL_SETTINGS_NAVIGATION_KEY, 'cdlOpenExtSettings']);
+  _settingsNavigationTabId = null;
+  return true;
+}
+
+async function settingsNavigationAttemptForTab(tabId) {
+  const stored = await chrome.storage.local.get(CDL_SETTINGS_NAVIGATION_KEY);
+  const attempt = stored && stored[CDL_SETTINGS_NAVIGATION_KEY];
+  if (isFreshSettingsNavigationAttempt(attempt, tabId)) return attempt;
+  if (attempt && Number(attempt.tabId) === Number(tabId)) {
+    await clearSettingsNavigationAttempt(tabId);
+  }
+  return null;
+}
+
+async function openTrackedComixSettingsTab() {
+  const tab = await chrome.tabs.create({ url: CDL_COMIX_SETTINGS_URL });
+  if (!tab || !Number.isInteger(Number(tab.id))) throw new Error('Settings tab was not created');
+  let tracked = false;
+  try {
+    await recordSettingsNavigationAttempt(tab.id);
+    tracked = true;
+  } catch (_) {}
+  return { tab, tracked };
+}
+
+async function openStandaloneSettingsPage() {
+  if (chrome.runtime.openOptionsPage) {
+    const opened = chrome.runtime.openOptionsPage();
+    if (opened && typeof opened.then === 'function') await opened;
+    return;
+  }
+  await chrome.tabs.create({ url: chrome.runtime.getURL('legacy/options.html') });
+}
+
 // ── Comix-Downloader "tenure badge" service (v3.0.0) ─────────────────────────
 // Records when the badge service first saw a user, and looks up other users'
 // first-seen dates, so content_profile.js can show "Comix-Downloader user · N months"
@@ -1502,6 +1578,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     flagLookup(message.chapterIds).then((r) => sendResponse(r)).catch(() => sendResponse({ ok: false, counts: {} }));
     return true;
   }
+  if (message.action === 'cdlOpenComixSettings') {
+    openTrackedComixSettingsTab()
+      .then((result) => sendResponse({ ok: true, tabId: result.tab.id, tracked: result.tracked }))
+      .catch((error) => sendResponse({ ok: false, error: error && error.message }));
+    return true;
+  }
+  if (message.action === 'cdlTrackSettingsNavigation') {
+    const tabId = sender.tab?.id ?? null;
+    recordSettingsNavigationAttempt(tabId)
+      .then((attempt) => sendResponse({ ok: true, attempt }))
+      .catch((error) => sendResponse({ ok: false, error: error && error.message }));
+    return true;
+  }
+  if (message.action === 'cdlProbeSettingsNavigation') {
+    const tabId = sender.tab?.id ?? null;
+    settingsNavigationAttemptForTab(tabId)
+      .then((attempt) => sendResponse({ ok: true, tracked: !!attempt, attempt }))
+      .catch(() => sendResponse({ ok: false, tracked: false }));
+    return true;
+  }
+  if (message.action === 'cdlCompleteSettingsNavigation' || message.action === 'cdlDismissSettingsFallback') {
+    clearSettingsNavigationAttempt(sender.tab?.id ?? null)
+      .then((cleared) => sendResponse({ ok: true, cleared }))
+      .catch(() => sendResponse({ ok: false, cleared: false }));
+    return true;
+  }
+  if (message.action === 'cdlOpenStandaloneSettings') {
+    const tabId = sender.tab?.id ?? null;
+    clearSettingsNavigationAttempt(tabId)
+      .catch(() => false)
+      .then(() => openStandaloneSettingsPage())
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: error && error.message }));
+    return true;
+  }
   if (message.action === 'openOptions') {
     try {
       if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
@@ -1669,6 +1780,7 @@ chrome.tabs.onUpdated.addListener(handlePendingDownloadTabUpdated);
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   pendingDownloads.delete(tabId);
+  if (_settingsNavigationTabId === tabId) clearSettingsNavigationAttempt(tabId).catch(() => {});
   if (_pendingZip && _pendingZip.originTabId === tabId) {
     resolvePendingArchiveSaveDecision(false);
   }

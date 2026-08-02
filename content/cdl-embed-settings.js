@@ -21,6 +21,7 @@
   var NAV_ID = 'cdl-nav-item';
   var VIEW_ID = 'cdl-uview';
   var STYLE_ID = 'cdl-embed-style';
+  var FALLBACK_ID = 'cdl-settings-fallback';
   var OUTRO_ID = 'cdl-settings-outro';
   var OUTRO_MEDIA = [
     { file: 'dance-tina.gif', className: 'cdl-dancer--tina' },
@@ -43,6 +44,9 @@
   var OPEN_KEY = 'cdlExtSettingsOpen';   // sessionStorage flag: our panel is open
   var SCROLL_KEY = 'cdlExtSettingsScroll'; // sessionStorage: last window.scrollY while open
   var scrollSaveTimer = null, scrollTracking = false;
+  var fallbackTracked = false;
+  var fallbackDeadline = 0;
+  var fallbackMonitorTimer = null;
 
   // Sample context for live naming-template previews (mirrors the options page).
   var PREVIEW_CTX = {
@@ -148,6 +152,161 @@
     if (document.querySelector('.usettings__section') || document.getElementById(VIEW_ID)) return true;
     return /\/user(?:\/|$)/.test(location.pathname) && /(?:^|[?&])tab=settings(?:&|$)/.test(location.search);
   }
+
+  function removeSettingsFallback() {
+    var host = document.getElementById(FALLBACK_ID);
+    if (host) host.remove();
+  }
+
+  function stopFallbackMonitor() {
+    if (fallbackMonitorTimer) clearTimeout(fallbackMonitorTimer);
+    fallbackMonitorTimer = null;
+  }
+
+  function finishSettingsNavigationAttempt() {
+    fallbackTracked = false;
+    stopFallbackMonitor();
+    removeSettingsFallback();
+    send({ action: 'cdlCompleteSettingsNavigation' });
+  }
+
+  function dismissSettingsFallback() {
+    fallbackTracked = false;
+    stopFallbackMonitor();
+    removeSettingsFallback();
+    send({ action: 'cdlDismissSettingsFallback' });
+  }
+
+  function showSettingsFallback(reason) {
+    if (document.getElementById(FALLBACK_ID)) return;
+    stopFallbackMonitor();
+
+    var host = el('div', { id: FALLBACK_ID });
+    var shadow = host.attachShadow({ mode: 'open' });
+    var style = el('style', { text:
+      ':host{all:initial;position:fixed;right:18px;bottom:18px;z-index:2147483647;width:min(420px,calc(100vw - 24px));color-scheme:dark;}' +
+      '*,*::before,*::after{box-sizing:border-box;letter-spacing:0;}' +
+      '.card{overflow:hidden;border:1px solid rgba(255,255,255,.16);border-radius:8px;background:#202428;color:#f5f7fa;' +
+        'box-shadow:0 24px 64px rgba(0,0,0,.52);font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}' +
+      '.head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border-bottom:1px solid rgba(255,255,255,.1);background:#292e33;}' +
+      '.brand{min-width:0;display:flex;align-items:center;gap:10px;}' +
+      '.mark{display:grid;place-items:center;width:32px;height:32px;flex:0 0 32px;border:1px solid rgba(103,232,249,.32);border-radius:6px;background:rgba(103,232,249,.1);color:#67e8f9;}' +
+      '.brand-name,.brand-source{display:block;}' +
+      '.brand-name{overflow:hidden;color:#fff;font-size:13px;font-weight:700;line-height:1.2;text-overflow:ellipsis;white-space:nowrap;}' +
+      '.brand-source{margin-top:3px;color:#a5f3fc;font-size:10px;font-weight:700;line-height:1.2;text-transform:uppercase;}' +
+      'button{font:inherit;letter-spacing:0;}' +
+      '.close{display:grid;place-items:center;width:30px;height:30px;flex:0 0 30px;padding:0;border:0;border-radius:6px;background:transparent;color:#aab2bc;cursor:pointer;}' +
+      '.close:hover{background:rgba(255,255,255,.08);color:#fff;}' +
+      '.body{padding:16px;}' +
+      '.warning{display:flex;align-items:flex-start;gap:11px;}' +
+      '.warning-icon{display:grid;place-items:center;width:30px;height:30px;flex:0 0 30px;border:1px solid rgba(250,204,21,.32);border-radius:50%;background:rgba(250,204,21,.1);color:#facc15;}' +
+      '.copy{min-width:0;}' +
+      'h2{margin:0;color:#fff;font-size:15px;font-weight:700;line-height:1.3;}' +
+      'p{margin:6px 0 0;color:#b9c0c9;font-size:12.5px;line-height:1.55;}' +
+      '.actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:15px;}' +
+      '.action{min-height:36px;padding:8px 13px;border:1px solid rgba(255,255,255,.14);border-radius:6px;background:#292e33;color:#e8ebef;font-weight:650;cursor:pointer;}' +
+      '.action:hover{border-color:rgba(255,255,255,.26);background:#30363c;}' +
+      '.action.primary{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-color:#67e8f9;background:#67e8f9;color:#102126;}' +
+      '.action.primary:hover{border-color:#a5f3fc;background:#a5f3fc;}' +
+      '.action:disabled{opacity:.65;cursor:wait;}' +
+      '.status{min-height:17px;margin-top:9px;color:#fca5a5;font-size:11.5px;text-align:right;}' +
+      '@media(max-width:480px){:host{right:12px;bottom:12px;width:calc(100vw - 24px);}.actions{align-items:stretch;flex-direction:column-reverse}.action{width:100%;}.status{text-align:left;}}'
+    });
+
+    var closeBtn = el('button', { type: 'button', class: 'close', title: 'Dismiss', 'aria-label': 'Dismiss' }, [
+      svg(['M18 6 6 18', 'M6 6l12 12'], 16)
+    ]);
+    var brand = el('div', { class: 'brand' }, [
+      el('span', { class: 'mark' }, [markSvg(21)]),
+      el('span', {}, [
+        el('span', { class: 'brand-name', text: 'Comix Downloader' }),
+        el('span', { class: 'brand-source', text: 'Extension settings fallback' })
+      ])
+    ]);
+    var heading = el('h2', { text: 'Settings page unavailable' });
+    var detail = reason === 'redirected'
+      ? 'comix.to redirected this tab before its settings page could open.'
+      : 'comix.to did not finish loading the page needed for the integrated settings.';
+    var message = el('p', { text: detail + ' Your Comix Downloader settings are still available in a separate extension tab.' });
+    var status = el('div', { class: 'status', role: 'status', 'aria-live': 'polite' });
+    var dismissBtn = el('button', { type: 'button', class: 'action', text: 'Dismiss' });
+    var openLabel = el('span', { text: 'Open extension settings' });
+    var openBtn = el('button', { type: 'button', class: 'action primary' }, [
+      openLabel,
+      svg(['M5 12h14', 'M13 6l6 6-6 6'], 15)
+    ]);
+
+    closeBtn.addEventListener('click', dismissSettingsFallback);
+    dismissBtn.addEventListener('click', dismissSettingsFallback);
+    openBtn.addEventListener('click', function () {
+      openBtn.disabled = true;
+      openLabel.textContent = 'Opening…';
+      status.textContent = '';
+      send({ action: 'cdlOpenStandaloneSettings' }).then(function (response) {
+        if (response && response.ok) {
+          fallbackTracked = false;
+          removeSettingsFallback();
+          return;
+        }
+        openBtn.disabled = false;
+        openLabel.textContent = 'Open extension settings';
+        status.textContent = 'Could not open the tab. Use your browser extension menu and choose Options.';
+      });
+    });
+
+    var card = el('section', { class: 'card', role: 'alert', 'aria-labelledby': 'cdl-settings-fallback-title' }, [
+      el('div', { class: 'head' }, [brand, closeBtn]),
+      el('div', { class: 'body' }, [
+        el('div', { class: 'warning' }, [
+          el('span', { class: 'warning-icon' }, [svg(['M10.3 2.9 1.8 17.2A2 2 0 0 0 3.5 20h17a2 2 0 0 0 1.7-2.8L13.7 2.9a2 2 0 0 0-3.4 0Z', 'M12 8v5', 'M12 17h.01'], 17)]),
+          el('div', { class: 'copy' }, [heading, message])
+        ]),
+        el('div', { class: 'actions' }, [dismissBtn, openBtn]),
+        status
+      ])
+    ]);
+    heading.id = 'cdl-settings-fallback-title';
+    shadow.appendChild(style);
+    shadow.appendChild(card);
+    shadow.addEventListener('click', function (event) { event.stopPropagation(); });
+    shadow.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    (document.body || document.documentElement).appendChild(host);
+  }
+
+  function monitorSettingsNavigation() {
+    if (!fallbackTracked) return;
+    if (document.getElementById(VIEW_ID)) {
+      finishSettingsNavigationAttempt();
+      return;
+    }
+    if (!onSettingsPage()) {
+      showSettingsFallback('redirected');
+      return;
+    }
+    if (Date.now() >= fallbackDeadline) {
+      showSettingsFallback('timeout');
+      return;
+    }
+    fallbackMonitorTimer = setTimeout(monitorSettingsNavigation, 300);
+  }
+
+  function beginSettingsNavigationProbe() {
+    var attempts = 0;
+    var probe = function () {
+      send({ action: 'cdlProbeSettingsNavigation' }).then(function (response) {
+        if (response && response.tracked) {
+          fallbackTracked = true;
+          fallbackDeadline = Date.now() + 10000;
+          monitorSettingsNavigation();
+          return;
+        }
+        attempts++;
+        if (attempts < 4) setTimeout(probe, 300);
+      });
+    };
+    setTimeout(probe, 250);
+  }
+
   function navList() { return document.querySelector('.umenu__list'); }
   function contentBox() { return document.querySelector('.user-content'); }
   function comixView() { return document.querySelector('.user-content > .uview:not(#' + VIEW_ID + ')'); }
@@ -847,6 +1006,7 @@
       var existing = document.getElementById(VIEW_ID); if (existing) existing.remove();
       var nextView = buildView(r[0] || {}, r[1] || {}, r[2] || {});
       contentBox().appendChild(nextView);
+      finishSettingsNavigationAttempt();
       setupOutro(nextView);
       setActiveNav(true);
       try { sessionStorage.setItem(OPEN_KEY, '1'); } catch (_) {}
@@ -897,8 +1057,15 @@
   // already open. We clone comix's own "Content preferences" row so it looks
   // 100% native, then repoint it.
   function openExtSettings() {
-    var go = function () { location.href = 'https://comix.to/user?tab=settings'; };
-    try { chrome.storage.local.set({ cdlOpenExtSettings: Date.now() }, go); } catch (_) { go(); }
+    var navigated = false;
+    var go = function () {
+      if (navigated) return;
+      navigated = true;
+      location.href = 'https://comix.to/user?tab=settings';
+    };
+    setLocal('cdlOpenExtSettings', Date.now());
+    send({ action: 'cdlTrackSettingsNavigation' }).then(go);
+    setTimeout(go, 500);
   }
   function injectQuickLink(dialog) {
     try {
@@ -1013,4 +1180,5 @@
   sync();
   installQuickDialogWatcher();
   installThemeWatcher();
+  beginSettingsNavigationProbe();
 })();
