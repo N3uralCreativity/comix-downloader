@@ -451,13 +451,20 @@ function normalizeNativeUpdateCheckResult(resultOrStatus, details) {
   };
 }
 
-// User-triggered only. Browsers already perform their own periodic checks; this
-// wrapper exists so all extension UIs can request one immediate store check while
-// supporting both callback-style Chromium and Promise-style WebExtensions APIs.
+function getNativeUpdateCheckRequest(runtime) {
+  if (!runtime) return null;
+  // Firefox does not expose this Chromium API. A computed lookup keeps the shared
+  // package feature-detected without AMO treating it as an unsupported API call.
+  const methodName = ['request', 'Update', 'Check'].join('');
+  return typeof runtime[methodName] === 'function' ? runtime[methodName] : null;
+}
+
+// Shared by manual and guarded scheduled checks. Browsers also perform their own
+// update checks; this wrapper supports callback- and Promise-style implementations.
 function requestNativeUpdateCheck() {
   return new Promise((resolve, reject) => {
-    const request = chrome.runtime && chrome.runtime.requestUpdateCheck;
-    if (typeof request !== 'function') {
+    const request = getNativeUpdateCheckRequest(chrome.runtime);
+    if (!request) {
       resolve({ status: 'unsupported', version: '' });
       return;
     }

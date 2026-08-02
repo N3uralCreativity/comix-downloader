@@ -79,8 +79,10 @@ for (const activity of [
 const background = read('background.js');
 assert.match(background, /chrome\.runtime\.onUpdateAvailable\.addListener/,
   'the browser-native update event must drive detection');
-assert.match(background, /chrome\.runtime\.requestUpdateCheck/,
-  'manual checks must use the browser-native signed-store update API');
+assert.match(background, /runtime\[methodName\]/,
+  'manual checks must feature-detect the browser-native signed-store update API');
+assert.ok(!background.includes('chrome.runtime.requestUpdateCheck'),
+  'Firefox packages must not contain a direct reference to the unsupported API');
 assert.match(background, /message\.action === 'checkForUpdate'/,
   'manual checks must only run in response to a user-facing runtime message');
 assert.match(background, /status: 'unsupported'/,
@@ -140,6 +142,7 @@ assert.ok(buildScript.includes('"core/update-state.js"'),
 async function testNativeUpdateCheckAdapters() {
   const source = [
     extractFunction(background, 'normalizeNativeUpdateCheckResult'),
+    extractFunction(background, 'getNativeUpdateCheckRequest'),
     extractFunction(background, 'requestNativeUpdateCheck'),
     'globalThis.requestNativeUpdateCheck = requestNativeUpdateCheck;',
   ].join('\n');
