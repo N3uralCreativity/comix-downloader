@@ -76,7 +76,7 @@ vm.runInContext(`
 `, context);
 
 const chapters = [
-  { chapterUrl: 'https://comix.to/title/series/1-chapter-1', chapterLabel: 'Ch1' },
+  { chapterUrl: 'https://comix.to/title/series/1-chapter-1', chapterLabel: 'Ch1', group: 'Flame Comics', groupId: '42' },
   { chapterUrl: 'https://comix.to/title/series/2-chapter-2', chapterLabel: 'Ch2' },
   { chapterUrl: 'https://comix.to/title/series/3-chapter-3', chapterLabel: 'Ch3' },
 ];
@@ -90,6 +90,9 @@ const resume = context.api.createDownloadAllResumeData({
 options.nested.format = 'cbz';
 
 check('resume data normalizes invalid chapter rows', resume.chapters.length === 3);
+check('resume data preserves scanlator metadata and its group alias',
+  resume.chapters[0].scanlator === 'Flame Comics' &&
+  resume.chapters[0].group === 'Flame Comics' && resume.chapters[0].groupId === '42');
 check('resume data clones nested options', resume.options.nested.format === 'zip');
 check('a fresh checkpoint is resumable', context.api.isValidDownloadAllResumeData(resume));
 check('resume data derives title matching from its slug',
@@ -135,6 +138,24 @@ check('the live session snapshot omits the full chapter checkpoint payload',
   !Object.prototype.hasOwnProperty.call(serialized, 'resumeData'));
 check('the live session snapshot preserves resume UI fields',
   serialized.canResumeDownload && serialized.resumeChapterLabel === 'Ch3');
+
+const cancelledSerialized = context.api.serialize({
+  active: false,
+  status: 'cancelled',
+  savedChapters: 2,
+  doneZipName: 'series-partial.zip',
+  warning: '',
+  lastCancelled: {
+    action: 'downloadAllCancelled',
+    savedChapters: 2,
+    zipName: 'series-partial.zip',
+    warning: '',
+  },
+});
+check('cancelled sessions persist the number and name of preserved chapters',
+  cancelledSerialized.savedChapters === 2 &&
+  cancelledSerialized.lastCancelled.savedChapters === 2 &&
+  cancelledSerialized.doneZipName === 'series-partial.zip');
 
 const recoverableContext = {
   resumeData: { ...resume, checkpointIndex: 1, savedZipNames: ['series-part1.zip'] },

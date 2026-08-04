@@ -43,6 +43,7 @@
 
     // Output format & library
     'output.format': 'zip',                // 'zip' | 'cbz' | 'pdf'
+    'output.downloadSubfolder': '',        // relative to the browser Downloads directory
     'output.includeComicInfo': true,       // write ComicInfo.xml per chapter
     'output.includeSeriesMeta': false,     // save cover.jpg + series.json for the series
     'output.folderLayout': 'default',      // 'default' (Ch0001) | 'kavita' (Series/Series - Chapter 0001)
@@ -75,6 +76,7 @@
     // Naming & organization
     'naming.imagePadDigits': 3,
     'naming.chapterFolderFmt': 'Ch{num4}{rest}',
+    'naming.cbzFileTpl': '{entry}',
     'naming.singleZipTpl': '{manga}-Ch{chapter}',
     'naming.allZipTpl': '{manga}',
     'naming.slugMaxLen': 60,
@@ -185,6 +187,8 @@
     'output.format': { type: 'enum', enum: OUTPUT_FORMATS, risk: 'none',
       label: 'Download format', help: 'ZIP keeps chapter folders of images. CBZ creates one comic archive per chapter; Download All then delivers those CBZ files inside one or more ZIP parts.',
       options: OUTPUT_FORMAT_OPTIONS },
+    'output.downloadSubfolder': { type: 'downloadPath', maxLen: 180, risk: 'none',
+      label: 'Download folder', help: 'Optional folder inside your browser\'s Downloads directory. Example: Comix Downloader/Manga. Absolute paths are not allowed by browsers.' },
     'output.includeComicInfo': { type: 'bool', risk: 'none',
       label: 'Include ComicInfo.xml', help: 'Add a ComicInfo.xml (series, number, count, summary, tags…) to each chapter so library servers index it correctly.' },
     'output.includeSeriesMeta': { type: 'bool', risk: 'none',
@@ -244,6 +248,9 @@
     'naming.chapterFolderFmt': { type: 'template', maxLen: 60, risk: 'glitchy',
       label: 'Chapter folder name', help: 'Folder per chapter inside the ZIP. Tokens: {num} {num2} {num4} {rest} {chapter} {manga}.',
       warn: 'Characters not allowed in filenames are replaced with "_" automatically.' },
+    'naming.cbzFileTpl': { type: 'template', maxLen: 120, risk: 'glitchy',
+      label: 'CBZ chapter file name', help: 'Name of each CBZ chapter. Tokens: {entry} {manga} {chapter} {label} {num} {num2} {num4} {rest} {scanlator} {group} {groupId} {language} {date}. {entry} keeps the existing generated name.',
+      warn: 'A scanlator or group token is empty when Comix does not provide source metadata. Characters not allowed in filenames are replaced with "_" automatically.' },
     'naming.singleZipTpl': { type: 'template', maxLen: 80, risk: 'none',
       label: 'Single-chapter ZIP name', help: 'Tokens: {manga} {chapter} {date}.' },
     'naming.allZipTpl': { type: 'template', maxLen: 80, risk: 'none',
@@ -356,13 +363,13 @@
       keys: ['download.concurrentChapters', 'download.splitMode', 'download.chaptersPerPart', 'download.cbzChaptersPerPart']
         .concat(PDF_OUTPUT_VISIBLE ? ['download.pdfChaptersPerPart'] : [], ['download.mbPerPart']) },
     { id: 'output', label: 'Output & Library', icon: 'box',
-      keys: ['output.format', 'output.includeComicInfo', 'output.includeSeriesMeta', 'output.folderLayout', 'download.skipDownloaded'] },
+      keys: ['output.format', 'output.downloadSubfolder', 'output.includeComicInfo', 'output.includeSeriesMeta', 'output.folderLayout', 'download.skipDownloaded'] },
     { id: 'perf', label: 'Performance', icon: 'gauge',
       keys: ['perf.batchSize', 'perf.rateLimitMode', 'perf.rateBaseMs', 'perf.rateMinMs', 'perf.rateMaxMs', 'perf.imageTimeoutMs', 'perf.tabLoadTimeoutMs', 'perf.pagePollMs', 'perf.pageSettleMs', 'perf.scrollSettleMs'] },
     { id: 'retry', label: 'Retries', icon: 'repeat',
       keys: ['retry.imageRetries', 'retry.chapterRetries'] },
     { id: 'naming', label: 'Naming', icon: 'tag',
-      keys: ['naming.imagePadDigits', 'naming.chapterFolderFmt', 'naming.singleZipTpl', 'naming.allZipTpl', 'naming.slugMaxLen'] },
+      keys: ['naming.imagePadDigits', 'naming.chapterFolderFmt', 'naming.cbzFileTpl', 'naming.singleZipTpl', 'naming.allZipTpl', 'naming.slugMaxLen'] },
     { id: 'appearance', label: 'Appearance', icon: 'brush',
       keys: ['appearance.btnStyle', 'appearance.accentMode', 'appearance.accentColor', 'appearance.btnScale', 'appearance.disableAnim', 'appearance.allLabel', 'appearance.allowFloating', 'frame.position', 'frame.width', 'frame.autoHideSec'] },
     { id: 'advanced', label: 'Advanced', icon: 'warn',
@@ -390,6 +397,41 @@
 
   function isHexColor(v) {
     return typeof v === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
+  }
+
+  function sanitizeDownloadSubfolder(value, maxLen) {
+    var raw = String(value == null ? '' : value).trim().replace(/\\/g, '/');
+    if (!raw) return '';
+    if (/^(?:\/|[a-zA-Z]:|\/\/)/.test(raw)) return '';
+
+    var sourceParts = raw.split('/');
+    var parts = [];
+    for (var i = 0; i < sourceParts.length; i++) {
+      var source = sourceParts[i].trim();
+      if (!source) continue;
+      if (source === '.' || source === '..') return '';
+      var segment = source
+        .replace(/[<>:"|?*\x00-\x1F]/g, '_')
+        .replace(/^\.+/, '')
+        .replace(/[. ]+$/, '')
+        .trim();
+      if (!segment) return '';
+      if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(segment)) {
+        segment = '_' + segment;
+      }
+      parts.push(segment.slice(0, 80));
+    }
+
+    var out = parts.join('/');
+    var limit = maxLen || 180;
+    if (out.length > limit) out = out.slice(0, limit).replace(/[/. ]+$/, '');
+    return out;
+  }
+
+  function withDownloadSubfolder(filename, subfolder) {
+    var base = sanitizeFilename(String(filename == null ? '' : filename).split(/[\\/]/).pop(), 180);
+    var folder = sanitizeDownloadSubfolder(subfolder, 180);
+    return folder ? folder + '/' + base : base;
   }
 
   // Normalize a sectionList value (e.g. home.sections) into a full, ordered [{id,on}] list over
@@ -427,6 +469,7 @@
       case 'enum':  return (s.enum.indexOf(value) !== -1) ? value : def;
       case 'color': return isHexColor(value) ? value : def;
       case 'sectionList': return validateSectionList(value, s.sections, def);
+      case 'downloadPath': return sanitizeDownloadSubfolder(value, s.maxLen);
       case 'string':
       case 'template': {
         var str = (value == null) ? def : String(value);
@@ -587,10 +630,19 @@
     parts = parts || {};
     var n = (parts.num == null) ? '' : String(parts.num);
     var pad = function (len) { return n ? n.padStart(len, '0') : ''; };
+    var scanlator = parts.scanlator == null ? parts.group : parts.scanlator;
     return {
       manga: parts.manga == null ? '' : String(parts.manga),
       chapter: parts.chapter == null ? '' : String(parts.chapter),
+      label: parts.label == null ? '' : String(parts.label),
+      title: parts.title == null ? '' : String(parts.title),
       rest: parts.rest == null ? '' : String(parts.rest),
+      entry: parts.entry == null ? '' : String(parts.entry),
+      scanlator: scanlator == null ? '' : String(scanlator),
+      group: scanlator == null ? '' : String(scanlator),
+      groupId: parts.groupId == null ? '' : String(parts.groupId),
+      language: parts.language == null ? '' : String(parts.language),
+      slug: parts.slug == null ? '' : String(parts.slug),
       num: n,
       num2: pad(2),
       num4: pad(4),
@@ -645,6 +697,8 @@
     templateContext: templateContext,
     renderName: renderName,
     sanitizeFilename: sanitizeFilename,
+    sanitizeDownloadSubfolder: sanitizeDownloadSubfolder,
+    withDownloadSubfolder: withDownloadSubfolder,
     exportJSON: exportJSON,
     importJSON: importJSON
   };

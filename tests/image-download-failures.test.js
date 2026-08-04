@@ -113,6 +113,7 @@ check('single-chapter download rejects incomplete image sets before ZIP generati
 const allEvents = {
   progress: [], errors: [], done: [], saves: [], recorded: [], logs: [],
   checkpoints: [], sessions: [], extracted: [], reviews: [], pdfBuilds: [], packed: [],
+  cancelled: [],
 };
 let fetchMode = 'fail';
 let extractMode = 'pass';
@@ -122,6 +123,7 @@ let mbPerPart = 300;
 let chapterRetriesSetting = 1;
 let archiveDeliveryMode = 'confirmed';
 let outputFormat = 'zip';
+let concurrentChapters = 2;
 let pipelineTestActive = false;
 let activePdfBuilds = 0;
 let maxActivePdfBuilds = 0;
@@ -129,8 +131,23 @@ let resolveFirstPdfStarted = null;
 let firstPdfStarted = Promise.resolve();
 let resolveSecondChapterFetched = null;
 let secondChapterFetched = Promise.resolve();
+let cancelAfterDoneCount = 0;
+let cancelOnArchiveStage = '';
+let downloadAllStopPromise = null;
+let resolveDownloadAllStop = null;
 const imageFetchCalls = new Map();
 const extractCalls = new Map();
+
+function resetDownloadAllStopSignal() {
+  downloadAllStopPromise = new Promise((resolve) => { resolveDownloadAllStop = resolve; });
+}
+
+function requestDownloadAllStop() {
+  allContext.downloadAllStopFlag = true;
+  if (resolveDownloadAllStop) resolveDownloadAllStop();
+}
+
+resetDownloadAllStopSignal();
 const allContext = {
   BATCH_SIZE: 4,
   ZIP_PART_MAX_CHAPTERS: 30,
@@ -139,7 +156,7 @@ const allContext = {
   loadCfg: async () => ({
     'perf.batchSize': 4,
     'perf.rateLimitMode': 'off',
-    'download.concurrentChapters': 2,
+    'download.concurrentChapters': concurrentChapters,
     'download.chaptersPerPart': chaptersPerPart,
     'download.cbzChaptersPerPart': cbzChaptersPerPart,
     'download.mbPerPart': mbPerPart,
@@ -149,7 +166,7 @@ const allContext = {
   }),
   resolveOutputOptions: (_cfg, options) => ({ format: outputFormat, slug: 'series', ...(options || {}) }),
   getLibraryConfig: async () => null,
-  chapterConcurrencyLimit: () => 2,
+  chapterConcurrencyLimit: () => concurrentChapters,
   createDownloadAllResumeData({ chapters, mangaName, zipName, options, resumeState }) {
     const source = resumeState || {};
     const allChapters = source.chapters || chapters;
@@ -172,7 +189,13 @@ const allContext = {
   startDownloadAllSession(session) { allEvents.sessions.push(session); },
   persistDownloadAllSession() {},
   cdlLog(level, message) { allEvents.logs.push({ level, message }); },
-  notifyDownloadAllProgress(_tabId, message) { allEvents.progress.push(message); },
+  notifyDownloadAllProgress(_tabId, message) {
+    allEvents.progress.push(message);
+    if (cancelAfterDoneCount > 0 && message.phase === 'done') {
+      const completed = allEvents.progress.filter((event) => event.phase === 'done').length;
+      if (completed >= cancelAfterDoneCount) requestDownloadAllStop();
+    }
+  },
   getZipPartName: (name, part) => `${name}.part${part}`,
   _doZipAndSave: async ({
     zipName, chapterRecords = [], onZipProgress, onSaveProgress,
@@ -183,10 +206,18 @@ const allContext = {
       // Let the next concurrent chapter emit progress while this ZIP owns the UI.
       await new Promise((resolve) => setTimeout(resolve, 0));
       onZipProgress({ percent: 37, currentFile: 'page-001.webp' });
+      if (cancelOnArchiveStage === 'zipping') {
+        cancelOnArchiveStage = '';
+        requestDownloadAllStop();
+      }
       onZipProgress({ percent: 100, currentFile: '' });
     }
     if (onSaveProgress) {
       onSaveProgress({ state: 'starting', bytesReceived: 0, totalBytes: -1 });
+      if (cancelOnArchiveStage === 'saving') {
+        cancelOnArchiveStage = '';
+        requestDownloadAllStop();
+      }
       onSaveProgress({ state: 'in_progress', bytesReceived: 50, totalBytes: 100 });
       onSaveProgress({ state: 'complete', bytesReceived: 100, totalBytes: 100 });
     }
@@ -204,6 +235,12 @@ const allContext = {
     allEvents.extracted.push(url);
     const calls = (extractCalls.get(url) || 0) + 1;
     extractCalls.set(url, calls);
+    if (extractMode === 'cancel-immediately') {
+      requestDownloadAllStop();
+      throw Object.assign(new Error('Download All was cancelled.'), {
+        name: 'DownloadAllStoppedError', code: 'DOWNLOAD_ALL_STOPPED',
+      });
+    }
     if (extractMode === 'recover-once' && calls === 1) throw new Error('HTTP 520');
     return [
       { index: 1, src: `${url}/image-1` },
@@ -231,7 +268,13 @@ const allContext = {
   waitForChapterRecovery: async () => {},
   deferImageHost() {},
   downloadAllAbortFlag: false,
-  _downloadAllAbortPromise: () => new Promise(() => {}),
+  downloadAllStopFlag: false,
+  downloadAllShouldStop: () => allContext.downloadAllAbortFlag || allContext.downloadAllStopFlag,
+  downloadAllNetworkSignal: () => null,
+  isDownloadAllStoppedError: (error) => !!error && (
+    error.code === 'DOWNLOAD_ALL_STOPPED' || error.name === 'DownloadAllStoppedError'
+  ),
+  _downloadAllAbortPromise: () => downloadAllStopPromise,
   downloadItemProgressPercent(item) {
     if (!item) return null;
     if (item.state === 'complete') return 100;
@@ -263,9 +306,12 @@ const allContext = {
     failurePhase,
     message: error.message,
   }),
-  _signalDownloadAllAbort() {},
+  _signalDownloadAllAbort() {
+    allContext.downloadAllAbortFlag = true;
+    requestDownloadAllStop();
+  },
   addSeriesMetaToOuter: async () => {},
-  notifyDownloadAllCancelled() {},
+  notifyDownloadAllCancelled: (_tabId, details) => allEvents.cancelled.push(details || {}),
   notifyDownloadAllError: (_tabId, error, canRetryZip) => allEvents.errors.push({ error, canRetryZip }),
   notifyDownloadAllDone: (_tabId, zipName, warning) => allEvents.done.push({ zipName, warning }),
   recordSuccessfulDownloadForReview: async () => { allEvents.reviews.push('recorded'); },
@@ -300,6 +346,12 @@ function resetAllEvents() {
   pipelineTestActive = false;
   activePdfBuilds = 0;
   maxActivePdfBuilds = 0;
+  concurrentChapters = 2;
+  cancelAfterDoneCount = 0;
+  cancelOnArchiveStage = '';
+  allContext.downloadAllAbortFlag = false;
+  allContext.downloadAllStopFlag = false;
+  resetDownloadAllStopSignal();
 }
 
 async function run() {
@@ -570,6 +622,91 @@ async function run() {
     allEvents.checkpoints.some((checkpoint) =>
       checkpoint.checkpointIndex === 4 && checkpoint.nextZipPart === 3 &&
       checkpoint.terminalCounts.done === 4));
+
+  resetAllEvents();
+  fetchMode = 'pass';
+  chaptersPerPart = 50;
+  cancelAfterDoneCount = 2;
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },
+    { chapterUrl: 'https://comix.to/title/series/good/3', chapterLabel: 'Ch3' },
+    { chapterUrl: 'https://comix.to/title/series/good/4', chapterLabel: 'Ch4' },
+  ], 'Series', 'series.zip', 7, {});
+  check('Cancel packages chapters that completed before the stop was processed',
+    allEvents.saves.length === 1 && allEvents.recorded.join(',') === 'Ch1,Ch2' &&
+    allEvents.cancelled.length === 1 && allEvents.cancelled[0].savedChapters === 2);
+  check('Cancel reports cancellation rather than normal completion',
+    allEvents.done.length === 0 && allEvents.errors.length === 0);
+
+  resetAllEvents();
+  fetchMode = 'pass';
+  chaptersPerPart = 2;
+  concurrentChapters = 1;
+  cancelAfterDoneCount = 3;
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },
+    { chapterUrl: 'https://comix.to/title/series/good/3', chapterLabel: 'Ch3' },
+    { chapterUrl: 'https://comix.to/title/series/good/4', chapterLabel: 'Ch4' },
+    { chapterUrl: 'https://comix.to/title/series/good/5', chapterLabel: 'Ch5' },
+  ], 'Series', 'series.zip', 7, {});
+  check('Cancel preserves prior parts and saves a below-threshold final part',
+    JSON.stringify(allEvents.saves) === JSON.stringify(['series.zip.part1', 'series.zip.part2']) &&
+    allEvents.recorded.join(',') === 'Ch1,Ch2,Ch3' &&
+    allEvents.cancelled.length === 1 && allEvents.cancelled[0].savedChapters === 3);
+
+  resetAllEvents();
+  extractMode = 'cancel-immediately';
+  fetchMode = 'pass';
+  chaptersPerPart = 50;
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },
+  ], 'Series', 'series.zip', 7, {});
+  check('Cancel creates no empty archive when no chapter completed',
+    allEvents.saves.length === 0 && allEvents.recorded.length === 0 &&
+    allEvents.cancelled.length === 1 && allEvents.cancelled[0].savedChapters === 0);
+  extractMode = 'pass';
+
+  for (const archiveStage of ['zipping', 'saving']) {
+    resetAllEvents();
+    fetchMode = 'pass';
+    chaptersPerPart = 50;
+    cancelOnArchiveStage = archiveStage;
+    await allContext.handleDownloadAllRequest([
+      { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    ], 'Series', 'series.zip', 7, {});
+    check(`Cancel during final ${archiveStage} preserves the accepted archive`,
+      allEvents.saves.length === 1 && allEvents.recorded.join(',') === 'Ch1' &&
+      allEvents.done.length === 0 && allEvents.cancelled.length === 1 &&
+      allEvents.cancelled[0].savedChapters === 1);
+  }
+
+  const stressChapters = Array.from({ length: 101 }, (_, index) => ({
+    chapterUrl: `https://comix.to/title/series/good/${index + 1}`,
+    chapterLabel: `Ch${index + 1}`,
+  }));
+  let stableStressRuns = 0;
+  for (const format of ['zip', 'cbz']) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      resetAllEvents();
+      fetchMode = 'pass';
+      outputFormat = format;
+      concurrentChapters = 4;
+      chaptersPerPart = 25;
+      cbzChaptersPerPart = 25;
+      await allContext.handleDownloadAllRequest(
+        stressChapters, 'Series', `series-${format}-${attempt}.zip`, 7, {}
+      );
+      if (allEvents.errors.length === 0 && allEvents.done.length === 1 &&
+          allEvents.recorded.length === 101 && allEvents.saves.length === 5) {
+        stableStressRuns++;
+      }
+    }
+  }
+  check('ZIP and CBZ pipelines complete three synthetic 101-chapter stress runs each',
+    stableStressRuns === 6);
 
   resetAllEvents();
   fetchMode = 'pass';

@@ -83,7 +83,6 @@ const zipGenerationContext = {
 };
 vm.createContext(zipGenerationContext);
 vm.runInContext(`
-  ${extractFunction('generateChromiumZipBlob')}
   ${extractFunction('_zipToDownloadUrl')}
   globalThis.zipToDownloadUrl = _zipToDownloadUrl;
 `, zipGenerationContext);
@@ -143,6 +142,7 @@ const zipContext = {
     return { url: 'blob:test', revoke() {}, base64: null };
   },
   sanitizeFilename: (name) => name.endsWith('.zip') ? name : `${name}.zip`,
+  downloadTargetFilename: (name, folder) => folder ? `${folder}/${name}` : name,
   saveGeneratedArchive: async (options) => {
     zipSaveOptions.push(options);
     const next = zipDeliverySequence.length ? zipDeliverySequence.shift() : zipDeliveryError;
@@ -212,43 +212,15 @@ async function run() {
     generatedUrl.url === 'blob:generated' && zipOptions.type === 'blob' &&
     zipOptions.compression === 'STORE' && zipUpdates.join(',') === '12.5,100');
 
-  let streamOptions = null;
-  const streamUpdates = [];
-  const streamedUrl = await zipGenerationContext.zipToDownloadUrl({
-    generateInternalStream(options) {
-      streamOptions = options;
-      const handlers = {};
-      return {
-        on(event, handler) { handlers[event] = handler; return this; },
-        resume() {
-          handlers.data(new Uint8Array([1, 2]), { percent: 50, currentFile: '001.webp' });
-          handlers.data(new Uint8Array([3, 4]), { percent: 100, currentFile: '' });
-          handlers.end();
-        },
-      };
-    },
-  }, (metadata) => streamUpdates.push(metadata.percent));
-  check('Chromium ZIP generation streams chunks without changing STORE compression',
-    streamedUrl.url === 'blob:generated' && streamOptions.type === 'uint8array' &&
-    streamOptions.compression === 'STORE' && streamOptions.streamFiles === true &&
-    streamUpdates.join(',') === '50,100');
-
-  let hiddenFallbackCalls = 0;
-  let streamFailure = null;
-  try {
-    await zipGenerationContext.zipToDownloadUrl({
-      generateInternalStream() {
-        const handlers = {};
-        return {
-          on(event, handler) { handlers[event] = handler; return this; },
-          resume() { handlers.error(new Error('allocation failed')); },
-        };
-      },
-      async generateAsync() { hiddenFallbackCalls++; return 'AA=='; },
-    });
-  } catch (error) { streamFailure = error; }
-  check('Chromium surfaces ZIP generation failures without a hidden base64 rebuild',
-    streamFailure && streamFailure.message === 'allocation failed' && hiddenFallbackCalls === 0);
+  let stableOptions = null;
+  let internalStreamCalls = 0;
+  await zipGenerationContext.zipToDownloadUrl({
+    generateInternalStream() { internalStreamCalls++; throw new Error('must not be used'); },
+    async generateAsync(options) { stableOptions = options; return {}; },
+  });
+  check('Chromium uses the stable JSZip blob generator instead of the chunk accumulator',
+    internalStreamCalls === 0 && stableOptions.type === 'blob' &&
+    stableOptions.compression === 'STORE');
 
   archiveError = null;
   archiveErrors = [];
@@ -390,11 +362,30 @@ async function run() {
     mobileFallbackUpdates.join(',') === 'starting,mobile_handoff');
   archiveIsMobile = false;
 
+  archiveError = null;
+  archiveErrors = [
+    Object.assign(new Error('subfolders unsupported'), { downloadPhase: 'start' }),
+    null,
+  ];
+  archiveDownloadOptions = [];
+  archiveIsMobile = true;
+  const pathFallback = await archiveContext.saveGeneratedArchive({
+    url: 'data:test', revoke() {}, base64: 'AA==', zip: null,
+    filename: 'Comix/Series.zip', originTabId: 4,
+  });
+  check('mobile retries a rejected configured subfolder with the basename',
+    pathFallback.confirmed === true && pathFallback.pathFallback === true &&
+    pathFallback.filename === 'Series.zip' && archiveDownloadOptions.length === 2 &&
+    archiveDownloadOptions[0].filename === 'Comix/Series.zip' &&
+    archiveDownloadOptions[1].filename === 'Series.zip');
+  archiveIsMobile = false;
+
   resetZipEvents();
   zipDelivery = { confirmed: true, fallback: false, downloadId: 17 };
   const doZipProgress = [];
   const confirmedZip = await zipContext.doZipAndSave({
     zip: {}, zipName: 'series.zip', originTabId: 4, notifyDone: false,
+    downloadSubfolder: 'Comix/Manga',
     chapterRecords: [{ chapterLabel: 'Ch1' }, { chapterLabel: 'Ch2' }],
     slug: 'series', mangaName: 'Series',
     onZipProgress: (metadata) => doZipProgress.push(metadata),
@@ -405,6 +396,10 @@ async function run() {
     doZipProgress.length >= 2 && doZipProgress[0].reset === true &&
     doZipProgress[0].percent === 0 && doZipProgress.at(-1).percent === 100);
   check('ZIP construction uses a scoped extension-worker keep-alive', zipKeepAliveCalls === 1);
+  check('ZIP source buffers are released before the browser save completes',
+    zipSaveOptions.length === 1 && zipSaveOptions[0].zip === null);
+  check('Download All sends nested relative destinations to the browser',
+    zipSaveOptions.length === 1 && zipSaveOptions[0].filename === 'Comix/Manga/series.zip');
 
   resetZipEvents();
   zipDelivery = { confirmed: false, fallback: true, downloadId: null };

@@ -84,10 +84,43 @@ check('keeps known key', merged['perf.batchSize'] === 4);
 check('renderTemplate tokens', S.renderTemplate('{manga}-Ch{chapter}', { manga: 'Solo', chapter: '12' }) === 'Solo-Ch12');
 check('renderTemplate unknown literal', S.renderTemplate('{foo}', {}) === '{foo}');
 check('templateContext pads', S.templateContext({ num: 7 }).num4 === '0007');
+check('templateContext exposes CBZ source metadata and group alias', (() => {
+  const ctx = S.templateContext({
+    entry: 'Ch0012', label: 'Ch12', num: 12,
+    scanlator: 'Flame Comics', groupId: '42', language: 'en',
+  });
+  return ctx.entry === 'Ch0012' && ctx.label === 'Ch12' &&
+    ctx.scanlator === 'Flame Comics' && ctx.group === 'Flame Comics' &&
+    ctx.groupId === '42' && ctx.language === 'en';
+})());
 check('renderName basic', S.renderName('Ch{num4}', { num: 3 }) === 'Ch0003');
+check('custom CBZ template renders scanlator metadata',
+  S.renderName('{manga} - Ch{num4} [{scanlator}]', {
+    manga: 'Solo Leveling', num: 12, scanlator: 'Flame Comics',
+  }) === 'Solo Leveling - Ch0012 [Flame Comics]');
+check('CBZ naming defaults to the existing generated entry',
+  S.renderName(S.DEFAULTS['naming.cbzFileTpl'], { entry: 'Ch0012' }) === 'Ch0012');
 check('renderName sanitizes', S.renderName('{manga}', { manga: 'a/b:c*?' }) === 'a_b_c__');
 check('renderName maxLen', S.renderName('{manga}', { manga: 'x'.repeat(100) }, 60).length === 60);
 check('string maxLen', S.validate({ 'appearance.allLabel': 'y'.repeat(100) })['appearance.allLabel'].length === 40);
+check('download folder defaults to the browser Downloads root',
+  S.validate({})['output.downloadSubfolder'] === '');
+check('download folder keeps safe nested relative paths',
+  S.validate({ 'output.downloadSubfolder': 'Comix Downloader/Manga' })['output.downloadSubfolder'] ===
+    'Comix Downloader/Manga');
+check('download folder normalizes separators and invalid filename characters',
+  S.validate({ 'output.downloadSubfolder': 'Comix\\My:Manga' })['output.downloadSubfolder'] ===
+    'Comix/My_Manga');
+check('download folder rejects absolute and traversal paths',
+  S.validate({ 'output.downloadSubfolder': 'C:\\Manga' })['output.downloadSubfolder'] === '' &&
+  S.validate({ 'output.downloadSubfolder': '../Manga' })['output.downloadSubfolder'] === '' &&
+  S.validate({ 'output.downloadSubfolder': '/Manga' })['output.downloadSubfolder'] === '' &&
+  S.validate({ 'output.downloadSubfolder': '\\\\server\\share' })['output.downloadSubfolder'] === '' &&
+  S.validate({ 'output.downloadSubfolder': 'Manga/../Other' })['output.downloadSubfolder'] === '');
+check('download folder rejects segments that become empty after sanitizing',
+  S.validate({ 'output.downloadSubfolder': 'Manga/...' })['output.downloadSubfolder'] === '');
+check('download target joins a sanitized folder and basename',
+  S.withDownloadSubfolder('Series.zip', 'Comix\\Manga') === 'Comix/Manga/Series.zip');
 
 // 5b. Home personalization keys
 check('home.* keys all exist in DEFAULTS', [

@@ -46,11 +46,15 @@ check('Download All keeps concurrent chapter events behind the active archive st
 check('Download All persists a lightweight accepted ZIP checkpoint',
   backgroundSource.includes("const DL_RESUME_KEY = 'cdlDownloadAllResume'") &&
   backgroundSource.includes('updateDownloadAllResumeCheckpoint') &&
-  backgroundSource.includes('if (accepted && !resumeData.checkpointBlocked)'));
+  backgroundSource.includes('if (accepted && updateCheckpoint && !resumeData.checkpointBlocked)'));
 check('Download All exposes a checkpoint resume message without persisting archive bytes',
   backgroundSource.includes("message.action === 'resumeDownloadAll'") &&
   backgroundSource.includes('remainingChapters = resumeData.chapters.slice(checkpointIndex)') &&
   !backgroundSource.includes('generatedArchive: generated'));
+check('the configured Downloads subfolder reaches every archive workflow',
+  backgroundSource.includes("downloadTargetFilename(outName, cfg['output.downloadSubfolder'])") &&
+  backgroundSource.includes("downloadSubfolder: cfg['output.downloadSubfolder'] || ''") &&
+  backgroundSource.includes('await handleDownloadAllRequest(chapters, mangaName, zipName, null, options)'));
 check('a new Download All request reattaches to an existing durable operation',
   backgroundSource.includes('existing.status === \'awaiting_save\'') &&
   backgroundSource.includes('existing: true, session: _serializeSession(existing)'));
@@ -124,7 +128,12 @@ check('active Download All sessions do not expose a duplicate-work Retry timer',
   !contentTitleSource.includes('allowFullRetry ? setTimeout'));
 check('cancelled Save state offers an explicit Save again action',
   contentTitleSource.includes('<span>Save again</span>') &&
-  contentTitleSource.includes("action: 'retryArchiveSave'"));
+  contentTitleSource.includes("action: 'retryArchiveSave'") &&
+  contentTitleSource.includes("closeBtn.textContent = 'Discard'"));
+check('graceful cancellation keeps the user-facing button label as Cancel',
+  contentTitleSource.includes('id="cdl-ap-cancel-btn">Cancel</button>') &&
+  backgroundSource.includes("message.action === 'cancelDownloadAll'") &&
+  backgroundSource.includes('_signalDownloadAllStop()'));
 check('Download All frame handles the post-archive resuming state',
   contentTitleSource.includes("phase === 'resuming'"));
 check('Download All explains which configured partition threshold started a ZIP part',
@@ -188,6 +197,12 @@ check('default chapter folder name (padded)',
   S.renderName(S.DEFAULTS['naming.chapterFolderFmt'], { num: '12', rest: '' }, 80) === 'Ch0012');
 check('default chapter folder keeps decimal suffix',
   S.renderName(S.DEFAULTS['naming.chapterFolderFmt'], { num: '12', rest: '.5' }, 80) === 'Ch0012.5');
+check('default CBZ name preserves the existing generated entry',
+  S.renderName(S.DEFAULTS['naming.cbzFileTpl'], { entry: 'Ch0012' }, 160) === 'Ch0012');
+check('CBZ naming metadata is carried from title rows into the background worker',
+  contentTitleSource.includes('scanlator: c.scanlator || c.group ||') &&
+  backgroundSource.includes('chapter.scanlator || chapter.group') &&
+  backgroundSource.includes('buildCbzEntryName(opts, r, mangaName)'));
 
 // 5. manifest wiring sanity
 const mf = JSON.parse(read('manifest.json'));

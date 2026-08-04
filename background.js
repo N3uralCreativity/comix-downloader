@@ -268,30 +268,64 @@ const downloadQueue = [];
 
 /** Flag d'annulation du téléchargement groupé */
 let downloadAllAbortFlag = false;
-// Resolvers woken the instant a cancel is requested, so the worker pool / packer
-// can stop awaiting in-flight chapters immediately instead of hanging forever.
+let downloadAllStopFlag = false;
+let _downloadAllFetchController = new AbortController();
+// Resolvers woken when a graceful stop or fatal abort is requested, so workers,
+// extraction tabs, and CAPTCHA waits do not remain blocked.
 let _downloadAllAbortResolvers = [];
-function _signalDownloadAllAbort() {
-  downloadAllAbortFlag = true;
+function _wakeDownloadAllWaiters() {
   const waiters = _downloadAllAbortResolvers;
   _downloadAllAbortResolvers = [];
   for (const fn of waiters) { try { fn(); } catch (_) {} }
 }
+function _cancelDownloadAllNetwork() {
+  try { _downloadAllFetchController.abort(); } catch (_) {}
+}
+function _signalDownloadAllStop() {
+  downloadAllStopFlag = true;
+  _cancelDownloadAllNetwork();
+  _wakeDownloadAllWaiters();
+}
+function _signalDownloadAllAbort() {
+  downloadAllAbortFlag = true;
+  downloadAllStopFlag = true;
+  _cancelDownloadAllNetwork();
+  _wakeDownloadAllWaiters();
+}
 function _resetDownloadAllAbort() {
   downloadAllAbortFlag = false;
+  downloadAllStopFlag = false;
   _downloadAllAbortResolvers = [];
+  _downloadAllFetchController = new AbortController();
+}
+function downloadAllShouldStop() {
+  return downloadAllAbortFlag || downloadAllStopFlag;
+}
+function downloadAllNetworkSignal() {
+  return _downloadAllFetchController.signal;
+}
+function makeDownloadAllStoppedError() {
+  const error = new Error('Download All was cancelled.');
+  error.name = 'DownloadAllStoppedError';
+  error.code = 'DOWNLOAD_ALL_STOPPED';
+  return error;
+}
+function isDownloadAllStoppedError(error) {
+  return !!error && (error.code === 'DOWNLOAD_ALL_STOPPED' || error.name === 'DownloadAllStoppedError');
 }
 // One reusable promise per Download-All run that resolves when cancellation is
 // requested. Reused across all races so we never leak a resolver per chapter.
 function _downloadAllAbortPromise() {
-  if (downloadAllAbortFlag) return Promise.resolve();
+  if (downloadAllShouldStop()) return Promise.resolve();
   return new Promise((res) => _downloadAllAbortResolvers.push(res));
 }
 
-/** ZIP/archive kept in memory while a failed ZIP or cancelled Save dialog can be retried. */
+/** Prepared archive retained only while a cancelled Save dialog awaits Save again / Discard. */
 let _pendingZip = null;
 
 function releasePendingGeneratedArchive(pending) {
+  if (!pending) return;
+  pending.zip = null;
   const generated = pending && pending.generatedArchive;
   if (!generated) return;
   pending.generatedArchive = null;
@@ -788,7 +822,10 @@ function updateDownloadAllSessionLog(progress) {
   } else if (phase === 'challenge') {
     const waiting = progress.challengeState === 'waiting';
     const required = progress.challengeState === 'required';
-    text = required
+    const retrying = progress.challengeState === 'retrying';
+    text = retrying
+      ? `${chapterLabel} - verification complete, retrying chapter...`
+      : required
       ? `${chapterLabel} - waiting for Cloudflare verification...`
       : waiting
         ? `${chapterLabel} - queued behind Cloudflare verification...`
@@ -924,10 +961,17 @@ function cloneDownloadAllOptions(options) {
 
 function normalizeDownloadAllResumeChapters(chapters) {
   if (!Array.isArray(chapters)) return [];
-  return chapters.map((chapter) => ({
-    chapterUrl: String(chapter && chapter.chapterUrl || ''),
-    chapterLabel: String(chapter && chapter.chapterLabel || ''),
-  })).filter((chapter) => chapter.chapterUrl && chapter.chapterLabel);
+  return chapters.map((chapter) => {
+    const scanlator = String(chapter && (chapter.scanlator || chapter.group) || '').trim();
+    return {
+      chapterUrl: String(chapter && chapter.chapterUrl || ''),
+      chapterLabel: String(chapter && chapter.chapterLabel || ''),
+      scanlator,
+      group: scanlator,
+      groupId: String(chapter && chapter.groupId || '').trim(),
+      chapterTitle: String(chapter && chapter.chapterTitle || '').trim(),
+    };
+  }).filter((chapter) => chapter.chapterUrl && chapter.chapterLabel);
 }
 
 function createDownloadAllResumeData({ chapters, mangaName, zipName, options, resumeState = null }) {
@@ -1045,6 +1089,7 @@ function _serializeSession(s) {
     'startedAt', 'updatedAt', 'lastProgress', 'lastError', 'lastDone', 'lastCancelled',
     'lastSaveCancelled', 'saveFilename', 'saveZipPart', 'saveFinalPart', 'doneZipName',
     'lastInterrupted', 'resumeFromChapter', 'resumeChapterLabel', 'warning', 'error',
+    'savedChapters',
     'errorTitle', 'errorKind', 'failurePhase',
     'canRetryZip', 'canRetrySave', 'canResumeDownload'];
   const out = {};
@@ -1407,10 +1452,18 @@ function notifyDownloadAllSaveCancelled(originTabId, filename, zipPart = 1, fina
   notifyTab(originTabId, message);
 }
 
-function notifyDownloadAllCancelled(originTabId) {
-  const message = { action: 'downloadAllCancelled' };
+function notifyDownloadAllCancelled(originTabId, details = {}) {
+  const message = {
+    action: 'downloadAllCancelled',
+    zipName: String(details.zipName || ''),
+    savedChapters: Math.max(0, Math.floor(Number(details.savedChapters) || 0)),
+    warning: String(details.warning || ''),
+  };
   recordDownloadAllTerminal('cancelled', {
     originTabId,
+    doneZipName: message.zipName,
+    savedChapters: message.savedChapters,
+    warning: message.warning,
     canRetrySave: false,
     lastCancelled: message,
   });
@@ -1632,8 +1685,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'cancelDownloadAll') {
-    _signalDownloadAllAbort();
-    resolvePendingArchiveSaveDecision(false);
+    _signalDownloadAllStop();
     recordDownloadAllCancelling();
     sendResponse({ ok: true });
     return true;
@@ -1890,10 +1942,12 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
     const challenge = await coordinateCloudflareChallenge(tabId, {
       originTabId,
       expectedSeriesSlug: (String(chapterUrl).match(/\/title\/([^/]+)/) || [])[1] || '',
+      expectedChapterUrl: chapterUrl,
       onChallenge: ({ state }) => notifyTab(originTabId, {
         action: 'downloadChallenge', chapterUrl, state,
       }),
     });
+    if (challenge.challenged) pending.challengeEncountered = true;
     if (challenge.reloaded) {
       pending.handling = false;
       setTimeout(() => {
@@ -1919,16 +1973,21 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
       }],
     });
 
-    // Fermer l'onglet dès que possible
-    chrome.tabs.remove(tabId).catch(() => {});
-
     let images = results?.[0]?.result;
     if (!Array.isArray(images) || images.length === 0) {
+      if (pending.challengeEncountered && !pending.challengeExtractionRetried) {
+        pending.challengeExtractionRetried = true;
+        pending.handling = false;
+        notifyTab(originTabId, { action: 'downloadChallenge', chapterUrl, state: 'retrying' });
+        await chrome.tabs.update(tabId, { url: withExtractMarker(chapterUrl) });
+        return;
+      }
       throw new Error('Aucune image trouvée dans ce chapitre');
     }
     images = await verifyEnumeratedImages(images, zipName);
 
     pendingDownloads.delete(tabId);
+    chrome.tabs.remove(tabId).catch(() => {});
     cdlLog('info', `Extracted ${images.length} images for ${zipName}`);
     // Lancer le téléchargement + ZIP directement dans le service worker
     scheduleDownload({ images, chapterUrl, zipName, originTabId, cfg, options });
@@ -2602,12 +2661,17 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
     if (xml) zip.file('ComicInfo.xml', xml);
   }
   const ext = isPdf ? 'pdf' : isCbz ? 'cbz' : 'zip';
-  const outName = sanitizeFilename(zipName, ext);
+  const chapterLabel = (options && options.chapterLabel) || chapterLabelFromUrl(chapterUrl);
+  const mangaName = (options && options.mangaName) || (opts.seriesMeta && opts.seriesMeta.title) || '';
+  const requestedEntry = String(zipName || '').replace(/\.(zip|cbz|pdf)$/i, '');
+  const outputBase = isCbz
+    ? buildCbzFileBase(opts, chapterLabel, mangaName, options, requestedEntry)
+    : zipName;
+  const outName = sanitizeFilename(outputBase, ext);
+  const targetName = downloadTargetFilename(outName, cfg['output.downloadSubfolder']);
 
   let generated;
   if (isPdf) {
-    const chapterLabel = (options && options.chapterLabel) || chapterLabelFromUrl(chapterUrl);
-    const mangaName = (options && options.mangaName) || (opts.seriesMeta && opts.seriesMeta.title) || '';
     const pdfBytes = await buildChapterPdfOutput(files, opts, chapterLabel, chapterUrl, mangaName, (progress = {}) => {
       notifyTab(originTabId, {
         action: 'downloadPackaging', chapterUrl, format: 'pdf',
@@ -2621,22 +2685,28 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   }
   const { url, revoke, base64: urlBase64 } = generated;
   const delivery = await saveGeneratedArchive({
-    url, revoke, base64: urlBase64, zip, filename: outName, originTabId,
+    url, revoke, base64: urlBase64, zip, filename: targetName, originTabId,
   });
   const accepted = isArchiveDeliveryAccepted(delivery);
+  const savedName = delivery.filename || targetName;
+  const destinationWarning = delivery.pathFallback
+    ? ' The browser saved it without the configured subfolder.'
+    : '';
 
   cdlLog(accepted ? 'ok' : 'warn',
-    `${ext.toUpperCase()} ${delivery.confirmed ? 'saved' : accepted ? 'sent to mobile downloads' : 'handed to browser'}: ${outName} (${images.length} images)`);
+    `${ext.toUpperCase()} ${delivery.confirmed ? 'saved' : accepted ? 'sent to mobile downloads' : 'handed to browser'}: ${savedName} (${images.length} images).${destinationWarning}`);
   if (delivery.confirmed) await recordSuccessfulDownloadForReview();
-  notifyTab(originTabId, { action: 'downloadDone', chapterUrl });
+  notifyTab(originTabId, {
+    action: 'downloadDone',
+    chapterUrl,
+    warning: destinationWarning.trim(),
+  });
 
   // Same bookkeeping as Download All gives each chapter: mark it downloaded in
   // the manifest (green dot + "Only new" scope) and push the .cbz to the library.
   if (files.length) {
     const slug = opts.slug || (opts.seriesMeta && opts.seriesMeta.slug) ||
       (String(chapterUrl).match(/\/title\/([^/]+)\//) || [])[1] || '';
-    const chapterLabel = (options && options.chapterLabel) || chapterLabelFromUrl(chapterUrl);
-    const mangaName = (options && options.mangaName) || (opts.seriesMeta && opts.seriesMeta.title) || '';
     if (accepted) recordChapterDownloaded(slug, chapterLabel, mangaName);
     if (isCbz) {
       const libCfg = await getLibraryConfig();
@@ -2709,12 +2779,29 @@ function deferImageHost(src, delayMs) {
   imageHostCooldownUntil.set(host, Math.max(imageHostCooldownUntil.get(host) || 0, Date.now() + delayMs));
 }
 
-async function waitForImageHostCooldown(src) {
+function waitForAbortableDelay(delayMs, signal) {
+  if (!delayMs || delayMs <= 0) return Promise.resolve();
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, delayMs));
+  if (signal.aborted) return Promise.reject(makeDownloadAllStoppedError());
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(makeDownloadAllStoppedError());
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function waitForImageHostCooldown(src, signal) {
   const host = imageHostKey(src);
   if (!host) return;
   const until = imageHostCooldownUntil.get(host) || 0;
   const remaining = until - Date.now();
-  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  if (remaining > 0) await waitForAbortableDelay(remaining, signal);
   if ((imageHostCooldownUntil.get(host) || 0) <= Date.now()) imageHostCooldownUntil.delete(host);
 }
 
@@ -2734,14 +2821,15 @@ async function waitForChapterRecovery(retryNumber, errors = []) {
   await new Promise((resolve) => setTimeout(resolve, chapterRecoveryDelayMs(retryNumber, errors)));
 }
 
-async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry) {
+async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal) {
   let retryLimit = Math.max(0, Math.floor(Number(configuredRetries) || 0));
   let lastError = null;
   for (let attempt = 0; attempt <= retryLimit; attempt++) {
-    await waitForImageHostCooldown(src);
+    await waitForImageHostCooldown(src, signal);
     try {
-      return await fetchImageForZip(src, cfg);
+      return await fetchImageForZip(src, cfg, signal);
     } catch (error) {
+      if (signal && signal.aborted) throw makeDownloadAllStoppedError();
       lastError = error;
       retryLimit = Math.max(retryLimit, imageRetryLimit(configuredRetries, error));
       if (attempt >= retryLimit) break;
@@ -2785,9 +2873,9 @@ async function fetchImageIntoZip(container, paddedIndex, src, cfg, retries) {
 // packer — so two chapters downloading at once never race on the ZIP object.
 // Returns a discriminated { file, error } result so callers cannot accidentally
 // count a failed request as a downloaded image.
-async function fetchImageToFile(paddedIndex, src, cfg, retries, onRetry) {
+async function fetchImageToFile(paddedIndex, src, cfg, retries, onRetry, signal) {
   try {
-    const image = await fetchImageWithRetry(src, cfg, retries, onRetry);
+    const image = await fetchImageWithRetry(src, cfg, retries, onRetry, signal);
     return {
       file: { name: `${paddedIndex}.${image.ext}`, ext: image.ext, buffer: image.buffer, bytes: image.buffer.byteLength || 0 },
       error: null,
@@ -2810,7 +2898,7 @@ function formatImageDownloadFailure(total, saved, error) {
 // Fetch an image and, when comix.to marks it as scrambled, redraw the CDN
 // tile mosaic back into normal page order before it goes into the ZIP.
 // Honors user settings: fetch timeout, disable-scramble, and image re-encoding.
-async function fetchImageForZip(src, cfg) {
+async function fetchImageForZip(src, cfg, externalSignal) {
   cfg = cfg || {};
   const timeoutMs = cfg['perf.imageTimeoutMs'] || 30000;
   const disableScramble = !!cfg['advanced.disableScramble'];
@@ -2819,6 +2907,11 @@ async function fetchImageForZip(src, cfg) {
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromExternal = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', abortFromExternal, { once: true });
+  }
 
   try {
     const response = await fetch(src, {
@@ -2870,6 +2963,7 @@ async function fetchImageForZip(src, cfg) {
     }
   } finally {
     clearTimeout(timeoutId);
+    if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternal);
   }
 }
 
@@ -3161,55 +3255,12 @@ function makeScramblePermutation(seed, count, initConst = 0xe42f) {
  *   resolved by the Firefox downloads API (they are scoped to the SW context).
  * Retourne { url, revoke, base64? } — appeler revoke() après téléchargement.
  */
-function generateChromiumZipBlob(zip, report) {
-  if (!zip || typeof zip.generateInternalStream !== 'function') {
-    return zip.generateAsync({ type: 'blob', compression: 'STORE' }, report);
-  }
-
-  return new Promise((resolve, reject) => {
-    let parts = [];
-    let stream;
-    try {
-      stream = zip.generateInternalStream({
-        type: 'uint8array',
-        compression: 'STORE',
-        streamFiles: true,
-      });
-    } catch (error) {
-      reject(error);
-      return;
-    }
-
-    stream.on('data', (chunk, metadata) => {
-      parts.push(chunk);
-      if (report) report(metadata);
-    });
-    stream.on('error', (error) => {
-      parts = [];
-      reject(error);
-    });
-    stream.on('end', () => {
-      try {
-        const blob = new Blob(parts, { type: 'application/zip' });
-        parts = [];
-        resolve(blob);
-      } catch (error) {
-        parts = [];
-        reject(error);
-      }
-    });
-    stream.resume();
-  });
-}
-
 async function _zipToDownloadUrl(zip, onUpdate) {
   const report = typeof onUpdate === 'function'
     ? (metadata) => { try { onUpdate(metadata || {}); } catch (_) {} }
     : undefined;
   if (!_IS_FIREFOX) {
-    // Build Chromium archives incrementally. JSZip's generateAsync({type:'blob'})
-    // concatenates the full archive at 100%, causing a large allocation/GC pause.
-    const blob = await generateChromiumZipBlob(zip, report);
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' }, report);
     const url  = URL.createObjectURL(blob);
     return { url, revoke: () => URL.revokeObjectURL(url) };
   }
@@ -3417,7 +3468,14 @@ async function saveGeneratedArchive({
         reportSave ? { onProgress: reportSave } : undefined
       );
       revoke();
-      return { confirmed: true, accepted: true, fallback: false, downloadId: item.id };
+      return {
+        confirmed: true,
+        accepted: true,
+        fallback: false,
+        downloadId: item.id,
+        filename,
+        pathFallback: false,
+      };
     } catch (error) {
       if (!isDownloadCancelledError(error)) {
         startOrTransferError = error;
@@ -3444,6 +3502,42 @@ async function saveGeneratedArchive({
     }
   }
 
+  let mobile = false;
+  try { mobile = await isMobileBrowserPlatform(); } catch (_) {}
+  const basename = String(filename || '').split(/[\\/]/).pop() || 'download.zip';
+  const canRetryWithoutFolder = mobile && basename !== filename &&
+    startOrTransferError && startOrTransferError.downloadPhase === 'start';
+  if (canRetryWithoutFolder) {
+    try {
+      if (reportSave) {
+        reportSave({
+          state: 'path_fallback',
+          bytesReceived: 0,
+          totalBytes: -1,
+        });
+      }
+      const item = await startAndConfirmBrowserDownload(
+        { url, filename: basename, saveAs: false },
+        reportSave ? { onProgress: reportSave } : undefined
+      );
+      revoke();
+      return {
+        confirmed: true,
+        accepted: true,
+        fallback: false,
+        downloadId: item.id,
+        filename: basename,
+        pathFallback: true,
+      };
+    } catch (error) {
+      if (isDownloadCancelledError(error)) {
+        if (!preserveOnCancel) revoke();
+        throw makeDownloadCancelledError(error);
+      }
+      startOrTransferError = error;
+    }
+  }
+
   // Firefox Android can reject the downloads API before creating an item.
   // Its page-context fallback cannot expose an OS DownloadItem, but a successful
   // handoff is the strongest completion signal available on that platform.
@@ -3453,13 +3547,20 @@ async function saveGeneratedArchive({
     throw startOrTransferError;
   }
 
+  let payload = base64;
+  if (!payload) {
+    if (!zip || typeof zip.generateAsync !== 'function') {
+      revoke();
+      throw startOrTransferError;
+    }
+    payload = await zip.generateAsync({ type: 'base64', compression: 'STORE' });
+  }
   revoke();
-  const payload = base64 || await zip.generateAsync({ type: 'base64', compression: 'STORE' });
+  const fallbackFilename = mobile ? basename : filename;
   const response = await chrome.tabs.sendMessage(originTabId, {
-    action: 'triggerDownload', base64: payload, filename,
+    action: 'triggerDownload', base64: payload, filename: fallbackFilename,
   });
   if (response && response.ok === false) throw new Error(response.error || 'Browser download fallback failed');
-  const mobile = await isMobileBrowserPlatform();
   const mobileHandoff = mobile && !!(response && response.ok === true &&
     (response.handoff === true || response.confirmed === false));
   if (reportSave) {
@@ -3475,6 +3576,8 @@ async function saveGeneratedArchive({
     mobileHandoff,
     fallback: true,
     downloadId: null,
+    filename: fallbackFilename,
+    pathFallback: fallbackFilename !== filename,
   };
 }
 
@@ -3486,6 +3589,13 @@ function sanitizeFilename(name, ext) {
     .replace(/\.+$/, '')
     .substring(0, 196);
   return `${base || 'download'}.${ext}`;
+}
+
+function downloadTargetFilename(filename, subfolder) {
+  if (typeof CDLSettings !== 'undefined' && CDLSettings.withDownloadSubfolder) {
+    return CDLSettings.withDownloadSubfolder(filename, subfolder);
+  }
+  return String(filename || '').split(/[\\/]/).pop() || 'download.zip';
 }
 
 function getZipPartName(zipName, partNumber) {
@@ -3523,6 +3633,7 @@ function resolveOutputOptions(cfg, options) {
     includeSeriesMeta: !!pick(options.includeSeriesMeta, cfg['output.includeSeriesMeta'], false),
     folderLayout: options.folderLayout || cfg['output.folderLayout'] || 'default',
     folderFmt: cfg['naming.chapterFolderFmt'] || 'Ch{num4}{rest}',
+    cbzFileTpl: cfg['naming.cbzFileTpl'] || '{entry}',
     seriesMeta: options.seriesMeta || null,   // scraped on the page: {title,authors,status,description,genres,coverUrl,language,...}
     slug: options.slug || null,
     totalCount: options.totalCount || null,   // total chapters in the series (ComicInfo <Count>)
@@ -3605,6 +3716,59 @@ function buildChapterEntryName(opts, chapterLabel, mangaName) {
   return buildChapterFolderName(opts.folderFmt, chapterLabel, mangaName);
 }
 
+function chapterNamingParts(opts, chapterLabel, mangaName, source, entry) {
+  source = source || {};
+  const match = String(chapterLabel || '').match(/^Ch([\d.]+)(.*)/i);
+  const number = match ? match[1] : String(chapterLabel || '').replace(/^Ch/i, '');
+  const scanlator = String(source.scanlator || source.group || '').trim();
+  const meta = opts && opts.seriesMeta || {};
+  return {
+    entry: entry || '',
+    manga: mangaName || meta.title || '',
+    chapter: number,
+    label: chapterLabel || '',
+    title: source.chapterTitle || '',
+    num: number,
+    rest: match ? match[2] : '',
+    scanlator,
+    group: scanlator,
+    groupId: source.groupId || '',
+    language: meta.language || '',
+    slug: opts && opts.slug || meta.slug || '',
+  };
+}
+
+function buildCbzFileBase(opts, chapterLabel, mangaName, source, entry) {
+  const fallback = String(entry || chapterLabel || 'Chapter').split('/').pop() || 'Chapter';
+  if (typeof CDLSettings === 'undefined') return fallback;
+  return CDLSettings.renderName(
+    opts && opts.cbzFileTpl || '{entry}',
+    chapterNamingParts(opts, chapterLabel, mangaName, source, fallback),
+    160
+  );
+}
+
+function buildCbzEntryName(opts, chapter, mangaName) {
+  const legacyEntry = buildChapterEntryName(opts, chapter.chapterLabel, mangaName);
+  const splitAt = legacyEntry.lastIndexOf('/');
+  const parent = splitAt >= 0 ? legacyEntry.slice(0, splitAt + 1) : '';
+  const entry = splitAt >= 0 ? legacyEntry.slice(splitAt + 1) : legacyEntry;
+  return parent + buildCbzFileBase(opts, chapter.chapterLabel, mangaName, chapter, entry);
+}
+
+function uniqueChapterEntryName(zip, entryBase, extension, chapterLabel) {
+  let candidate = entryBase;
+  let suffix = 2;
+  const chapterSuffix = typeof CDLSettings !== 'undefined'
+    ? CDLSettings.sanitizeFilename(chapterLabel || 'Chapter', 40)
+    : String(chapterLabel || 'Chapter').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+  while (zip.file(`${candidate}.${extension}`)) {
+    candidate = `${entryBase}-${chapterSuffix}${suffix > 2 ? `-${suffix}` : ''}`;
+    suffix++;
+  }
+  return candidate;
+}
+
 // Build a ComicInfo.xml string for one chapter (best-effort fields from the scrape).
 function buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, pageCount, mangaName) {
   if (typeof CDLComicInfo === 'undefined') return null;
@@ -3655,12 +3819,18 @@ async function addChapterToOuter(zip, r, opts, mangaName) {
     for (const f of r.files) inner.file(f.name, f.buffer);
     if (comicInfo) inner.file('ComicInfo.xml', comicInfo);
     const bytes = await inner.generateAsync({ type: 'uint8array', compression: 'STORE' });
-    zip.file(`${entryBase}.cbz`, bytes);
+    const cbzEntry = uniqueChapterEntryName(
+      zip,
+      buildCbzEntryName(opts, r, mangaName),
+      'cbz',
+      r.chapterLabel
+    );
+    zip.file(`${cbzEntry}.cbz`, bytes);
     // Optionally push this .cbz straight to the user's library server (Phase 2).
     // Queued, not awaited — a slow server must never stall the packer (it gates
     // the whole worker pool through the backpressure window).
     if (opts.pushLib) {
-      const fileBase = opts.folderLayout === 'kavita' ? entryBase.split('/').pop() : entryBase;
+      const fileBase = cbzEntry.split('/').pop();
       queueLibraryPush(opts.pushLib, seriesFolderName(mangaName), `${fileBase}.cbz`, bytes);
     }
     return bytes.byteLength || 0;
@@ -3760,7 +3930,9 @@ function detectCloudflareChallengeDocument() {
   const textMarker = /verify you are human|performing security verification|checking if the site connection is secure|ray id/i.test(bodyText);
   return {
     challenged: !readerReady && (titleMarker || formMarker || runtimeMarker || textMarker),
+    readerReady,
     title,
+    url: typeof location !== 'undefined' ? String(location.href || '') : '',
   };
 }
 
@@ -3771,7 +3943,9 @@ async function inspectCloudflareChallengeTab(tabId) {
       world: 'MAIN',
       func: detectCloudflareChallengeDocument,
     });
-    return result && result[0] && result[0].result || { challenged: false, title: '' };
+    return result && result[0] && result[0].result || {
+      challenged: false, readerReady: false, title: '', url: '',
+    };
   } catch (_) {
     return null;
   }
@@ -3811,18 +3985,67 @@ function showCloudflareChallengeNotification() {
   } catch (_) {}
 }
 
-async function waitForCloudflareChallengeClear(tabId, deadline) {
+function cloudflareChapterLocationMatches(actualUrl, expectedUrl) {
+  if (!expectedUrl) return true;
+  try {
+    const actual = new URL(actualUrl);
+    const expected = new URL(expectedUrl);
+    return actual.origin === expected.origin && actual.pathname === expected.pathname;
+  } catch (_) {
+    return String(actualUrl || '').split('#')[0] === String(expectedUrl || '').split('#')[0];
+  }
+}
+
+function raceCloudflareCancellation(task, navigation) {
+  const cancelPromise = navigation && navigation.cancelPromise;
+  if (!cancelPromise) return task;
+  return Promise.race([
+    task,
+    Promise.resolve(cancelPromise).then(() => { throw makeDownloadAllStoppedError(); }),
+  ]);
+}
+
+async function reloadCloudflareChapterTab(tabId, navigation) {
+  const expectedUrl = navigation && navigation.expectedChapterUrl;
+  if (expectedUrl) {
+    await chrome.tabs.update(tabId, { url: withExtractMarker(expectedUrl) });
+  } else {
+    await chrome.tabs.reload(tabId);
+  }
+}
+
+async function waitForCloudflareChallengeClear(tabId, deadline, navigation = {}) {
+  let restoredExpectedChapter = false;
   while (Date.now() < deadline) {
+    if (navigation.cancelled && navigation.cancelled()) throw makeDownloadAllStoppedError();
     let tab;
     try { tab = await chrome.tabs.get(tabId); }
     catch (_) { throw new Error('The Cloudflare verification tab was closed.'); }
     if (tab && tab.status !== 'complete') {
-      await new Promise((resolve) => setTimeout(resolve, CLOUDFLARE_CHALLENGE_POLL_MS));
+      await raceCloudflareCancellation(
+        new Promise((resolve) => setTimeout(resolve, CLOUDFLARE_CHALLENGE_POLL_MS)),
+        navigation
+      );
       continue;
     }
     const state = await inspectCloudflareChallengeTab(tabId);
-    if (state && !state.challenged) return;
-    await new Promise((resolve) => setTimeout(resolve, CLOUDFLARE_CHALLENGE_POLL_MS));
+    if (state && !state.challenged) {
+      const currentUrl = state.url || (tab && tab.url) || '';
+      const onExpectedChapter = cloudflareChapterLocationMatches(
+        currentUrl,
+        navigation.expectedChapterUrl
+      );
+      if (!onExpectedChapter && navigation.expectedChapterUrl && !restoredExpectedChapter) {
+        restoredExpectedChapter = true;
+        await reloadCloudflareChapterTab(tabId, navigation);
+      } else if (onExpectedChapter && state.readerReady) {
+        return;
+      }
+    }
+    await raceCloudflareCancellation(
+      new Promise((resolve) => setTimeout(resolve, CLOUDFLARE_CHALLENGE_POLL_MS)),
+      navigation
+    );
   }
   throw new Error('Cloudflare verification timed out. Complete the check, then try the download again.');
 }
@@ -3834,14 +4057,15 @@ async function coordinateCloudflareChallenge(tabId, navigation = {}) {
   const onState = navigation.onChallenge;
   if (_cloudflareChallengeGate && _cloudflareChallengeGate.tabId !== tabId) {
     reportCloudflareChallenge(onState, 'waiting');
-    await _cloudflareChallengeGate.promise;
+    await raceCloudflareCancellation(_cloudflareChallengeGate.promise, navigation);
     const turn = _cloudflareFollowerReleaseChain.catch(() => {});
     _cloudflareFollowerReleaseChain = turn.then(() => new Promise((resolve) => {
       setTimeout(resolve, CLOUDFLARE_FOLLOWER_RELEASE_MS);
     }));
-    await turn;
+    await raceCloudflareCancellation(turn, navigation);
     try {
-      await chrome.tabs.reload(tabId);
+      reportCloudflareChallenge(onState, 'retrying');
+      await reloadCloudflareChapterTab(tabId, navigation);
       return { challenged: true, reloaded: true };
     } catch (_) {
       throw new Error('The chapter tab closed while waiting for Cloudflare verification.');
@@ -3853,11 +4077,13 @@ async function coordinateCloudflareChallenge(tabId, navigation = {}) {
       reportCloudflareChallenge(onState, 'automatic');
       const automaticDeadline = Date.now() + CLOUDFLARE_AUTO_WAIT_MS;
       try {
-        await waitForCloudflareChallengeClear(tabId, automaticDeadline);
+        await waitForCloudflareChallengeClear(tabId, automaticDeadline, navigation);
         reportCloudflareChallenge(onState, 'cleared', { automatic: true });
         return;
       } catch (error) {
-        if (/verification tab was closed/i.test(error.message)) throw error;
+        if (isDownloadAllStoppedError(error) || /verification tab was closed/i.test(error.message)) {
+          throw error;
+        }
       }
 
       reportCloudflareChallenge(onState, 'required');
@@ -3866,7 +4092,11 @@ async function coordinateCloudflareChallenge(tabId, navigation = {}) {
       navigation.foregrounded = true;
       navigation.challengeForegrounded = true;
       showCloudflareChallengeNotification();
-      await waitForCloudflareChallengeClear(tabId, Date.now() + CLOUDFLARE_CHALLENGE_TIMEOUT_MS);
+      await waitForCloudflareChallengeClear(
+        tabId,
+        Date.now() + CLOUDFLARE_CHALLENGE_TIMEOUT_MS,
+        navigation
+      );
       reportCloudflareChallenge(onState, 'cleared', { automatic: false });
       await restoreChallengeOrigin(navigation);
     })();
@@ -3875,11 +4105,17 @@ async function coordinateCloudflareChallenge(tabId, navigation = {}) {
 
   const gate = _cloudflareChallengeGate;
   try {
-    await gate.promise;
+    await raceCloudflareCancellation(gate.promise, navigation);
   } finally {
     if (_cloudflareChallengeGate === gate) _cloudflareChallengeGate = null;
   }
-  return { challenged: true, reloaded: false };
+  try {
+    reportCloudflareChallenge(onState, 'retrying');
+    await reloadCloudflareChapterTab(tabId, navigation);
+    return { challenged: true, reloaded: true };
+  } catch (_) {
+    throw new Error('The chapter tab closed after Cloudflare verification.');
+  }
 }
 
 // ── Extraction Promise-based (pour download-all) ──────────────────────────────
@@ -3953,6 +4189,7 @@ async function createDownloadAllExtractionTab(url, originTabId, expectedSeriesSl
       foregrounded,
       originTabId,
       expectedSeriesSlug: String(expectedSeriesSlug || downloadAllTabSlug(url) || ''),
+      expectedChapterUrl: String(url || ''),
     },
   };
 }
@@ -3991,6 +4228,8 @@ async function extractFromTab(url, cfg, navigation = {}) {
   const tab = opened.tab;
   const tabId = tab.id;
   opened.navigation.onChallenge = navigation.onChallenge;
+  opened.navigation.cancelPromise = navigation.cancelPromise;
+  opened.navigation.cancelled = navigation.cancelled;
 
   // A freshly created background tab can briefly report status:"complete" while
   // still on its initial about:blank document, before the navigation to `url`
@@ -4023,6 +4262,12 @@ async function extractFromTab(url, cfg, navigation = {}) {
       fn(val);
     };
 
+    if (opened.navigation.cancelPromise) {
+      Promise.resolve(opened.navigation.cancelPromise).then(() => {
+        settle(reject, makeDownloadAllStoppedError());
+      }).catch(() => {});
+    }
+
     armTimer();
 
     const onUpdated = async (updatedId, changeInfo, updatedTab) => {
@@ -4033,6 +4278,7 @@ async function extractFromTab(url, cfg, navigation = {}) {
       try {
         clearTimeout(timer);
         const challenge = await coordinateCloudflareChallenge(tabId, opened.navigation);
+        if (challenge.challenged) opened.navigation.challengeEncountered = true;
         if (challenge.reloaded) {
           handling = false;
           armTimer();
@@ -4055,7 +4301,22 @@ async function extractFromTab(url, cfg, navigation = {}) {
             scrollSettleMs: cfg['perf.scrollSettleMs'],
           }],
         });
-        settle(resolve, results?.[0]?.result || []);
+        const images = results?.[0]?.result || [];
+        if ((!Array.isArray(images) || images.length === 0) &&
+            opened.navigation.challengeEncountered) {
+          if (!opened.navigation.challengeExtractionRetried) {
+            opened.navigation.challengeExtractionRetried = true;
+            reportCloudflareChallenge(opened.navigation.onChallenge, 'retrying');
+            handling = false;
+            armTimer();
+            await reloadCloudflareChapterTab(tabId, opened.navigation);
+            return;
+          }
+          const error = new Error('Cloudflare verification cleared, but the chapter reader did not load.');
+          error.code = 'CHALLENGE_RECOVERY_EMPTY';
+          throw error;
+        }
+        settle(resolve, images);
       } catch (err) {
         settle(reject, err);
       }
@@ -4133,6 +4394,8 @@ async function handleDownloadAllRequest(
   let zipPartChapterRecords = [];
   let unconfirmedZipParts = 0;
   let confirmedZipParts = 0;
+  let destinationFallbacks = 0;
+  let acceptedChapterCount = Math.max(0, Number(resumeData.terminalCounts.done) || 0);
   const terminalCounts = { ...resumeData.terminalCounts };
   let firstChapterError = resumeData.firstChapterError;
 
@@ -4150,9 +4413,18 @@ async function handleDownloadAllRequest(
   let archiveCompletedSnapshot = 0;
   let deferredProgressSequence = 0;
   const deferredChapterProgress = new Map();
+  let archiveAdmissionPaused = false;
+  let archiveAdmissionWaiters = [];
+  const resumeArchiveAdmission = () => {
+    archiveAdmissionPaused = false;
+    const waiters = archiveAdmissionWaiters;
+    archiveAdmissionWaiters = [];
+    for (const resolve of waiters) resolve();
+  };
 
   const notify = (extra) => {
     const phase = extra && extra.phase;
+    if (downloadAllStopFlag && chapterProgressPhases.has(phase)) return;
     const completed = archivePresentationActive && archiveProgressPhases.has(phase)
       ? archiveCompletedSnapshot
       : finishedCount;
@@ -4189,9 +4461,11 @@ async function handleDownloadAllRequest(
     isFinal = false,
     checkpointIndex = chapterOffset,
     splitReason = isFinal ? 'final' : '',
-    splitTrigger = isFinal ? 'final' : 'reached'
+    splitTrigger = isFinal ? 'final' : 'reached',
+    updateCheckpoint = true
   ) => {
     if (zipPartChapters === 0) return true;
+    archiveAdmissionPaused = true;
     archivePresentationActive = true;
     archiveCompletedSnapshot = checkpointIndex;
     const partName = zipPart === 1 && isFinal ? zipName : getZipPartName(zipName, zipPart);
@@ -4279,6 +4553,7 @@ async function handleDownloadAllRequest(
 
     const pending = {
       zip, zipName: partName, originTabId,
+      downloadSubfolder: cfg['output.downloadSubfolder'] || '',
       chapterRecords: zipPartChapterRecords.slice(),
       slug: opts.slug,
       mangaName,
@@ -4295,12 +4570,22 @@ async function handleDownloadAllRequest(
       onZipProgress,
       onSaveProgress,
       notifyDone: false,
+      cancelDetails: {
+        zipName: savedZipNames.length === 1
+          ? savedZipNames[0]
+          : savedZipNames.length > 1
+            ? `${savedZipNames.length} ZIP parts`
+            : '',
+        savedChapters: acceptedChapterCount,
+      },
     };
+    zip = null;
     _pendingZip = pending;
     const saved = await _doZipAndSave(pending);
     if (!saved) {
       archivePresentationActive = false;
       deferredChapterProgress.clear();
+      resumeArchiveAdmission();
       return false;
     }
 
@@ -4308,6 +4593,8 @@ async function handleDownloadAllRequest(
     const accepted = isArchiveDeliveryAccepted(saved);
     if (saved.confirmed) confirmedZipParts++;
     else if (!accepted) unconfirmedZipParts++;
+    if (saved.pathFallback) destinationFallbacks++;
+    if (accepted) acceptedChapterCount += partChapters;
     cdlLog(accepted ? 'ok' : 'warn',
       `Download All ZIP part ${saved.confirmed ? 'saved' : accepted ? 'sent to mobile downloads' : 'handed to browser'}: ${saved.filename}`);
     zip = new JSZip();
@@ -4315,7 +4602,7 @@ async function handleDownloadAllRequest(
     zipPartChapters = 0;
     zipPartBytes = 0;
     zipPartChapterRecords = [];
-    if (accepted && !resumeData.checkpointBlocked) {
+    if (accepted && updateCheckpoint && !resumeData.checkpointBlocked) {
       updateDownloadAllResumeCheckpoint({
         checkpointIndex,
         nextZipPart: zipPart,
@@ -4331,6 +4618,7 @@ async function handleDownloadAllRequest(
       persistDownloadAllSession(true, true);
     }
     archivePresentationActive = false;
+    resumeArchiveAdmission();
     if (!isFinal) {
       notify({
         phase: 'resuming',
@@ -4345,6 +4633,26 @@ async function handleDownloadAllRequest(
     return true;
   };
 
+  const finishGracefulCancellation = () => {
+    const savedName = savedZipNames.length === 1
+      ? savedZipNames[0]
+      : savedZipNames.length > 1
+        ? `${savedZipNames.length} ZIP parts`
+        : '';
+    const warnings = [];
+    if (unconfirmedZipParts) {
+      warnings.push(`${unconfirmedZipParts} ZIP part${unconfirmedZipParts === 1 ? '' : 's'} could not be verified.`);
+    }
+    if (destinationFallbacks) {
+      warnings.push(`${destinationFallbacks} ZIP part${destinationFallbacks === 1 ? '' : 's'} was saved without the configured subfolder.`);
+    }
+    notifyDownloadAllCancelled(originTabId, {
+      zipName: savedName,
+      savedChapters: acceptedChapterCount,
+      warning: warnings.join(' '),
+    });
+  };
+
   // Rate limiting between chapters (dynamic / fixed / off). Shared across workers,
   // so the effective request rate scales roughly with `concurrency`.
   const rateMode = cfg['perf.rateLimitMode'] || 'dynamic';
@@ -4353,6 +4661,7 @@ async function handleDownloadAllRequest(
   const MAX_DELAY = cfg['perf.rateMaxMs'] || 8000;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const abortPromise = _downloadAllAbortPromise();   // one reusable per-run signal
+  const networkSignal = downloadAllNetworkSignal();
   let pdfBuildChain = Promise.resolve();
   const enqueuePdfBuild = (task) => {
     const run = pdfBuildChain.catch(() => {}).then(task);
@@ -4363,8 +4672,27 @@ async function handleDownloadAllRequest(
   // Download one chapter's images into memory. Emits extracting/downloading
   // progress; returns a result the packer can add to the ZIP. Never throws.
   const downloadChapter = async (i) => {
-    const { chapterUrl, chapterLabel } = chapters[i];
+    const chapter = chapters[i] || {};
+    const { chapterUrl, chapterLabel } = chapter;
+    const scanlator = String(chapter.scanlator || chapter.group || '').trim();
+    const sourceMetadata = {
+      scanlator,
+      group: scanlator,
+      groupId: String(chapter.groupId || '').trim(),
+      chapterTitle: String(chapter.chapterTitle || '').trim(),
+    };
     const globalIndex = chapterOffset + i + 1;
+    const cancelledResult = () => ({
+      index: i,
+      chapterUrl,
+      chapterLabel,
+      ...sourceMetadata,
+      files: [],
+      bytes: 0,
+      imagesTotal: 0,
+      imagesSaved: 0,
+      status: 'cancelled',
+    });
 
     notify({ phase: 'extracting', chapterIndex: globalIndex, totalChapters,
              chapterLabel, imagesDone: 0, imagesTotal: 0 });
@@ -4372,11 +4700,14 @@ async function handleDownloadAllRequest(
     let images = null, extractErr = null;
     let encounteredRetries = false;
     for (let attempt = 0; attempt <= chapterRetries; attempt++) {
-      if (downloadAllAbortFlag) break;
+      if (downloadAllShouldStop()) return cancelledResult();
       try {
         images = await extractFromTab(chapterUrl, cfg, {
           originTabId,
           expectedSeriesSlug,
+          expectedChapterUrl: chapterUrl,
+          cancelPromise: abortPromise,
+          cancelled: downloadAllShouldStop,
           onChallenge: ({ state }) => notify({
             phase: 'challenge', chapterIndex: globalIndex, totalChapters,
             chapterLabel, imagesDone: 0, imagesTotal: 0, challengeState: state,
@@ -4386,6 +4717,7 @@ async function handleDownloadAllRequest(
         break;
       }
       catch (e) {
+        if (downloadAllShouldStop() || isDownloadAllStoppedError(e)) return cancelledResult();
         extractErr = e;
         images = null;
         if (attempt < chapterRetries) {
@@ -4398,17 +4730,19 @@ async function handleDownloadAllRequest(
           });
           cdlLog('warn', `${chapterLabel}: reopening chapter (retry ${retryAttempt}/${chapterRetries})`);
           await Promise.race([waitForChapterRecovery(retryAttempt, [e]), abortPromise]);
+          if (downloadAllShouldStop()) return cancelledResult();
         }
       }
     }
+    if (downloadAllShouldStop()) return cancelledResult();
     if (extractErr) {
       console.warn(`[ComixDL-All] Chapitre ${chapterLabel} échoué:`, extractErr.message);
       cdlLog('error', `${chapterLabel} failed: ${extractErr.message}`);
-      return { index: i, chapterUrl, chapterLabel, files: [], bytes: 0, imagesTotal: 0, imagesSaved: 0, status: 'error', error: extractErr.message };
+      return { index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], bytes: 0, imagesTotal: 0, imagesSaved: 0, status: 'error', error: extractErr.message };
     }
     if (!images || images.length === 0) {
       cdlLog('warn', `No images found, skipping ${chapterLabel}`);
-      return { index: i, chapterUrl, chapterLabel, files: [], bytes: 0, imagesTotal: 0, imagesSaved: 0, status: 'skipped' };
+      return { index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], bytes: 0, imagesTotal: 0, imagesSaved: 0, status: 'skipped' };
     }
     images = await verifyEnumeratedImages(images, chapterLabel);
     cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
@@ -4422,7 +4756,7 @@ async function handleDownloadAllRequest(
     const failedPages = new Map();
     let bytes = 0, imagesProcessed = 0, firstImageError = null;
     for (let j = 0; j < ordered.length; j += batchSize) {
-      if (downloadAllAbortFlag) break;
+      if (downloadAllShouldStop()) break;
       const batch = ordered.slice(j, j + batchSize);
       await Promise.allSettled(batch.map(async (img, k) => {
         const page = j + k + 1;
@@ -4434,7 +4768,7 @@ async function handleDownloadAllRequest(
             chapterLabel, imagesDone: filesByPage.size, imagesTotal: ordered.length,
             imagePage: page, retryAttempt: retry.retryAttempt, retryLimit: retry.retryLimit,
           });
-        });
+        }, networkSignal);
         if (fetched.file) {
           fetched.file.page = page;
           filesByPage.set(page, fetched.file);
@@ -4448,6 +4782,7 @@ async function handleDownloadAllRequest(
                  chapterLabel, imagesDone: imagesProcessed, imagesTotal: ordered.length });
       }));
     }
+    if (downloadAllShouldStop()) return cancelledResult();
 
     // A page may still fail after its per-image attempts when Cloudflare returns
     // a short burst of 520/521 responses. Chapter retries perform a delayed,
@@ -4458,7 +4793,7 @@ async function handleDownloadAllRequest(
     // original high-request burst that likely triggered the CDN errors.
     const recoveryBatchSize = 1;
     for (let retryAttempt = 1;
-      retryAttempt <= chapterRetries && failedPages.size && !downloadAllAbortFlag;
+      retryAttempt <= chapterRetries && failedPages.size && !downloadAllShouldStop();
       retryAttempt++) {
       const pendingFailures = [...failedPages.values()].sort((a, b) => a.page - b.page);
       encounteredRetries = true;
@@ -4474,10 +4809,10 @@ async function handleDownloadAllRequest(
       cdlLog('warn', `${chapterLabel}: retrying ${failedPages.size} missing image${failedPages.size === 1 ? '' : 's'} ` +
         `(chapter retry ${retryAttempt}/${chapterRetries})`);
       await Promise.race([waitForChapterRecovery(retryAttempt, errors), abortPromise]);
-      if (downloadAllAbortFlag) break;
+      if (downloadAllShouldStop()) break;
 
       for (let j = 0; j < pendingFailures.length; j += recoveryBatchSize) {
-        if (downloadAllAbortFlag) break;
+        if (downloadAllShouldStop()) break;
         const batch = pendingFailures.slice(j, j + recoveryBatchSize);
         await Promise.allSettled(batch.map(async (failure) => {
           const paddedIndex = String(failure.page).padStart(padDigits, '0');
@@ -4495,7 +4830,8 @@ async function handleDownloadAllRequest(
                 retryAttempt: retry.retryAttempt, retryLimit: retry.retryLimit,
                 recoveryAttempt: retryAttempt,
               });
-            }
+            },
+            networkSignal
           );
           if (fetched.file) {
             fetched.file.page = failure.page;
@@ -4514,6 +4850,7 @@ async function handleDownloadAllRequest(
         }));
       }
     }
+    if (downloadAllShouldStop()) return cancelledResult();
 
     const files = [...filesByPage.values()].sort((a, b) => a.page - b.page);
     if (files.length !== ordered.length) {
@@ -4521,7 +4858,7 @@ async function handleDownloadAllRequest(
       const error = formatImageDownloadFailure(ordered.length, files.length, unresolved || firstImageError);
       cdlLog('error', `${chapterLabel} failed: ${error}`);
       return {
-        index: i, chapterUrl, chapterLabel, files: [], bytes: 0,
+        index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], bytes: 0,
         imagesTotal: ordered.length, imagesSaved: files.length, status: 'error', error,
       };
     }
@@ -4529,7 +4866,7 @@ async function handleDownloadAllRequest(
     if (opts.format === 'pdf') {
       try {
         const pdfBytes = await enqueuePdfBuild(async () => {
-          if (downloadAllAbortFlag) return null;
+          if (downloadAllShouldStop()) return null;
           pdfPresentationActive = true;
           try {
             return await buildChapterPdfOutput(
@@ -4547,15 +4884,9 @@ async function handleDownloadAllRequest(
             flushDeferredChapterProgress();
           }
         });
-        if (downloadAllAbortFlag || !pdfBytes) {
-          return {
-            index: i, chapterUrl, chapterLabel, files: [], bytes: 0,
-            imagesTotal: ordered.length, imagesSaved: files.length, status: 'skipped',
-            hadRetries: encounteredRetries,
-          };
-        }
+        if (downloadAllShouldStop() || !pdfBytes) return cancelledResult();
         return {
-          index: i, chapterUrl, chapterLabel, files: [], pdfBytes,
+          index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], pdfBytes,
           bytes: pdfBytes.byteLength || 0,
           imagesTotal: ordered.length, imagesSaved: files.length, status: 'done',
           hadRetries: encounteredRetries,
@@ -4565,7 +4896,7 @@ async function handleDownloadAllRequest(
         const message = `PDF creation failed: ${detail}`;
         cdlLog('error', `${chapterLabel} failed: ${message}`);
         return {
-          index: i, chapterUrl, chapterLabel, files: [], bytes: 0,
+          index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], bytes: 0,
           imagesTotal: ordered.length, imagesSaved: files.length, status: 'error', error: message,
           hadRetries: encounteredRetries,
         };
@@ -4573,7 +4904,7 @@ async function handleDownloadAllRequest(
     }
 
     return {
-      index: i, chapterUrl, chapterLabel, files, bytes,
+      index: i, chapterUrl, chapterLabel, ...sourceMetadata, files, bytes,
       imagesTotal: ordered.length, imagesSaved: files.length, status: 'done',
       hadRetries: encounteredRetries,
     };
@@ -4592,24 +4923,33 @@ async function handleDownloadAllRequest(
   // Backpressure: never let more than `concurrency` chapters be checked out but
   // unpacked, so buffered image bytes stay bounded (~concurrency chapters).
   const waitForWindow = async () => {
-    while (!downloadAllAbortFlag && (cursor - packedCount) >= concurrency) {
+    while (!downloadAllShouldStop() && (cursor - packedCount) >= concurrency) {
       await Promise.race([new Promise((res) => windowWaiters.push(res)), abortPromise]);
+    }
+  };
+  const waitForArchiveAdmission = async () => {
+    while (archiveAdmissionPaused && !downloadAllShouldStop()) {
+      await Promise.race([
+        new Promise((resolve) => archiveAdmissionWaiters.push(resolve)),
+        abortPromise,
+      ]);
     }
   };
 
   const worker = async () => {
     while (true) {
       await waitForWindow();
-      if (downloadAllAbortFlag) return;
+      await waitForArchiveAdmission();
+      if (downloadAllShouldStop()) return;
       const i = cursor++;
       if (i >= chapters.length) return;
 
       const result = await downloadChapter(i);
       results[i] = result;
-      finishedCount++;   // bump before the terminal message so the bar advances
       const globalIndex = chapterOffset + i + 1;
 
       if (result.status === 'done') {
+        finishedCount++;   // bump before the terminal message so the bar advances
         notify({ phase: 'done', chapterIndex: globalIndex, totalChapters,
                  chapterLabel: result.chapterLabel, imagesDone: result.imagesSaved, imagesTotal: result.imagesTotal });
         cdlLog('ok', `${result.chapterLabel}: done (${result.imagesSaved} images)`);
@@ -4621,9 +4961,11 @@ async function handleDownloadAllRequest(
             : Math.max(MIN_DELAY, rateDelay - 100);
         }
       } else if (result.status === 'skipped') {
+        finishedCount++;
         notify({ phase: 'skipped', chapterIndex: globalIndex, totalChapters,
                  chapterLabel: result.chapterLabel, imagesDone: 0, imagesTotal: 0 });
-      } else {
+      } else if (result.status === 'error') {
+        finishedCount++;
         notify({ phase: 'error', chapterIndex: globalIndex, totalChapters,
                  chapterLabel: result.chapterLabel, imagesDone: result.imagesSaved || 0, imagesTotal: result.imagesTotal || 0 });
         if (rateMode === 'dynamic') rateDelay = Math.min(MAX_DELAY, Math.round(rateDelay * 1.5)); // failure → back off
@@ -4631,8 +4973,8 @@ async function handleDownloadAllRequest(
       resolvers[i]();   // hand this chapter to the in-order packer
 
       // Pace before grabbing the next chapter (skipped once no work remains).
-      if (rateMode !== 'off' && !downloadAllAbortFlag && cursor < chapters.length) {
-        await sleep(rateDelay);
+      if (rateMode !== 'off' && !downloadAllShouldStop() && cursor < chapters.length) {
+        await Promise.race([sleep(rateDelay), abortPromise]);
       }
     }
   };
@@ -4640,7 +4982,7 @@ async function handleDownloadAllRequest(
   const packer = async () => {
     for (let i = 0; i < chapters.length; i++) {
       await Promise.race([ready[i], abortPromise]);
-      if (downloadAllAbortFlag) return;
+      if (downloadAllShouldStop()) return;
 
       const r = results[i];
       results[i] = null;   // release buffers as soon as they're packed
@@ -4713,7 +5055,68 @@ async function handleDownloadAllRequest(
   await Promise.all([packer(), ...workers]);
 
   if (packFailed) return;   // the ZIP error was already reported by _doZipAndSave
-  if (downloadAllAbortFlag) { notifyDownloadAllCancelled(originTabId); return; }
+  if (downloadAllAbortFlag) return;
+  if (downloadAllStopFlag) {
+    // The in-order packer exits immediately on cancellation. Preserve any
+    // chapters that completed just before the stop but had not reached it yet.
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      results[i] = null;
+      if (!result || result.status !== 'done' ||
+          (!result.files.length && !(result.pdfBytes && result.pdfBytes.byteLength))) {
+        continue;
+      }
+
+      const estimatedBytes = result.pdfBytes && result.pdfBytes.byteLength
+        ? result.pdfBytes.byteLength
+        : Math.max(0, Number(result.bytes) || 0);
+      const projectedReason = downloadAllProjectedPartSplitReason(
+        zipPartChapters,
+        zipPartBytes,
+        estimatedBytes,
+        partitionPolicy
+      );
+      if (projectedReason) {
+        const saved = await saveCurrentZipPart(
+          false,
+          chapterOffset + i,
+          projectedReason,
+          'projected',
+          false
+        );
+        if (!saved) return;
+      }
+
+      try {
+        const added = await withExtensionKeepAlive(
+          () => addChapterToOuter(zip, result, opts, mangaName)
+        );
+        zipPartChapters++;
+        zipPartBytes += added;
+        zipPartChapterRecords.push({ chapterLabel: result.chapterLabel });
+        terminalCounts.done++;
+      } catch (error) {
+        const failure = describeArchiveFailure(error, 'chapter_packaging');
+        cdlLog('error', `${result.chapterLabel} packaging failed: ${failure.message}`);
+        notifyDownloadAllError(originTabId, failure.message, failure);
+        return;
+      }
+    }
+
+    if (zipPartChapters > 0) {
+      const saved = await saveCurrentZipPart(
+        true,
+        chapterOffset + packedCount,
+        'cancelled',
+        'cancelled',
+        false
+      );
+      if (!saved) return;
+    }
+
+    finishGracefulCancellation();
+    return;
+  }
 
   if (zipPartChapters === 0 && savedZipNames.length === 0) {
     const detail = firstChapterError ? ` ${firstChapterError}` : '';
@@ -4726,6 +5129,10 @@ async function handleDownloadAllRequest(
   // Final ZIP part.
   const saved = await saveCurrentZipPart(true, totalChapters, 'final');
   if (!saved) return;
+  if (downloadAllStopFlag) {
+    finishGracefulCancellation();
+    return;
+  }
 
   // Let queued library pushes drain before reporting done (also keeps the MV3
   // service worker alive until the last upload finishes).
@@ -4740,6 +5147,9 @@ async function handleDownloadAllRequest(
   if (unconfirmedZipParts) {
     warnings.push(`${unconfirmedZipParts} ZIP part${unconfirmedZipParts === 1 ? '' : 's'} could not be verified and its chapters were not marked as downloaded.`);
   }
+  if (destinationFallbacks) {
+    warnings.push(`${destinationFallbacks} ZIP part${destinationFallbacks === 1 ? '' : 's'} was saved without the configured subfolder.`);
+  }
   const warning = warnings.join(' ');
   cdlLog(warning ? 'warn' : 'ok', `Download All complete: ${doneName}${warning ? ` (${warning})` : ''}`);
   if (confirmedZipParts > 0 && confirmedZipParts === savedZipNames.length &&
@@ -4751,12 +5161,16 @@ async function handleDownloadAllRequest(
 
 async function _doZipAndSave(pending) {
   const {
-    zip, zipName, originTabId,
+    zipName, originTabId,
     chapterRecords = [], slug = '', mangaName = '',
     onZipProgress = null, onSaveProgress = null,
   } = pending;
+  let zip = pending.zip;
   const notifyDone = pending.notifyDone !== false;
-  const filename = sanitizeFilename(zipName);
+  const filename = downloadTargetFilename(
+    sanitizeFilename(zipName),
+    pending.downloadSubfolder
+  );
   let failurePhase = 'archive_build';
   try {
     let generated = pending.generatedArchive;
@@ -4774,6 +5188,12 @@ async function _doZipAndSave(pending) {
         base64: result.base64,
       };
       pending.generatedArchive = generated;
+      pending.zip = null;
+      zip = null;
+    }
+    if (generated && pending.zip) {
+      pending.zip = null;
+      zip = null;
     }
 
     let delivery = null;
@@ -4785,7 +5205,7 @@ async function _doZipAndSave(pending) {
           url: generated.url,
           revoke: generated.revoke,
           base64: generated.base64,
-          zip,
+          zip: null,
           filename,
           originTabId,
           onSaveProgress,
@@ -4805,7 +5225,7 @@ async function _doZipAndSave(pending) {
           const dismissAfterAbandon = !!pending.dismissAfterAbandon;
           releasePendingGeneratedArchive(pending);
           if (_pendingZip === pending) _pendingZip = null;
-          notifyDownloadAllCancelled(originTabId);
+          notifyDownloadAllCancelled(originTabId, pending.cancelDetails);
           if (dismissAfterAbandon) dismissDownloadAllSessionForTab(originTabId);
           return null;
         }
@@ -4814,6 +5234,7 @@ async function _doZipAndSave(pending) {
     }
 
     const accepted = isArchiveDeliveryAccepted(delivery);
+    const deliveredFilename = delivery.filename || filename;
     if (accepted) {
       for (const record of chapterRecords) {
         if (record && record.chapterLabel) recordChapterDownloaded(slug, record.chapterLabel, mangaName);
@@ -4824,21 +5245,22 @@ async function _doZipAndSave(pending) {
       const warning = accepted
         ? ''
         : 'The browser received the file, but completion could not be verified; chapters were not marked as downloaded.';
-      cdlLog(accepted ? 'ok' : 'warn', `Download All complete: ${filename}${warning ? ` (${warning})` : ''}`);
-      notifyDownloadAllDone(originTabId, filename, warning);
+      cdlLog(accepted ? 'ok' : 'warn', `Download All complete: ${deliveredFilename}${warning ? ` (${warning})` : ''}`);
+      notifyDownloadAllDone(originTabId, deliveredFilename, warning);
     }
     return {
-      filename,
+      filename: deliveredFilename,
       confirmed: delivery.confirmed === true,
       accepted,
       mobileHandoff: delivery.mobileHandoff === true,
+      pathFallback: delivery.pathFallback === true,
     };
   } catch (err) {
     releasePendingGeneratedArchive(pending);
     if (_pendingZip === pending) _pendingZip = null;
     if (isDownloadCancelledError(err)) {
       cdlLog('info', `Download All save cancelled: ${sanitizeFilename(zipName)}`);
-      notifyDownloadAllCancelled(originTabId);
+      notifyDownloadAllCancelled(originTabId, pending.cancelDetails);
       return null;
     }
     const failure = describeArchiveFailure(err, failurePhase);

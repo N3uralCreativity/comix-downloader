@@ -120,6 +120,7 @@
   // Sample context for live template previews.
   var PREVIEW_CTX = {
     'naming.chapterFolderFmt': { num: '12', rest: '', chapter: '12', manga: 'Solo Leveling' },
+    'naming.cbzFileTpl':       { entry: 'Ch0012', manga: 'Solo Leveling', chapter: '12', label: 'Ch12', num: '12', rest: '', scanlator: 'Flame Comics', groupId: '42', language: 'en' },
     'naming.singleZipTpl':     { manga: 'Solo Leveling', chapter: '12' },
     'naming.allZipTpl':        { manga: 'Solo Leveling' }
   };
@@ -186,9 +187,15 @@
       api.setValue = function (v) { col.value = v; hex.value = String(v).toUpperCase(); };
       api.setEnabled = function (on) { col.disabled = !on; hex.disabled = !on; };
 
-    } else if (s.type === 'string' || s.type === 'template') {
+    } else if (s.type === 'string' || s.type === 'template' || s.type === 'downloadPath') {
       var txt = el('input', { type: 'text', id: id, maxlength: String(s.maxLen || 80),
-        oninput: function () { commit(txt.value); } });
+        oninput: function () { commit(txt.value); },
+        onchange: function () {
+          if (s.type !== 'downloadPath') return;
+          var v = S.validateValue(key, txt.value);
+          commit(v);
+          txt.value = v;
+        } });
       wrap.appendChild(txt);
       api.setValue = function (v) { txt.value = v == null ? '' : v; };
       api.setEnabled = function (on) { txt.disabled = !on; };
