@@ -21,9 +21,6 @@
 **[Access Documentation here](https://n3uralcreativity.top/comix-downloader/Documentation.html)**
 
 
-If the download buttons aren't showing up, just refresh the page. Your browser tends to load pages from cache sometimes, which can prevent the extension from being triggered properly. Not really much I can do about that unfortunately.
-
-
 
 </div>
 
