@@ -300,6 +300,15 @@ const allContext = {
     return result.pdfBytes ? result.pdfBytes.byteLength : result.bytes;
   },
   withExtensionKeepAlive: (task) => task(),
+  tagDiagnosticError: (error, kind, phase) => Object.assign(error, { cdlKind: kind, cdlPhase: phase }),
+  createErrorDiagnostic: (error, options = {}) => ({
+    code: options.errorKind === 'chapter_extraction' ? 'CDL-EXTRACT-001' :
+      error?.cdlKind === 'image_download' ? 'CDL-IMAGE-001' : 'CDL-PIPELINE-001',
+    reference: `test-${allEvents.progress.length}`,
+    technicalMessage: error?.message || String(error),
+    kind: options.errorKind || error?.cdlKind || 'pipeline',
+    phase: options.failurePhase || error?.cdlPhase || 'unknown',
+  }),
   describeArchiveFailure: (error, failurePhase) => ({
     errorTitle: 'Archive failed.',
     errorKind: failurePhase,

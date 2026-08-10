@@ -52,6 +52,13 @@ vm.runInContext(`
   const DL_RESUME_KEY = 'cdlDownloadAllResume';
   const DL_SESSION_PREFIX = 'cdlDownloadAllSession:';
   const DL_RESUME_PREFIX = 'cdlDownloadAllResume:';
+  function extensionVersion() { return '4.2.test'; }
+  ${extractFunction('downloadErrorText')}
+  ${extractFunction('sanitizeDiagnosticText')}
+  ${extractFunction('sanitizeDiagnosticContext')}
+  ${extractFunction('diagnosticHttpStatus')}
+  ${extractFunction('diagnosticDefinition')}
+  ${extractFunction('createErrorDiagnostic')}
   ${extractFunction('cloneDownloadAllOptions')}
   ${extractFunction('normalizeDownloadAllResumeChapters')}
   ${extractFunction('createDownloadAllResumeData')}
@@ -131,13 +138,16 @@ context.api.prepareInterruptedDownloadAllSession(zippingSession, 9);
 check('a worker restart during ZIP creation is identified by its real stage',
   zippingSession.errorTitle === 'ZIP creation was interrupted.' &&
   zippingSession.failurePhase === 'zipping' &&
-  zippingSession.errorKind === 'runtime_interruption');
+  zippingSession.errorKind === 'runtime_interruption' &&
+  zippingSession.diagnostic.code === 'CDL-RUNTIME-001');
 
 const serialized = context.api.serialize(session);
 check('the live session snapshot omits the full chapter checkpoint payload',
   !Object.prototype.hasOwnProperty.call(serialized, 'resumeData'));
 check('the live session snapshot preserves resume UI fields',
   serialized.canResumeDownload && serialized.resumeChapterLabel === 'Ch3');
+check('the live session snapshot preserves technical diagnostics',
+  serialized.diagnostic && serialized.diagnostic.reference === session.diagnostic.reference);
 
 const cancelledSerialized = context.api.serialize({
   active: false,
@@ -170,6 +180,13 @@ vm.runInContext(`
   function recordDownloadAllTerminal(status, patch) { terminal = { status, ...patch }; }
   function restoreIdleBadge() { restoredBadge = true; }
   function notifyTab(_tabId, message) { sent = message; }
+  function extensionVersion() { return '4.2.test'; }
+  ${extractFunction('downloadErrorText')}
+  ${extractFunction('sanitizeDiagnosticText')}
+  ${extractFunction('sanitizeDiagnosticContext')}
+  ${extractFunction('diagnosticHttpStatus')}
+  ${extractFunction('diagnosticDefinition')}
+  ${extractFunction('createErrorDiagnostic')}
   ${extractFunction('isValidDownloadAllResumeData')}
   ${extractFunction('notifyDownloadAllError')}
   globalThis.report = () => notifyDownloadAllError(7, 'allocation failed', {
@@ -182,11 +199,15 @@ recoverableContext.report();
 check('recoverable archive failures remain errors rather than generic interruptions',
   recoverableContext.sent.action === 'downloadAllError' &&
   recoverableContext.sent.errorTitle === 'ZIP creation failed.' &&
-  recoverableContext.terminal.status === 'error');
+  recoverableContext.terminal.status === 'error' &&
+  recoverableContext.sent.diagnostic.code === 'CDL-ZIP-001');
 check('recoverable archive failures expose the last confirmed checkpoint immediately',
   recoverableContext.sent.canResumeDownload === true &&
   recoverableContext.sent.resumeChapterLabel === 'Ch2' &&
   recoverableContext.sent.completed === 1 && recoverableContext.restoredBadge);
+check('recoverable failures persist the same diagnostic reference used by the page',
+  recoverableContext.terminal.diagnostic.reference === recoverableContext.sent.diagnostic.reference &&
+  recoverableContext.terminal.lastError.diagnostic.reference === recoverableContext.sent.diagnostic.reference);
 
 const awaitingSave = {
   active: true,
@@ -286,6 +307,13 @@ async function runAsyncSessionChecks() {
       if (session) session.resumeData = null;
       delete storageData[keys.resume];
     }
+    function extensionVersion() { return '4.2.test'; }
+    ${extractFunction('downloadErrorText')}
+    ${extractFunction('sanitizeDiagnosticText')}
+    ${extractFunction('sanitizeDiagnosticContext')}
+    ${extractFunction('diagnosticHttpStatus')}
+    ${extractFunction('diagnosticDefinition')}
+    ${extractFunction('createErrorDiagnostic')}
     ${extractFunction('isValidDownloadAllResumeData')}
     ${extractFunction('isCompletedDownloadAllResumeData')}
     ${extractFunction('downloadAllResumeSlug')}

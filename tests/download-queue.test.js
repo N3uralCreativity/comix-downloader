@@ -66,6 +66,13 @@ const context = {
   cdlLog() {},
   isDownloadCancelledError(error) { return error && error.code === 'DOWNLOAD_CANCELLED'; },
   notifyTab(tabId, message) { messages.push({ tabId, ...message }); },
+  notifyChapterDownloadError(tabId, chapterUrl, error) {
+    messages.push({
+      tabId, action: 'downloadError', chapterUrl,
+      error: error.message,
+      diagnostic: { code: 'CDL-PIPELINE-001', reference: 'queue-test' },
+    });
+  },
   downloadImagesAsZip(payload) {
     started.push(payload.id);
     return new Promise((resolve, reject) => controls.set(payload.id, { resolve, reject }));
@@ -129,6 +136,9 @@ async function run() {
   check('a failed chapter releases its slot', started.join(',') === 'a,b,c,d,e');
   check('a failed chapter reports its own URL', messages.some((message) =>
     message.action === 'downloadError' && message.chapterUrl.includes('/d-chapter-d')));
+  check('a failed chapter carries a support diagnostic', messages.some((message) =>
+    message.action === 'downloadError' && message.chapterUrl.includes('/d-chapter-d') &&
+    message.diagnostic?.code === 'CDL-PIPELINE-001'));
 
   controls.get('e').resolve();
   await flush();

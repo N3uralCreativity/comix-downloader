@@ -125,7 +125,7 @@ function applyDynamicStyles() {
     .${DOWNLOAD_BTN_CLASS} svg { width:${svgS}px; height:${svgS}px; }
     .${DOWNLOAD_BTN_CLASS}[data-state="loading"] { width:${loadW}px; min-width:${loadW}px; color:${accent}; }
     .${PROGRESS_SPAN_CLASS} { color:${accent}; }
-    #cdl-all-popup { --cdl-accent:${accent}; }
+    #cdl-all-popup, #cdl-single-error { --cdl-accent:${accent}; }
     .${DOWNLOAD_BTN_CLASS}.cdl-has-text { width:auto; min-width:0; gap:6px; padding:0 9px; }
     .${DOWNLOAD_BTN_CLASS}.cdl-has-text[data-state="loading"] { width:auto; min-width:0; }
     .cdl-btn-text { font-size:${fontS}px; font-weight:600; }
@@ -350,6 +350,8 @@ function injectStyles() {
       display: flex;
       flex-direction: column;
       gap: 10px;
+      min-height: 0;
+      overflow-y: auto;
     }
     .cdl-ap-manga-name {
       font-weight: 600;
@@ -555,6 +557,154 @@ function injectStyles() {
     .cdl-ap-log-item.active  { color: var(--cdl-accent); }
     .cdl-ap-log-item.error   { color: var(--cdl-err); }
     .cdl-ap-log-item.skipped { color: var(--cdl-skip); }
+    .cdl-ap-log-item.has-diagnostic { cursor: pointer; }
+    .cdl-ap-log-item.has-diagnostic:hover { text-decoration: underline; text-decoration-style: dotted; }
+    .cdl-error-details {
+      border: 1px solid var(--cdl-err-border, rgba(239,68,68,.28));
+      border-radius: 6px;
+      background: var(--cdl-err-bg, rgba(239,68,68,.08));
+      overflow: hidden;
+    }
+    .cdl-error-details[hidden] { display: none; }
+    .cdl-error-details > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      cursor: pointer;
+      color: var(--cdl-text-strong, #ecf4f5);
+      font-size: 11px;
+      font-weight: 600;
+      list-style: none;
+    }
+    .cdl-error-details > summary::-webkit-details-marker { display: none; }
+    .cdl-error-details > summary::before {
+      content: '›';
+      color: var(--cdl-err, #f87171);
+      font-size: 16px;
+      line-height: 10px;
+      transform: rotate(0deg);
+      transition: transform .15s ease;
+    }
+    .cdl-error-details[open] > summary::before { transform: rotate(90deg); }
+    .cdl-error-summary-label { margin-right: auto; }
+    .cdl-error-code {
+      color: var(--cdl-err, #f87171);
+      font: 600 10px ui-monospace,SFMono-Regular,Consolas,monospace;
+      white-space: nowrap;
+    }
+    .cdl-error-details-body {
+      padding: 0 10px 10px;
+      border-top: 1px solid var(--cdl-border-soft, rgba(255,255,255,.06));
+    }
+    .cdl-error-report {
+      max-height: 180px;
+      margin: 9px 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: var(--cdl-muted, #9da4a5);
+      font: 10px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;
+      user-select: text;
+    }
+    .cdl-error-copy-btn {
+      border: 1px solid var(--cdl-border, rgba(255,255,255,.1));
+      border-radius: 6px;
+      padding: 5px 9px;
+      background: transparent;
+      color: var(--cdl-text, #cdd5d6);
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .cdl-error-copy-btn:hover { background: var(--cdl-hover, rgba(255,255,255,.08)); }
+    #cdl-single-error {
+      --cdl-bg: var(--surface, #2a3134);
+      --cdl-header-bg: var(--surface-2, #323a3e);
+      --cdl-text: var(--text, #cdd5d6);
+      --cdl-text-strong: var(--text-emphasis, #ecf4f5);
+      --cdl-muted: var(--text-2, #9da4a5);
+      --cdl-border: rgba(255,255,255,.12);
+      --cdl-border-soft: rgba(255,255,255,.07);
+      --cdl-hover: rgba(255,255,255,.08);
+      --cdl-err: var(--danger, #f87171);
+      --cdl-err-bg: rgba(239,68,68,.10);
+      --cdl-err-border: rgba(239,68,68,.28);
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 2147483647;
+      width: min(370px, calc(100vw - 24px));
+      overflow: hidden;
+      border: 1px solid var(--cdl-border);
+      border-radius: 8px;
+      background: var(--cdl-bg);
+      color: var(--cdl-text);
+      box-shadow: 0 16px 40px -14px rgba(0,0,0,.6);
+      font: 12px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+      animation: cdl-ap-in .2s ease-out both;
+      max-height: calc(100vh - 24px);
+      display: flex;
+      flex-direction: column;
+    }
+    .cdl-se-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--cdl-border-soft);
+      background: var(--cdl-header-bg);
+      color: var(--cdl-text-strong);
+      font-weight: 600;
+    }
+    .cdl-se-header strong { display: flex; align-items: center; gap: 7px; }
+    .cdl-se-mark {
+      display: inline-flex;
+      width: 20px;
+      height: 20px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      color: var(--cdl-err);
+      background: var(--cdl-err-bg);
+    }
+    .cdl-se-close {
+      border: 0;
+      background: transparent;
+      color: var(--cdl-muted);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .cdl-se-body {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 11px 12px;
+    }
+    .cdl-se-error-title { color: var(--cdl-text-strong); font-size: 12px; font-weight: 600; }
+    .cdl-se-message { color: var(--cdl-text); overflow-wrap: anywhere; }
+    .cdl-se-reference { color: var(--cdl-muted); font: 10px ui-monospace,SFMono-Regular,Consolas,monospace; }
+    .cdl-se-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 7px;
+      padding: 9px 12px 11px;
+      border-top: 1px solid var(--cdl-border-soft);
+    }
+    .cdl-se-actions button {
+      border-radius: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .cdl-se-retry { border: 1px solid var(--cdl-err-border); background: var(--cdl-err-bg); color: var(--cdl-err); }
+    .cdl-se-dismiss { border: 1px solid var(--cdl-border); background: transparent; color: var(--cdl-text); }
     .cdl-ap-footer {
       padding: 11px 15px 13px;
       border-top: 1px solid var(--cdl-border-soft);
@@ -637,6 +787,7 @@ function injectStyles() {
         width: auto !important;
         max-height: calc(100vh - 48px);
       }
+      #cdl-single-error { left: 12px; right: 12px; width: auto; bottom: 12px; }
     }
   `;
   document.head.appendChild(style);
@@ -737,10 +888,17 @@ function injectButtonForRow(bookmarkBtn) {
 // ── Lancement du téléchargement ───────────────────────────────────────────────
 
 function startDownload(btn, chapterUrl, zipName, sourceMeta) {
+  document.getElementById('cdl-single-error')?.remove();
   // Si le contexte de l'extension a été invalidé (ex. rechargement en cours de session),
   // chrome.runtime.id est undefined et sendMessage lèverait une exception.
   if (!chrome.runtime?.id) {
-    setButtonState(btn, 'error', 'Extension reloaded — refresh the page');
+    const message = 'Extension reloaded - refresh the page and try again.';
+    const diagnostic = _cdlCreateClientDiagnostic(new Error(message), {
+      errorKind: 'runtime_connection', failurePhase: 'setup',
+      context: { operation: 'single_chapter', chapterUrl },
+    });
+    setButtonState(btn, 'error', message);
+    showChapterDownloadError(message, diagnostic, btn);
     return;
   }
   setButtonState(btn, 'loading', null);
@@ -755,12 +913,25 @@ function startDownload(btn, chapterUrl, zipName, sourceMeta) {
       },
       (response) => {
         if (chrome.runtime.lastError) {
-          setButtonState(btn, 'error', 'Connection to the extension failed');
+          const technical = chrome.runtime.lastError.message || 'Connection to the extension failed';
+          const message = 'Connection to the extension failed. Refresh the page and try again.';
+          const diagnostic = _cdlCreateClientDiagnostic(new Error(technical), {
+            errorKind: 'runtime_connection', failurePhase: 'message',
+            context: { operation: 'single_chapter', chapterUrl },
+          });
+          setButtonState(btn, 'error', message);
+          showChapterDownloadError(message, diagnostic, btn);
         }
       }
     );
   } catch (e) {
-    setButtonState(btn, 'error', 'Extension reloaded — refresh the page');
+    const message = 'Extension reloaded - refresh the page and try again.';
+    const diagnostic = _cdlCreateClientDiagnostic(e, {
+      errorKind: 'runtime_connection', failurePhase: 'message',
+      context: { operation: 'single_chapter', chapterUrl },
+    });
+    setButtonState(btn, 'error', message);
+    showChapterDownloadError(message, diagnostic, btn);
   }
 }
 
@@ -788,6 +959,7 @@ function buildSingleChapterOptions(chapterUrl, sourceMeta = {}) {
 
 function setButtonState(btn, state, extra) {
   btn.setAttribute('data-state', state);
+  if (state !== 'error') delete btn._cdlDiagnostic;
   const progressSpan = btn.querySelector(`.${PROGRESS_SPAN_CLASS}`);
 
   if (state === 'loading') {
@@ -816,6 +988,261 @@ function setButtonState(btn, state, extra) {
     btn.title = extra || 'Download';
     btn.style.pointerEvents = '';
   }
+}
+
+function _cdlSanitizeDiagnosticText(value, maxLength = 4000) {
+  let text = String(value == null ? '' : value)
+    .replace(/\b(?:authorization|cookie|set-cookie)\s*[:=]\s*[^\r\n]+/gi, '[redacted header]')
+    .replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer [redacted]')
+    .replace(/([?&](?:token|key|auth|authorization|signature|sig|secret)=)[^&\s]+/gi, '$1[redacted]')
+    .replace(/data:[^\s)'"<>]+/gi, 'data:[omitted]')
+    .replace(/blob:[^\s)'"<>]+/gi, 'blob:[omitted]')
+    .replace(/(https?:\/\/[^\s?#)'"<>]+)[?#][^\s)'"<>]*/gi, '$1?[parameters omitted]');
+  text = text.split(/\r?\n/).slice(0, 14).join('\n');
+  if (text.length > maxLength) text = `${text.slice(0, Math.max(0, maxLength - 14))}\n[trace cut]`;
+  return text;
+}
+
+function _cdlClientDiagnosticCode(kind, message) {
+  const raw = String(message || '');
+  if (kind === 'archive_save') {
+    if (/space/i.test(raw)) return ['CDL-SAVE-002', 'The destination has insufficient free space.'];
+    if (/access|folder/i.test(raw)) return ['CDL-SAVE-003', 'The browser was denied access to the destination.'];
+    return ['CDL-SAVE-001', 'The browser could not save or confirm the archive.'];
+  }
+  const definitions = {
+    start: ['CDL-START-001', 'The download operation could not be started.'],
+    tab_open: ['CDL-TAB-001', 'The background chapter tab could not be opened.'],
+    chapter_extraction: ['CDL-EXTRACT-001', 'The chapter page could not be read.'],
+    image_download: ['CDL-IMAGE-001', 'One or more chapter images could not be downloaded.'],
+    chapter_packaging: ['CDL-PACK-001', 'A completed chapter could not be added to the output.'],
+    archive_build: ['CDL-ZIP-001', 'The archive could not be generated in memory.'],
+    runtime_interruption: ['CDL-RUNTIME-001', 'The browser stopped the active extension process.'],
+    runtime_connection: ['CDL-RUNTIME-002', 'The page lost its connection to the extension.'],
+    resume: ['CDL-RESUME-001', 'The saved download checkpoint could not be resumed.'],
+    pipeline: ['CDL-PIPELINE-001', 'An unexpected download pipeline failure occurred.'],
+  };
+  return definitions[kind] || definitions.pipeline;
+}
+
+function _cdlCreateClientDiagnostic(error, options = {}) {
+  const raw = error && error.message ? error.message : String(error || 'Unknown extension error');
+  let kind = String(options.errorKind || options.kind || '').trim();
+  if (!kind) {
+    if (/context invalidated|receiving end|message port|connection|extension reload/i.test(raw)) kind = 'runtime_connection';
+    else if (/resume|checkpoint/i.test(raw)) kind = 'resume';
+    else if (/save|prepared archive/i.test(raw)) kind = 'archive_save';
+    else if (/zip|archive/i.test(raw)) kind = 'archive_build';
+    else kind = 'pipeline';
+  }
+  const definition = _cdlClientDiagnosticCode(kind, raw);
+  const now = Date.now();
+  const stamp = new Date(now).toISOString().replace(/\D/g, '').slice(0, 14);
+  const suffix = Math.random().toString(36).slice(2, 7).toUpperCase().padEnd(5, '0');
+  let version = 'unknown';
+  try { version = chrome.runtime.getManifest().version || version; } catch (_) {}
+  const stack = error && typeof error === 'object' && error.stack
+    ? error.stack
+    : `Error: ${raw}`;
+  return {
+    schemaVersion: 1,
+    code: definition[0],
+    reference: `ERR-${stamp}-${suffix}`,
+    occurredAt: new Date(now).toISOString(),
+    extensionVersion: version,
+    kind,
+    phase: String(options.failurePhase || options.phase || 'page'),
+    summary: definition[1],
+    technicalMessage: _cdlSanitizeDiagnosticText(raw, 1200),
+    errorName: _cdlSanitizeDiagnosticText(error && error.name || 'Error', 80),
+    stack: _cdlSanitizeDiagnosticText(stack, 4000),
+    context: options.context && typeof options.context === 'object' ? options.context : {},
+  };
+}
+
+function _cdlNormalizeDiagnostic(diagnostic, fallbackError, options = {}) {
+  const source = diagnostic && typeof diagnostic === 'object'
+    ? diagnostic
+    : _cdlCreateClientDiagnostic(fallbackError, options);
+  const context = {};
+  const allowedContext = new Set([
+    'operation', 'chapterLabel', 'chapterUrl', 'zipName', 'zipPart', 'format',
+    'httpStatus', 'imagesExpected', 'imagesSaved', 'completed', 'totalChapters',
+  ]);
+  for (const [key, value] of Object.entries(source.context || {})) {
+    if (!allowedContext.has(key) || value == null || value === '') continue;
+    context[key] = typeof value === 'number' || typeof value === 'boolean'
+      ? value
+      : _cdlSanitizeDiagnosticText(value, 300);
+  }
+  return {
+    schemaVersion: 1,
+    code: _cdlSanitizeDiagnosticText(source.code || 'CDL-PIPELINE-001', 40),
+    reference: _cdlSanitizeDiagnosticText(source.reference || 'unavailable', 80),
+    occurredAt: _cdlSanitizeDiagnosticText(source.occurredAt || new Date().toISOString(), 80),
+    extensionVersion: _cdlSanitizeDiagnosticText(source.extensionVersion || 'unknown', 40),
+    kind: _cdlSanitizeDiagnosticText(source.kind || options.errorKind || 'pipeline', 80),
+    phase: _cdlSanitizeDiagnosticText(source.phase || options.failurePhase || 'unknown', 80),
+    summary: _cdlSanitizeDiagnosticText(source.summary || 'An extension error occurred.', 300),
+    technicalMessage: _cdlSanitizeDiagnosticText(source.technicalMessage || fallbackError || 'Unknown error', 1200),
+    errorName: _cdlSanitizeDiagnosticText(source.errorName || 'Error', 80),
+    stack: _cdlSanitizeDiagnosticText(source.stack || `Error: ${fallbackError || 'Unknown error'}`, 4000),
+    context,
+  };
+}
+
+function _cdlFormatDiagnostic(diagnostic) {
+  const contextLines = Object.entries(diagnostic.context || {})
+    .map(([key, value]) => `  ${key}: ${value}`);
+  return [
+    'Comix Downloader diagnostic',
+    `Code: ${diagnostic.code}`,
+    `Reference: ${diagnostic.reference}`,
+    `Occurred: ${diagnostic.occurredAt}`,
+    `Extension: ${diagnostic.extensionVersion}`,
+    `Category: ${diagnostic.kind}`,
+    `Phase: ${diagnostic.phase}`,
+    `Meaning: ${diagnostic.summary}`,
+    `Technical message: ${diagnostic.technicalMessage}`,
+    ...(contextLines.length ? ['Context:', ...contextLines] : []),
+    'Trace:',
+    diagnostic.stack,
+  ].join('\n');
+}
+
+async function _cdlCopyDiagnosticText(text, button) {
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }
+  } catch (_) {}
+  if (!copied) {
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.style.cssText = 'position:fixed;left:-9999px;top:0;';
+    document.body.appendChild(field);
+    field.select();
+    try { copied = document.execCommand('copy'); } catch (_) {}
+    field.remove();
+  }
+  if (button) {
+    const original = button.textContent;
+    button.textContent = copied ? 'Copied' : 'Copy failed';
+    setTimeout(() => { if (button.isConnected) button.textContent = original; }, 1400);
+  }
+}
+
+function _cdlPrepareDiagnosticDetails(details) {
+  if (!details || details._cdlPrepared) return;
+  details._cdlPrepared = true;
+  details._cdlDiagnostics = [];
+  details.querySelector('.cdl-error-copy-btn')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const report = details._cdlDiagnostics.map(_cdlFormatDiagnostic).join('\n\n-----\n\n');
+    _cdlCopyDiagnosticText(report, event.currentTarget);
+  });
+}
+
+function _cdlAddDiagnostic(details, diagnostic, fallbackError, options = {}) {
+  if (!details) return null;
+  _cdlPrepareDiagnosticDetails(details);
+  const normalized = _cdlNormalizeDiagnostic(diagnostic, fallbackError, options);
+  const duplicate = details._cdlDiagnostics.find((item) => item.reference === normalized.reference);
+  if (!duplicate) details._cdlDiagnostics.push(normalized);
+  if (details._cdlDiagnostics.length > 12) details._cdlDiagnostics.splice(0, details._cdlDiagnostics.length - 12);
+  details.hidden = false;
+  const count = details._cdlDiagnostics.length;
+  const label = details.querySelector('.cdl-error-summary-label');
+  if (label) label.textContent = count > 1 ? `See technical details (${count})` : 'See technical details';
+  const code = details.querySelector('.cdl-error-code');
+  if (code) code.textContent = count === 1 ? details._cdlDiagnostics[0].code : `${count} reports`;
+  const report = details.querySelector('.cdl-error-report');
+  if (report) report.textContent = details._cdlDiagnostics.map(_cdlFormatDiagnostic).join('\n\n-----\n\n');
+  return duplicate || normalized;
+}
+
+function _cdlAddPopupDiagnostic(popup, diagnostic, fallbackError, options = {}) {
+  if (!popup) return null;
+  return _cdlAddDiagnostic(
+    popup.querySelector('#cdl-ap-error-details'), diagnostic, fallbackError, options
+  );
+}
+
+function showChapterDownloadError(message, diagnostic, btn, errorTitle = 'Chapter download failed.') {
+  document.getElementById('cdl-single-error')?.remove();
+  const normalized = _cdlNormalizeDiagnostic(diagnostic, message, {
+    errorKind: 'pipeline', failurePhase: 'single_chapter',
+  });
+  if (btn) btn._cdlDiagnostic = normalized;
+
+  const panel = document.createElement('section');
+  panel.id = 'cdl-single-error';
+  panel.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
+  panel.setAttribute('role', 'alertdialog');
+  panel.setAttribute('aria-label', errorTitle);
+
+  const header = document.createElement('div');
+  header.className = 'cdl-se-header';
+  const heading = document.createElement('strong');
+  const mark = document.createElement('span');
+  mark.className = 'cdl-se-mark';
+  mark.textContent = '!';
+  const headingText = document.createElement('span');
+  headingText.textContent = 'Comix Downloader';
+  heading.append(mark, headingText);
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'cdl-se-close';
+  close.title = 'Close';
+  close.setAttribute('aria-label', 'Close error');
+  close.textContent = '×';
+  header.append(heading, close);
+
+  const body = document.createElement('div');
+  body.className = 'cdl-se-body';
+  const errorHeading = document.createElement('div');
+  errorHeading.className = 'cdl-se-error-title';
+  errorHeading.textContent = errorTitle;
+  const publicMessage = document.createElement('div');
+  publicMessage.className = 'cdl-se-message';
+  publicMessage.textContent = message || 'The chapter download stopped unexpectedly.';
+  const reference = document.createElement('div');
+  reference.className = 'cdl-se-reference';
+  reference.textContent = `${normalized.code} · ${normalized.reference}`;
+  const details = document.createElement('details');
+  details.className = 'cdl-error-details';
+  _setHTML(details, '<summary><span class="cdl-error-summary-label">See technical details</span><span class="cdl-error-code"></span></summary><div class="cdl-error-details-body"><pre class="cdl-error-report"></pre><button type="button" class="cdl-error-copy-btn">Copy diagnostics</button></div>');
+  body.append(errorHeading, publicMessage, reference, details);
+
+  const actions = document.createElement('div');
+  actions.className = 'cdl-se-actions';
+  if (btn) {
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'cdl-se-retry';
+    retry.textContent = 'Retry';
+    retry.addEventListener('click', () => {
+      panel.remove();
+      setButtonState(btn, 'idle', 'Download');
+      btn.click();
+    });
+    actions.appendChild(retry);
+  }
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.className = 'cdl-se-dismiss';
+  dismiss.textContent = 'Close';
+  actions.appendChild(dismiss);
+  close.addEventListener('click', () => panel.remove());
+  dismiss.addEventListener('click', () => panel.remove());
+
+  panel.append(header, body, actions);
+  document.body.appendChild(panel);
+  _cdlAddDiagnostic(details, normalized, message);
 }
 
 function getSpinnerSVG() {
@@ -872,7 +1299,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (btn) setButtonState(btn, 'idle', 'Download cancelled - click to try again');
   } else if (message.action === 'downloadError') {
     const btn = findButtonByChapterUrl(message.chapterUrl);
-    if (btn) setButtonState(btn, 'error', message.error || 'Erreur inconnue');
+    const errorMessage = message.error || 'The chapter download stopped unexpectedly.';
+    if (btn) {
+      setButtonState(btn, 'error', errorMessage);
+    }
+    showChapterDownloadError(errorMessage, message.diagnostic, btn, message.errorTitle);
 
   // ── Download All ──────────────────────────────────────────────────────────
   } else if (message.action === 'startDownloadAll') {
@@ -893,6 +1324,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     else updateDownloadAllPopupError(message.error || 'Unknown error', {
       canRetryZip: !!message.canRetryZip,
       errorTitle: message.errorTitle,
+      errorKind: message.errorKind,
+      failurePhase: message.failurePhase,
+      diagnostic: message.diagnostic,
     });
 
   } else if (message.action === 'downloadAllCancelled') {
@@ -1457,24 +1891,46 @@ function _launchDownloadAll(attempt) {
           return;
         }
         if (!err && response?.error) {
-          updateDownloadAllPopupError(response.error);
+          updateDownloadAllPopupError(response.error, {
+            errorKind: 'start', failurePhase: 'setup', diagnostic: response.diagnostic,
+          });
           return;
         }
         if (!err) {
-          if (!retry()) updateDownloadAllPopupError('Connection to the extension failed');
+          if (!retry()) updateDownloadAllPopupError('Connection to the extension failed', {
+            errorKind: 'runtime_connection', failurePhase: 'message',
+          });
           return;
         }
         if (/context invalidated/i.test(err.message || '')) {
-          updateDownloadAllPopupError('Extension was updated \u2014 refresh the page and try again');
+          updateDownloadAllPopupError('Extension was updated - refresh the page and try again', {
+            errorKind: 'runtime_connection', failurePhase: 'message',
+            diagnostic: _cdlCreateClientDiagnostic(err, {
+              errorKind: 'runtime_connection', failurePhase: 'message',
+              context: { operation: 'download_all' },
+            }),
+          });
         } else if (!retry()) {
-          updateDownloadAllPopupError('Connection to the extension failed');
+          updateDownloadAllPopupError('Connection to the extension failed', {
+            errorKind: 'runtime_connection', failurePhase: 'message',
+            diagnostic: _cdlCreateClientDiagnostic(err, {
+              errorKind: 'runtime_connection', failurePhase: 'message',
+              context: { operation: 'download_all' },
+            }),
+          });
         }
       }
     );
   } catch (e) {
     // Synchronous throw = the extension context is gone (updated/reloaded). Retrying can't help.
     if (/context invalidated/i.test(e && e.message || '') || !retry()) {
-      updateDownloadAllPopupError('Extension reloaded \u2014 refresh the page');
+      updateDownloadAllPopupError('Extension reloaded - refresh the page', {
+        errorKind: 'runtime_connection', failurePhase: 'message',
+        diagnostic: _cdlCreateClientDiagnostic(e, {
+          errorKind: 'runtime_connection', failurePhase: 'message',
+          context: { operation: 'download_all' },
+        }),
+      });
     }
   }
 }
@@ -2162,6 +2618,13 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
         <div class="cdl-ap-zip-track" id="cdl-ap-zip-progress" role="progressbar" aria-label="ZIP progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="cdl-ap-zip-fill" id="cdl-ap-zip-fill"></div></div>
       </div>
       <div class="cdl-ap-log" id="cdl-ap-log"></div>
+      <details class="cdl-error-details" id="cdl-ap-error-details" hidden>
+        <summary><span class="cdl-error-summary-label">See technical details</span><span class="cdl-error-code"></span></summary>
+        <div class="cdl-error-details-body">
+          <pre class="cdl-error-report"></pre>
+          <button type="button" class="cdl-error-copy-btn">Copy diagnostics</button>
+        </div>
+      </details>
     </div>
     <div class="cdl-ap-footer">
       <button class="cdl-ap-cancel-btn" id="cdl-ap-cancel-btn">Cancel</button>
@@ -2177,6 +2640,7 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
   });
 
   _dlAllSetFooterCancel(popup);
+  _cdlPrepareDiagnosticDetails(popup.querySelector('#cdl-ap-error-details'));
   // Retry is offered only after a real error. Starting a second run while the
   // current one is active doubles network and ZIP work.
   popup._cdlRetryTimer = null;
@@ -2250,14 +2714,31 @@ function _dlAllSetFooterSaveAgain(popup, zipPart = 1, finalPart = true) {
     try {
       startDownloadAllSessionSync(250);
       chrome.runtime.sendMessage({ action: 'retryArchiveSave' }, (response) => {
-        if (chrome.runtime.lastError || !response?.ok) {
+        const runtimeError = chrome.runtime.lastError;
+        if (runtimeError || !response?.ok) {
+          const technical = runtimeError || new Error(
+            response?.error || 'The prepared archive is no longer available.'
+          );
           updateDownloadAllPopupError(
-            response?.error || 'The prepared archive is no longer available. Restart Download All.'
+            response?.error || 'The prepared archive is no longer available. Restart Download All.',
+            {
+              errorKind: 'archive_save', failurePhase: 'save_retry',
+              diagnostic: response?.diagnostic || _cdlCreateClientDiagnostic(technical, {
+                errorKind: 'archive_save', failurePhase: 'save_retry',
+                context: { operation: 'download_all' },
+              }),
+            }
           );
         }
       });
-    } catch (_) {
-      updateDownloadAllPopupError('Extension reloaded - restart Download All.');
+    } catch (error) {
+      updateDownloadAllPopupError('Extension reloaded - restart Download All.', {
+        errorKind: 'runtime_connection', failurePhase: 'save_retry',
+        diagnostic: _cdlCreateClientDiagnostic(error, {
+          errorKind: 'runtime_connection', failurePhase: 'save_retry',
+          context: { operation: 'download_all' },
+        }),
+      });
     }
   });
 
@@ -2307,11 +2788,21 @@ function _dlAllSetFooterResume(popup, interrupted) {
     try {
       startDownloadAllSessionSync(250);
       chrome.runtime.sendMessage({ action: 'resumeDownloadAll' }, (response) => {
-        if (chrome.runtime.lastError || !response?.ok) {
+        const runtimeError = chrome.runtime.lastError;
+        if (runtimeError || !response?.ok) {
+          const technical = runtimeError || new Error(
+            response?.error || 'The extension could not reopen the download checkpoint.'
+          );
           updateDownloadAllPopupInterrupted({
             ...interrupted,
             errorTitle: 'Resume failed.',
             error: response?.error || 'The extension could not reopen the download checkpoint.',
+            errorKind: 'resume',
+            failurePhase: 'resume',
+            diagnostic: response?.diagnostic || _cdlCreateClientDiagnostic(technical, {
+              errorKind: 'resume', failurePhase: 'resume',
+              context: { operation: 'download_all' },
+            }),
           });
           return;
         }
@@ -2326,11 +2817,17 @@ function _dlAllSetFooterResume(popup, interrupted) {
           imagesTotal: 0,
         });
       });
-    } catch (_) {
+    } catch (error) {
       updateDownloadAllPopupInterrupted({
         ...interrupted,
         errorTitle: 'Resume failed.',
         error: 'The extension was reloaded. Refresh this page to reopen the checkpoint.',
+        errorKind: 'resume',
+        failurePhase: 'resume',
+        diagnostic: _cdlCreateClientDiagnostic(error, {
+          errorKind: 'resume', failurePhase: 'resume',
+          context: { operation: 'download_all' },
+        }),
       });
     }
   });
@@ -2550,6 +3047,10 @@ function updateDownloadAllPopupInterrupted(message = {}) {
       : ` Resume restarts with ${next} because no ZIP part was confirmed.`;
     detail.textContent = `${message.error || 'The browser or extension stopped the active run.'}${checkpoint}`;
   }
+  _cdlAddPopupDiagnostic(popup, message.diagnostic, message.error, {
+    errorKind: message.errorKind || 'runtime_interruption',
+    failurePhase: message.failurePhase || 'interrupted',
+  });
   _dlAllSetFooterResume(popup, message);
 }
 
@@ -2684,13 +3185,13 @@ function updateDownloadAllPopup(msg) {
     _dlAllHideArchiveProgress();
     _dlAllSetChapterProgress(completed, totalChapters);
     const imageCount = imagesTotal ? ` (${imagesDone}/${imagesTotal} images saved)` : '';
-    _dlAllAddLog(chapterLabel, 'error', `✗ ${chapterLabel} — failed${imageCount}`);
+    _dlAllAddLog(chapterLabel, 'error', `✗ ${chapterLabel} — failed${imageCount}`, msg.diagnostic);
 
   } else if (phase === 'skipped') {
     _dlAllSetStage(popup, 'download');
     _dlAllHideArchiveProgress();
     _dlAllSetChapterProgress(completed, totalChapters);
-    _dlAllAddLog(chapterLabel, 'skipped', `— ${chapterLabel} — skipped`);
+    _dlAllAddLog(chapterLabel, 'skipped', `— ${chapterLabel} — skipped`, msg.diagnostic);
 
   } else if (phase === 'buildingPdf') {
     const current = Math.max(0, Number(msg.pdfCurrent) || 0);
@@ -2766,16 +3267,50 @@ function updateDownloadAllPopup(msg) {
   }
 }
 
-function _dlAllAddLog(id, cls, text) {
+function _dlAllAddLog(id, cls, text, diagnostic = null) {
   const log = document.getElementById('cdl-ap-log');
   if (!log) return;
+  const popup = document.getElementById('cdl-all-popup');
+  const normalized = diagnostic
+    ? _cdlAddPopupDiagnostic(popup, diagnostic, text, {
+      errorKind: cls === 'skipped' ? 'chapter_extraction' : 'pipeline',
+      failurePhase: cls === 'skipped' ? 'extracting' : 'chapter_download',
+    })
+    : null;
+  const bindDiagnosticItem = (item) => {
+    if (!normalized || item._cdlDiagnosticBound) return;
+    item._cdlDiagnosticBound = true;
+    item.title = 'Open technical details';
+    item.tabIndex = 0;
+    const openDetails = () => {
+      const details = popup && popup.querySelector('#cdl-ap-error-details');
+      if (details) details.open = true;
+    };
+    item.addEventListener('click', openDetails);
+    item.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openDetails(); }
+    });
+  };
   // Réutiliser l'entrée existante si même chapitre
   const existing = [...log.querySelectorAll('.cdl-ap-log-item')].find(el => el.dataset.chid === id);
-  if (existing) { existing.textContent = text; existing.className = `cdl-ap-log-item ${cls}`; return; }
+  const visibleText = normalized ? `${text} · ${normalized.code}` : text;
+  if (existing) {
+    existing.textContent = visibleText;
+    existing.className = `cdl-ap-log-item ${cls}${normalized ? ' has-diagnostic' : ''}`;
+    if (normalized) {
+      existing._cdlDiagnosticReference = normalized.reference;
+      bindDiagnosticItem(existing);
+    }
+    return;
+  }
   const item = document.createElement('div');
-  item.className     = `cdl-ap-log-item ${cls}`;
+  item.className     = `cdl-ap-log-item ${cls}${normalized ? ' has-diagnostic' : ''}`;
   item.dataset.chid  = id;
-  item.textContent   = text;
+  item.textContent   = visibleText;
+  if (normalized) {
+    item._cdlDiagnosticReference = normalized.reference;
+    bindDiagnosticItem(item);
+  }
   log.appendChild(item);
   log.scrollTop = log.scrollHeight;
 }
@@ -2789,11 +3324,15 @@ function updateDownloadAllPopupError(errMsg, options = {}) {
   _dlAllHideArchiveProgress();
   const s = document.getElementById('cdl-ap-chapter-status');
   if (s) {
-    s.textContent = options.errorTitle || `Error: ${errMsg}`;
+    s.textContent = options.errorTitle || 'Download failed.';
     s.classList.add('error');
   }
   const detail = document.getElementById('cdl-ap-img-status');
-  if (detail && options.errorTitle) detail.textContent = errMsg;
+  if (detail) detail.textContent = errMsg;
+  _cdlAddPopupDiagnostic(popup, options.diagnostic, errMsg, {
+    errorKind: options.errorKind || 'pipeline',
+    failurePhase: options.failurePhase || popup.dataset.stage || 'unknown',
+  });
 
   const footer = popup.querySelector('.cdl-ap-footer');
   if (!footer) return;
@@ -2830,11 +3369,7 @@ function restoreDownloadAllLogItems(items) {
   for (const entry of items) {
     if (!entry || !entry.text) continue;
     const cls = ['active', 'done', 'error', 'skipped'].includes(entry.cls) ? entry.cls : '';
-    const item = document.createElement('div');
-    item.className = `cdl-ap-log-item ${cls}`;
-    item.dataset.chid = entry.id || entry.text;
-    item.textContent = entry.text;
-    log.appendChild(item);
+    _dlAllAddLog(entry.id || entry.text, cls, entry.text, entry.diagnostic || null);
   }
   log.scrollTop = log.scrollHeight;
 }
@@ -2875,6 +3410,9 @@ function restoreDownloadAllPopupFromSession(session) {
     updateDownloadAllPopupError(session.error || 'Unknown error', {
       canRetryZip: !!session.canRetryZip,
       errorTitle: session.errorTitle,
+      errorKind: session.errorKind,
+      failurePhase: session.failurePhase,
+      diagnostic: session.diagnostic || session.lastError?.diagnostic,
     });
   } else if (session.status === 'awaiting_save' && session.canRetrySave) {
     updateDownloadAllPopupSaveCancelled(

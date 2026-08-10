@@ -147,8 +147,22 @@ check('a single-chapter setup error cannot terminate an active Download All sess
   const start = backgroundSource.indexOf("message.action === 'downloadChapter'");
   const end = backgroundSource.indexOf("message.action === 'downloadAllChapters'", start);
   const block = backgroundSource.slice(start, end);
-  return block.includes("action: 'downloadError'") && !block.includes('notifyDownloadAllError');
+  return block.includes('notifyChapterDownloadError') && !block.includes('notifyDownloadAllError');
 })());
+check('download errors expose stable support diagnostics without replacing friendly messages',
+  backgroundSource.includes('function createErrorDiagnostic') &&
+  backgroundSource.includes("'CDL-ZIP-001'") &&
+  backgroundSource.includes('sanitizeDiagnosticText') &&
+  contentTitleSource.includes('See technical details') &&
+  contentTitleSource.includes('Copy diagnostics'));
+check('single-chapter failures open a retryable diagnostic panel',
+  contentTitleSource.includes('function showChapterDownloadError') &&
+  contentTitleSource.includes("panel.id = 'cdl-single-error'") &&
+  contentTitleSource.includes('showChapterDownloadError(errorMessage, message.diagnostic'));
+check('failed Download All chapters retain per-chapter diagnostics across refreshes',
+  backgroundSource.includes('if (progress.diagnostic) existing.diagnostic = progress.diagnostic') &&
+  backgroundSource.includes('diagnostic: result.diagnostic || null') &&
+  contentTitleSource.includes('entry.diagnostic || null'));
 check('interrupted Download All sessions expose Resume download and Discard actions',
   contentTitleSource.includes('<span>Resume download</span>') &&
   contentTitleSource.includes("action: 'resumeDownloadAll'") &&

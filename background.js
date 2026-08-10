@@ -865,8 +865,9 @@ function updateDownloadAllSessionLog(progress) {
   if (existing) {
     existing.cls = cls;
     existing.text = text;
+    if (progress.diagnostic) existing.diagnostic = progress.diagnostic;
   } else {
-    logItems.push({ id: chapterLabel, cls, text });
+    logItems.push({ id: chapterLabel, cls, text, ...(progress.diagnostic ? { diagnostic: progress.diagnostic } : {}) });
   }
   if (logItems.length > DOWNLOAD_ALL_LOG_LIMIT) {
     logItems.splice(0, logItems.length - DOWNLOAD_ALL_LOG_LIMIT);
@@ -1090,7 +1091,7 @@ function _serializeSession(s) {
     'lastSaveCancelled', 'saveFilename', 'saveZipPart', 'saveFinalPart', 'doneZipName',
     'lastInterrupted', 'resumeFromChapter', 'resumeChapterLabel', 'warning', 'error',
     'savedChapters',
-    'errorTitle', 'errorKind', 'failurePhase',
+    'errorTitle', 'errorKind', 'failurePhase', 'diagnostic',
     'canRetryZip', 'canRetrySave', 'canResumeDownload'];
   const out = {};
   for (const k of keys) if (s[k] !== undefined) out[k] = s[k];
@@ -1181,6 +1182,11 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
   if (!isValidDownloadAllResumeData(resumeData)) {
     const error = 'Download interrupted - the browser or extension restarted. Start Download All again.';
     const errorTitle = 'Download could not be restored.';
+    const diagnostic = createErrorDiagnostic(new Error(error), {
+      errorKind: 'runtime_interruption',
+      failurePhase: previousPhase || 'unknown',
+      context: { operation: 'download_all' },
+    });
     Object.assign(stored, {
       active: false,
       status: 'error',
@@ -1189,10 +1195,14 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
       errorTitle,
       errorKind: 'runtime_interruption',
       failurePhase: previousPhase || 'unknown',
+      diagnostic,
       canRetryZip: false,
       canRetrySave: false,
       canResumeDownload: false,
-      lastError: { action: 'downloadAllError', error, errorTitle, errorKind: 'runtime_interruption', canRetryZip: false },
+      lastError: {
+        action: 'downloadAllError', error, errorTitle, errorKind: 'runtime_interruption',
+        failurePhase: previousPhase || 'unknown', canRetryZip: false, diagnostic,
+      },
       updatedAt: Date.now(),
     });
     return stored;
@@ -1223,6 +1233,16 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
   } else {
     error = 'Download interrupted before a ZIP part was confirmed.';
   }
+  const diagnostic = createErrorDiagnostic(new Error(error), {
+    errorKind: 'runtime_interruption',
+    failurePhase: previousPhase || 'unknown',
+    context: {
+      operation: 'download_all',
+      chapterLabel: nextChapter.chapterLabel,
+      completed: checkpointIndex,
+      totalChapters: resumeData.totalChapters,
+    },
+  });
   const message = {
     action: 'downloadAllInterrupted',
     error,
@@ -1235,6 +1255,7 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
     resumeChapterLabel: nextChapter.chapterLabel,
     savedZipParts: savedParts,
     canResumeDownload: true,
+    diagnostic,
   };
   Object.assign(stored, {
     active: false,
@@ -1247,6 +1268,7 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
     errorTitle,
     errorKind: 'runtime_interruption',
     failurePhase: previousPhase || 'unknown',
+    diagnostic,
     canRetryZip: false,
     canRetrySave: false,
     canResumeDownload: true,
@@ -1388,20 +1410,34 @@ function notifyDownloadAllError(originTabId, error, options = false) {
     ? options
     : { canRetryZip: !!options };
   const canRetryZip = !!config.canRetryZip;
+  const publicError = downloadErrorText(error) || 'The download stopped unexpectedly.';
   const errorTitle = String(config.errorTitle || 'Download failed.');
   const errorKind = String(config.errorKind || 'pipeline');
   const failurePhase = String(config.failurePhase || (downloadAllSession && downloadAllSession.phase) || 'unknown');
   const resumeData = downloadAllSession && downloadAllSession.resumeData;
   const canResumeDownload = config.allowResume !== false && !canRetryZip && isValidDownloadAllResumeData(resumeData);
   const nextChapter = canResumeDownload ? resumeData.chapters[resumeData.checkpointIndex] : null;
+  const diagnostic = config.diagnostic || createErrorDiagnostic(config.cause || publicError, {
+    errorKind,
+    failurePhase,
+    context: {
+      operation: 'download_all',
+      chapterLabel: nextChapter && nextChapter.chapterLabel,
+      zipPart: downloadAllSession && downloadAllSession.zipPart,
+      completed: resumeData && resumeData.checkpointIndex,
+      totalChapters: resumeData && resumeData.totalChapters,
+      ...(config.context || {}),
+    },
+  });
   const message = {
     action: 'downloadAllError',
-    error,
+    error: publicError,
     errorTitle,
     errorKind,
     failurePhase,
     canRetryZip,
     canResumeDownload,
+    diagnostic,
   };
   if (canResumeDownload) {
     Object.assign(message, {
@@ -1414,10 +1450,11 @@ function notifyDownloadAllError(originTabId, error, options = false) {
   }
   recordDownloadAllTerminal('error', {
     originTabId,
-    error,
+    error: publicError,
     errorTitle,
     errorKind,
     failurePhase,
+    diagnostic,
     canRetryZip,
     canRetrySave: false,
     canResumeDownload,
@@ -1428,6 +1465,62 @@ function notifyDownloadAllError(originTabId, error, options = false) {
   });
   restoreIdleBadge();
   notifyTab(originTabId, message);
+}
+
+function chapterFailurePresentation(error, options = {}) {
+  const diagnostic = options.diagnostic || createErrorDiagnostic(error, {
+    errorKind: options.errorKind,
+    failurePhase: options.failurePhase,
+    context: options.context,
+  });
+  let message = String(options.publicMessage || '').trim();
+  if (!message) {
+    if (diagnostic.kind === 'archive_save') {
+      message = diagnostic.code === 'CDL-SAVE-002'
+        ? 'The device does not have enough free space to save this chapter.'
+        : diagnostic.code === 'CDL-SAVE-003'
+          ? 'The browser cannot write to the selected download folder.'
+          : diagnostic.code === 'CDL-SAVE-004'
+            ? 'The chapter filename or download path is too long.'
+            : 'The browser could not save the chapter archive.';
+    } else if (diagnostic.kind === 'image_download') {
+      message = 'Some chapter images could not be downloaded. Reload comix.to and try again.';
+    } else if (diagnostic.kind === 'chapter_extraction') {
+      message = 'The extension could not read this chapter. Reload comix.to, complete any verification, and try again.';
+    } else if (diagnostic.kind === 'tab_open') {
+      message = 'The background chapter page could not be opened.';
+    } else if (diagnostic.kind === 'archive_build' || diagnostic.kind === 'chapter_packaging') {
+      message = 'The chapter archive could not be created.';
+    } else if (diagnostic.kind === 'runtime_connection') {
+      message = 'The page lost its connection to the extension. Refresh the page and try again.';
+    } else {
+      message = 'The chapter download stopped unexpectedly.';
+    }
+  }
+  return { message, diagnostic };
+}
+
+function notifyChapterDownloadError(originTabId, chapterUrl, error, options = {}) {
+  const context = {
+    operation: 'single_chapter',
+    chapterUrl,
+    chapterLabel: options.chapterLabel || chapterLabelFromUrl(chapterUrl),
+    zipName: options.zipName,
+    format: options.format,
+    ...(options.context || {}),
+  };
+  const presentation = chapterFailurePresentation(error, { ...options, context });
+  try {
+    cdlLog('error', `[${presentation.diagnostic.code} / ${presentation.diagnostic.reference}] ` +
+      presentation.diagnostic.technicalMessage);
+  } catch (_) {}
+  notifyTab(originTabId, {
+    action: 'downloadError',
+    chapterUrl,
+    error: presentation.message,
+    errorTitle: String(options.errorTitle || 'Chapter download failed.'),
+    diagnostic: presentation.diagnostic,
+  });
 }
 
 function notifyDownloadAllSaveCancelled(originTabId, filename, zipPart = 1, finalPart = true) {
@@ -1625,10 +1718,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     Promise.resolve()
       .then(() => handleDownloadRequest(message.chapterUrl, message.zipName, originTabId, message.options))
       .catch((e) => { try { cdlLog('error', 'Download failed: ' + (e?.message || e)); } catch (_) {}
-        notifyTab(originTabId, {
-          action: 'downloadError',
-          chapterUrl: message.chapterUrl,
-          error: e?.message || 'The chapter download could not be started.',
+        notifyChapterDownloadError(originTabId, message.chapterUrl, e, {
+          publicMessage: 'The chapter download could not be started.',
+          errorKind: 'start',
+          failurePhase: 'setup',
+          zipName: message.zipName,
+          format: message.options && message.options.format,
         }); });
     return true;
   }
@@ -1673,14 +1768,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 errorTitle: 'Download stopped unexpectedly.',
                 errorKind: 'pipeline',
                 failurePhase: (downloadAllSession && downloadAllSession.phase) || 'unknown',
+                cause: e,
               }
             );
           });
       })
-      .catch((error) => sendResponse({
-        ok: false,
-        error: error?.message || 'The download could not be started.',
-      }));
+      .catch((error) => {
+        const publicMessage = error?.message || 'The download could not be started.';
+        sendResponse({
+          ok: false,
+          error: publicMessage,
+          diagnostic: createErrorDiagnostic(error, {
+            errorKind: 'start',
+            failurePhase: 'setup',
+            context: { operation: 'download_all' },
+          }),
+        });
+      });
     return true;
   }
 
@@ -1695,10 +1799,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const originTabId = sender.tab?.id ?? null;
     resumeDownloadAllFromCheckpoint(originTabId, sender.tab?.url || '')
       .then((result) => sendResponse({ ok: true, ...result }))
-      .catch((error) => sendResponse({
-        ok: false,
-        error: error?.message || 'The download could not be resumed.',
-      }));
+      .catch((error) => {
+        const publicMessage = error?.message || 'The download could not be resumed.';
+        sendResponse({
+          ok: false,
+          error: publicMessage,
+          diagnostic: createErrorDiagnostic(error, {
+            errorKind: 'resume', failurePhase: 'resume',
+            context: { operation: 'download_all' },
+          }),
+        });
+      });
     return true;
   }
 
@@ -1708,9 +1819,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       _pendingZip.originTabId == null || _pendingZip.originTabId === originTabId
     );
     const resumed = belongsToSender && resolvePendingArchiveSaveDecision(true);
+    const error = resumed ? '' : 'The prepared archive is no longer available. Restart Download All.';
     sendResponse({
       ok: resumed,
-      error: resumed ? '' : 'The prepared archive is no longer available. Restart Download All.',
+      error,
+      diagnostic: resumed ? null : createErrorDiagnostic(new Error(error), {
+        errorKind: 'archive_save', failurePhase: 'save_retry',
+        context: { operation: 'download_all' },
+      }),
     });
     return true;
   }
@@ -1919,10 +2035,12 @@ async function handleDownloadRequest(chapterUrl, zipName, originTabId, options) 
   } catch (err) {
     console.error('[ComixDL] Impossible d\'ouvrir l\'onglet:', err);
     cdlLog('error', `Cannot open tab: ${err.message}`);
-    notifyTab(originTabId, {
-      action: 'downloadError',
-      chapterUrl,
-      error: 'Impossible d\'ouvrir la page du chapitre',
+    notifyChapterDownloadError(originTabId, chapterUrl, err, {
+      publicMessage: 'The background chapter page could not be opened.',
+      errorKind: 'tab_open',
+      failurePhase: 'tab_open',
+      zipName,
+      format: options && options.format,
     });
   }
 }
@@ -1996,10 +2114,11 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
     chrome.tabs.remove(tabId).catch(() => {});
     console.error('[ComixDL] Extraction échouée:', err);
     cdlLog('error', `Extraction failed (${zipName}): ${err.message}`);
-    notifyTab(originTabId, {
-      action: 'downloadError',
-      chapterUrl,
-      error: err.message || 'Extraction des images échouée',
+    notifyChapterDownloadError(originTabId, chapterUrl, err, {
+      errorKind: 'chapter_extraction',
+      failurePhase: 'extracting',
+      zipName,
+      format: options && options.format,
     });
   }
 }
@@ -2594,10 +2713,9 @@ function processDownloadQueue() {
         }
         console.error('[ComixDL] ZIP error:', err);
         cdlLog('error', `ZIP error (${payload.zipName}): ${err.message}`);
-        notifyTab(payload.originTabId, {
-          action: 'downloadError',
-          chapterUrl: payload.chapterUrl,
-          error: err.message || 'Erreur inconnue',
+        notifyChapterDownloadError(payload.originTabId, payload.chapterUrl, err, {
+          zipName: payload.zipName,
+          format: payload.options && payload.options.format,
         });
       })
       .finally(() => {
@@ -2646,7 +2764,11 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   }
   files.sort((a, b) => a.page - b.page);
   if (total === 0 || files.length !== total) {
-    throw new Error(formatImageDownloadFailure(total, files.length, firstImageError));
+    throw tagDiagnosticError(
+      new Error(formatImageDownloadFailure(total, files.length, firstImageError)),
+      'image_download',
+      'image_download'
+    );
   }
   if (!isPdf) {
     for (const f of files) zip.file(f.name, f.buffer);
@@ -2671,22 +2793,36 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   const targetName = downloadTargetFilename(outName, cfg['output.downloadSubfolder']);
 
   let generated;
-  if (isPdf) {
-    const pdfBytes = await buildChapterPdfOutput(files, opts, chapterLabel, chapterUrl, mangaName, (progress = {}) => {
-      notifyTab(originTabId, {
-        action: 'downloadPackaging', chapterUrl, format: 'pdf',
-        current: progress.current, total: progress.total,
-        finalizing: progress.finalizing === true,
+  try {
+    if (isPdf) {
+      const pdfBytes = await buildChapterPdfOutput(files, opts, chapterLabel, chapterUrl, mangaName, (progress = {}) => {
+        notifyTab(originTabId, {
+          action: 'downloadPackaging', chapterUrl, format: 'pdf',
+          current: progress.current, total: progress.total,
+          finalizing: progress.finalizing === true,
+        });
       });
-    });
-    generated = await _bytesToDownloadUrl(pdfBytes, 'application/pdf');
-  } else {
-    generated = await _zipToDownloadUrl(zip);
+      generated = await _bytesToDownloadUrl(pdfBytes, 'application/pdf');
+    } else {
+      generated = await _zipToDownloadUrl(zip);
+    }
+  } catch (error) {
+    throw tagDiagnosticError(
+      error,
+      isPdf ? 'chapter_packaging' : 'archive_build',
+      isPdf ? 'chapter_packaging' : 'archive_build'
+    );
   }
   const { url, revoke, base64: urlBase64 } = generated;
-  const delivery = await saveGeneratedArchive({
-    url, revoke, base64: urlBase64, zip, filename: targetName, originTabId,
-  });
+  let delivery;
+  try {
+    delivery = await saveGeneratedArchive({
+      url, revoke, base64: urlBase64, zip, filename: targetName, originTabId,
+    });
+  } catch (error) {
+    if (isDownloadCancelledError(error)) throw error;
+    throw tagDiagnosticError(error, 'archive_save', 'archive_save');
+  }
   const accepted = isArchiveDeliveryAccepted(delivery);
   const savedName = delivery.filename || targetName;
   const destinationWarning = delivery.pathFallback
@@ -3302,6 +3438,150 @@ function downloadErrorText(value) {
   return String(value.reason || value.error || value.message || value.code || value);
 }
 
+function sanitizeDiagnosticText(value, maxLength = 4000) {
+  let text = String(value == null ? '' : value);
+  text = text
+    .replace(/\b(?:authorization|cookie|set-cookie)\s*[:=]\s*[^\r\n]+/gi, '[redacted header]')
+    .replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer [redacted]')
+    .replace(/([?&](?:token|key|auth|authorization|signature|sig|secret)=)[^&\s]+/gi, '$1[redacted]')
+    .replace(/data:[^\s)\x27\x22<>]+/gi, 'data:[omitted]')
+    .replace(/blob:[^\s)\x27\x22<>]+/gi, 'blob:[omitted]')
+    .replace(/(https?:\/\/[^\s?#)\x27\x22<>]+)[?#][^\s)\x27\x22<>]*/gi, '$1?[parameters omitted]');
+  const lines = text.split(/\r?\n/).slice(0, 14);
+  text = lines.join('\n');
+  if (text.length > maxLength) text = `${text.slice(0, Math.max(0, maxLength - 14))}\n[trace cut]`;
+  return text;
+}
+
+function sanitizeDiagnosticContext(context) {
+  const allowed = new Set([
+    'operation', 'chapterLabel', 'chapterUrl', 'zipName', 'zipPart', 'format',
+    'httpStatus', 'imagesExpected', 'imagesSaved', 'completed', 'totalChapters',
+  ]);
+  const result = {};
+  if (!context || typeof context !== 'object') return result;
+  for (const [key, value] of Object.entries(context)) {
+    if (!allowed.has(key) || value == null || value === '') continue;
+    if (typeof value === 'number') {
+      if (Number.isFinite(value)) result[key] = value;
+      continue;
+    }
+    if (typeof value === 'boolean') {
+      result[key] = value;
+      continue;
+    }
+    result[key] = sanitizeDiagnosticText(value, 300);
+  }
+  return result;
+}
+
+function diagnosticHttpStatus(error, raw) {
+  const explicit = Number(error && error.status);
+  if (Number.isFinite(explicit) && explicit >= 100 && explicit <= 599) return explicit;
+  const match = String(raw || '').match(/\bHTTP\s+(\d{3})\b/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function diagnosticDefinition(error, requestedKind, requestedPhase) {
+  const raw = downloadErrorText(error);
+  const phase = String(requestedPhase || error && (error.cdlPhase || error.downloadPhase) || 'unknown');
+  let kind = String(requestedKind || error && error.cdlKind || '').trim();
+
+  if (!kind) {
+    if (error && error.downloadPhase) kind = 'archive_save';
+    else if (/FILE_|NETWORK_|SERVER_|USER_/i.test(raw) && /save|download|interrupt|file/i.test(raw)) kind = 'archive_save';
+    else if (/cloudflare|captcha|challenge|verification/i.test(raw)) kind = 'verification';
+    else if (/no images?|aucune image|extract/i.test(raw)) kind = 'chapter_extraction';
+    else if (/only\s+\d+\s+of\s+\d+\s+images?|image request|HTTP\s+\d{3}/i.test(raw)) kind = 'image_download';
+    else if (/context invalidated|receiving end does not exist|message port closed/i.test(raw)) kind = 'runtime_connection';
+    else if (/zip|archive|allocation|out of memory/i.test(raw)) kind = 'archive_build';
+    else kind = 'pipeline';
+  }
+
+  if (kind === 'archive_save') {
+    if (/FILE_NO_SPACE/i.test(raw)) return { code: 'CDL-SAVE-002', kind, phase, summary: 'The destination has insufficient free space.' };
+    if (/FILE_ACCESS_DENIED/i.test(raw)) return { code: 'CDL-SAVE-003', kind, phase, summary: 'The browser was denied access to the destination.' };
+    if (/FILE_NAME_TOO_LONG/i.test(raw)) return { code: 'CDL-SAVE-004', kind, phase, summary: 'The destination path or filename is too long.' };
+    if (/FILE_TOO_LARGE/i.test(raw)) return { code: 'CDL-SAVE-005', kind, phase, summary: 'The archive exceeds the destination limit.' };
+    if (/FILE_BLOCKED|SECURITY_CHECK/i.test(raw)) return { code: 'CDL-SAVE-006', kind, phase, summary: 'The browser security check blocked the archive.' };
+    if (/NETWORK_|SERVER_|timed?\s*out/i.test(raw)) return { code: 'CDL-SAVE-007', kind, phase, summary: 'The browser download manager interrupted the save.' };
+    return { code: 'CDL-SAVE-001', kind, phase, summary: 'The browser could not save or confirm the archive.' };
+  }
+
+  const definitions = {
+    start: ['CDL-START-001', 'The download operation could not be started.'],
+    tab_open: ['CDL-TAB-001', 'The background chapter tab could not be opened.'],
+    chapter_extraction: [
+      /no images?|aucune image/i.test(raw) ? 'CDL-EXTRACT-002' : 'CDL-EXTRACT-001',
+      /no images?|aucune image/i.test(raw)
+        ? 'The reader loaded without a usable image list.'
+        : 'The chapter page could not be read.',
+    ],
+    image_download: [
+      diagnosticHttpStatus(error, raw) ? 'CDL-IMAGE-002' : 'CDL-IMAGE-001',
+      diagnosticHttpStatus(error, raw)
+        ? 'The image server rejected or failed a page request.'
+        : 'One or more chapter images could not be downloaded.',
+    ],
+    verification: ['CDL-VERIFY-001', 'Cloudflare verification did not complete correctly.'],
+    chapter_packaging: ['CDL-PACK-001', 'A completed chapter could not be added to the output.'],
+    archive_build: ['CDL-ZIP-001', 'The archive could not be generated in memory.'],
+    runtime_interruption: ['CDL-RUNTIME-001', 'The browser stopped the active extension process.'],
+    runtime_connection: ['CDL-RUNTIME-002', 'The page lost its connection to the extension.'],
+    resume: ['CDL-RESUME-001', 'The saved download checkpoint could not be resumed.'],
+    pipeline: ['CDL-PIPELINE-001', 'An unexpected download pipeline failure occurred.'],
+  };
+  const selected = definitions[kind] || definitions.pipeline;
+  return { code: selected[0], kind: definitions[kind] ? kind : 'pipeline', phase, summary: selected[1] };
+}
+
+function createErrorDiagnostic(error, options = {}) {
+  const raw = downloadErrorText(error) || String(options.technicalMessage || 'Unknown extension error');
+  const definition = diagnosticDefinition(
+    error,
+    options.errorKind || options.kind,
+    options.failurePhase || options.phase
+  );
+  const now = Date.now();
+  const stamp = new Date(now).toISOString().replace(/\D/g, '').slice(0, 14);
+  const suffix = Math.random().toString(36).slice(2, 7).toUpperCase().padEnd(5, '0');
+  const errorName = error && typeof error === 'object' && error.name
+    ? String(error.name)
+    : 'Error';
+  const originalStack = error && typeof error === 'object' && typeof error.stack === 'string'
+    ? error.stack
+    : `${errorName}: ${raw}`;
+  const httpStatus = diagnosticHttpStatus(error, raw);
+  const context = sanitizeDiagnosticContext({
+    ...(options.context || {}),
+    ...(httpStatus ? { httpStatus } : {}),
+  });
+
+  return {
+    schemaVersion: 1,
+    code: definition.code,
+    reference: `ERR-${stamp}-${suffix}`,
+    occurredAt: new Date(now).toISOString(),
+    extensionVersion: extensionVersion() || 'unknown',
+    kind: definition.kind,
+    phase: definition.phase,
+    summary: definition.summary,
+    technicalMessage: sanitizeDiagnosticText(raw, 1200),
+    errorName: sanitizeDiagnosticText(errorName, 80),
+    stack: sanitizeDiagnosticText(originalStack, 4000),
+    context,
+  };
+}
+
+function tagDiagnosticError(error, kind, phase) {
+  const tagged = error instanceof Error ? error : new Error(downloadErrorText(error) || 'Download failed');
+  try {
+    tagged.cdlKind = kind;
+    tagged.cdlPhase = phase;
+  } catch (_) {}
+  return tagged;
+}
+
 function isDownloadCancelledError(error) {
   if (error && error.code === 'DOWNLOAD_CANCELLED') return true;
   const text = downloadErrorText(error);
@@ -3334,7 +3614,7 @@ function tagDownloadError(error, phase) {
   return tagged;
 }
 
-function describeArchiveFailure(error, failurePhase) {
+function describeArchiveFailure(error, failurePhase, context = {}) {
   const raw = downloadErrorText(error) || 'Unexpected archive error';
   if (failurePhase === 'archive_save') {
     const code = (raw.match(/\b(?:FILE|NETWORK|SERVER|USER)_[A-Z_]+\b/) || [])[0] || '';
@@ -3349,29 +3629,35 @@ function describeArchiveFailure(error, failurePhase) {
       NETWORK_DISCONNECTED: 'The network or download manager disconnected while saving the ZIP.',
       USER_SHUTDOWN: 'The browser shut down before the ZIP could be saved.',
     };
-    return {
+    const result = {
       errorTitle: 'Browser could not save the ZIP.',
       errorKind: 'archive_save',
       failurePhase,
       message: known[code] || raw.replace(/^Download interrupted:\s*/i, ''),
     };
+    result.diagnostic = createErrorDiagnostic(error, { ...result, context });
+    return result;
   }
 
   if (failurePhase === 'chapter_packaging') {
-    return {
+    const result = {
       errorTitle: 'Chapter packaging failed.',
       errorKind: 'chapter_packaging',
       failurePhase,
       message: `${raw} Lower the ZIP part size or switch formats, then resume from the last confirmed part.`,
     };
+    result.diagnostic = createErrorDiagnostic(error, { ...result, context });
+    return result;
   }
 
-  return {
+  const result = {
     errorTitle: 'ZIP creation failed.',
     errorKind: 'archive_build',
     failurePhase: 'archive_build',
     message: `${raw} Lower the ZIP part size if this happens again, then resume from the last confirmed part.`,
   };
+  result.diagnostic = createErrorDiagnostic(error, { ...result, context });
+  return result;
 }
 
 function downloadItemProgressPercent(item) {
@@ -4738,11 +5024,30 @@ async function handleDownloadAllRequest(
     if (extractErr) {
       console.warn(`[ComixDL-All] Chapitre ${chapterLabel} échoué:`, extractErr.message);
       cdlLog('error', `${chapterLabel} failed: ${extractErr.message}`);
-      return { index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], bytes: 0, imagesTotal: 0, imagesSaved: 0, status: 'error', error: extractErr.message };
+      const diagnostic = createErrorDiagnostic(extractErr, {
+        errorKind: 'chapter_extraction',
+        failurePhase: 'extracting',
+        context: { operation: 'download_all', chapterLabel, chapterUrl },
+      });
+      return {
+        index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], bytes: 0,
+        imagesTotal: 0, imagesSaved: 0, status: 'error', error: extractErr.message, diagnostic,
+      };
     }
     if (!images || images.length === 0) {
       cdlLog('warn', `No images found, skipping ${chapterLabel}`);
-      return { index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], bytes: 0, imagesTotal: 0, imagesSaved: 0, status: 'skipped' };
+      const noImagesError = tagDiagnosticError(
+        new Error('No images were found after the chapter reader finished loading.'),
+        'chapter_extraction',
+        'extracting'
+      );
+      return {
+        index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], bytes: 0,
+        imagesTotal: 0, imagesSaved: 0, status: 'skipped',
+        diagnostic: createErrorDiagnostic(noImagesError, {
+          context: { operation: 'download_all', chapterLabel, chapterUrl },
+        }),
+      };
     }
     images = await verifyEnumeratedImages(images, chapterLabel);
     cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
@@ -4857,9 +5162,16 @@ async function handleDownloadAllRequest(
       const unresolved = [...failedPages.values()].find((failure) => failure.error)?.error;
       const error = formatImageDownloadFailure(ordered.length, files.length, unresolved || firstImageError);
       cdlLog('error', `${chapterLabel} failed: ${error}`);
+      const diagnosticError = tagDiagnosticError(new Error(error), 'image_download', 'image_download');
       return {
         index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], bytes: 0,
         imagesTotal: ordered.length, imagesSaved: files.length, status: 'error', error,
+        diagnostic: createErrorDiagnostic(diagnosticError, {
+          context: {
+            operation: 'download_all', chapterLabel, chapterUrl,
+            imagesExpected: ordered.length, imagesSaved: files.length,
+          },
+        }),
       };
     }
 
@@ -4899,6 +5211,15 @@ async function handleDownloadAllRequest(
           index: i, chapterUrl, chapterLabel, ...sourceMetadata, files: [], bytes: 0,
           imagesTotal: ordered.length, imagesSaved: files.length, status: 'error', error: message,
           hadRetries: encounteredRetries,
+          diagnostic: createErrorDiagnostic(
+            tagDiagnosticError(error, 'chapter_packaging', 'chapter_packaging'),
+            {
+              context: {
+                operation: 'download_all', chapterLabel, chapterUrl, format: 'pdf',
+                imagesExpected: ordered.length, imagesSaved: files.length,
+              },
+            }
+          ),
         };
       }
     }
@@ -4963,11 +5284,14 @@ async function handleDownloadAllRequest(
       } else if (result.status === 'skipped') {
         finishedCount++;
         notify({ phase: 'skipped', chapterIndex: globalIndex, totalChapters,
-                 chapterLabel: result.chapterLabel, imagesDone: 0, imagesTotal: 0 });
+                 chapterLabel: result.chapterLabel, imagesDone: 0, imagesTotal: 0,
+                 diagnostic: result.diagnostic || null });
       } else if (result.status === 'error') {
         finishedCount++;
         notify({ phase: 'error', chapterIndex: globalIndex, totalChapters,
-                 chapterLabel: result.chapterLabel, imagesDone: result.imagesSaved || 0, imagesTotal: result.imagesTotal || 0 });
+                 chapterLabel: result.chapterLabel, imagesDone: result.imagesSaved || 0,
+                 imagesTotal: result.imagesTotal || 0, error: result.error || '',
+                 diagnostic: result.diagnostic || null });
         if (rateMode === 'dynamic') rateDelay = Math.min(MAX_DELAY, Math.round(rateDelay * 1.5)); // failure → back off
       }
       resolvers[i]();   // hand this chapter to the in-order packer
@@ -5016,7 +5340,10 @@ async function handleDownloadAllRequest(
         try {
           added = await withExtensionKeepAlive(() => addChapterToOuter(zip, r, opts, mangaName));
         } catch (error) {
-          const failure = describeArchiveFailure(error, 'chapter_packaging');
+          const failure = describeArchiveFailure(error, 'chapter_packaging', {
+            operation: 'download_all', chapterLabel: r.chapterLabel,
+            zipPart, format: opts.format,
+          });
           cdlLog('error', `${r.chapterLabel} packaging failed: ${failure.message}`);
           notifyDownloadAllError(originTabId, failure.message, failure);
           packFailed = true;
@@ -5096,7 +5423,10 @@ async function handleDownloadAllRequest(
         zipPartChapterRecords.push({ chapterLabel: result.chapterLabel });
         terminalCounts.done++;
       } catch (error) {
-        const failure = describeArchiveFailure(error, 'chapter_packaging');
+        const failure = describeArchiveFailure(error, 'chapter_packaging', {
+          operation: 'download_all', chapterLabel: result.chapterLabel,
+          zipPart, format: opts.format,
+        });
         cdlLog('error', `${result.chapterLabel} packaging failed: ${failure.message}`);
         notifyDownloadAllError(originTabId, failure.message, failure);
         return;
@@ -5122,7 +5452,13 @@ async function handleDownloadAllRequest(
     const detail = firstChapterError ? ` ${firstChapterError}` : '';
     const error = `No ZIP files were created because no complete chapters could be downloaded.${detail}`;
     cdlLog('error', `Download All failed: ${error}`);
-    notifyDownloadAllError(originTabId, error, false);
+    notifyDownloadAllError(originTabId, error, {
+      errorTitle: 'No complete chapters were available.',
+      errorKind: 'pipeline',
+      failurePhase: 'chapter_download',
+      cause: new Error(firstChapterError || error),
+      context: { operation: 'download_all', completed: 0, totalChapters },
+    });
     return;
   }
 
@@ -5263,7 +5599,10 @@ async function _doZipAndSave(pending) {
       notifyDownloadAllCancelled(originTabId, pending.cancelDetails);
       return null;
     }
-    const failure = describeArchiveFailure(err, failurePhase);
+    const failure = describeArchiveFailure(err, failurePhase, {
+      operation: 'download_all', zipName: filename,
+      zipPart: pending.zipPart, format: pending.format,
+    });
     cdlLog('error', `Download All ${failure.errorKind}: ${failure.message}`);
     notifyDownloadAllError(originTabId, failure.message, failure);
     return null;

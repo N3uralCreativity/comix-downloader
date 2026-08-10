@@ -167,7 +167,13 @@ const zipContext = {
 };
 vm.createContext(zipContext);
 vm.runInContext(`
+  function extensionVersion() { return '4.2.test'; }
   ${extractFunction('downloadErrorText')}
+  ${extractFunction('sanitizeDiagnosticText')}
+  ${extractFunction('sanitizeDiagnosticContext')}
+  ${extractFunction('diagnosticHttpStatus')}
+  ${extractFunction('diagnosticDefinition')}
+  ${extractFunction('createErrorDiagnostic')}
   ${extractFunction('describeArchiveFailure')}
   ${extractFunction('isDownloadCancelledError')}
   ${extractFunction('isArchiveDeliveryAccepted')}
@@ -459,7 +465,8 @@ async function run() {
     failedSave === null && zipEvents.errors.length === 1 &&
     zipEvents.errors[0].options.errorKind === 'archive_save' &&
     zipEvents.errors[0].options.errorTitle === 'Browser could not save the ZIP.' &&
-    zipEvents.errors[0].error.includes('enough free space'));
+    zipEvents.errors[0].error.includes('enough free space') &&
+    zipEvents.errors[0].options.diagnostic.code === 'CDL-SAVE-002');
   check('a failed archive is released instead of leaving a broken retry object',
     !zipContext.hasPendingZip() && zipEvents.records.length === 0);
 
