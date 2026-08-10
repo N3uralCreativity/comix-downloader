@@ -52,6 +52,7 @@
   // Sample context for live naming-template previews (mirrors the options page).
   var PREVIEW_CTX = {
     'naming.chapterFolderFmt': { num: '12', rest: '', chapter: '12', manga: 'Solo Leveling' },
+    'naming.cbzFileTpl': { entry: 'Ch0012', manga: 'Solo Leveling', chapter: '12', label: 'Ch12', num: '12', rest: '', scanlator: 'Flame Comics', groupId: '42', language: 'en' },
     'naming.singleZipTpl': { manga: 'Solo Leveling', chapter: '12' },
     'naming.allZipTpl': { manga: 'Solo Leveling' },
   };

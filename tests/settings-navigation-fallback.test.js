@@ -80,5 +80,9 @@ assert.equal(manifest.options_ui.page, 'legacy/options.html',
   'the standalone fallback must remain a packaged extension page');
 assert.equal(manifest.options_ui.open_in_tab, true,
   'the fallback settings UI must open in its own browser tab');
+assert.match(content, /'naming\.cbzFileTpl':\s*\{[^}]*entry:\s*'Ch0012'[^}]*scanlator:\s*'Flame Comics'/,
+  'the embedded settings page must show a representative live CBZ filename preview');
+assert.match(content, /type === 'template' && PREVIEW_CTX\[key\][\s\S]*addEventListener\('input',[\s\S]*updatePreview\(inp\.value\)/,
+  'the embedded CBZ preview must update while the template is edited');
 
 console.log('settings-navigation-fallback.test.js: all tests passed');
