@@ -20,9 +20,9 @@
 
 **[Access Documentation here](https://n3uralcreativity.top/comix-downloader/Documentation.html)**
 
-you encountered an error and can't quite understand it ? check out the **[error documentation sheet](https://docs.google.com/spreadsheets/d/1MUCwY3F5lHpgI-wde5WX0kJUnWjshvg189yNvfElnl8/edit?usp=sharing)** ! 
+**you encountered an error and can't quite understand it ? check out the **[error documentation sheet](https://docs.google.com/spreadsheets/d/1MUCwY3F5lHpgI-wde5WX0kJUnWjshvg189yNvfElnl8/edit?usp=sharing)**.**
 
-and don't esitate to open an issue if the problem persist.
+_and don't hesitate to open an issue if the problem persist._
 
 
 </div>
