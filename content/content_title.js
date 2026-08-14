@@ -795,21 +795,69 @@ function injectStyles() {
 
 // ── Récupération du nom du manga ──────────────────────────────────────────────
 
+function normalizeMangaName(value) {
+  return String(value || '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*[-|]\s*comix(?:\.to)?(?:\s*[-|].*)?$/i, '')
+    .trim();
+}
+
+function usableMangaName(value) {
+  const name = normalizeMangaName(value);
+  const comparable = name.toLowerCase().replace(/[.!\u2026]+$/g, '').trim();
+  if (!comparable) return '';
+  if (/^(?:untitled(?: (?:page|document))?|loading|just a moment|please wait|checking (?:your )?browser|comix(?:\.to)?|manga)$/.test(comparable)) {
+    return '';
+  }
+  return name;
+}
+
+function mangaNameFromTitlePath(pathname) {
+  const match = String(pathname || '').match(/^\/title\/([^/?#]+)/i);
+  if (!match) return '';
+
+  let slug = match[1];
+  try { slug = decodeURIComponent(slug); } catch (_) {}
+  const parts = slug.split('-').filter(Boolean);
+  // comix.to prefixes title slugs with a short opaque title ID (for example
+  // "qqwrm-full-time-awakening"). Keep this URL fallback readable.
+  if (parts.length > 1 && /^[a-z0-9]{4,5}$/i.test(parts[0])) parts.shift();
+  const name = parts.join(' ').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  return usableMangaName(name.replace(/(^|\s)([a-z])/g, (_, gap, letter) => gap + letter.toUpperCase()));
+}
+
 function getMangaName() {
-  // Sélecteurs possibles selon le DOM du site
-  const candidates = [
+  // Prefer title-specific nodes, then stable social metadata. Generic headings
+  // come last because site loading/error screens can also contain an <h1>.
+  const textCandidates = [
+    '.mpage__title',
     'h1.series-title',
-    'h1[class*="title"]',
     '.series-name h1',
     '.title-name',
-    'h1',
   ];
-  for (const sel of candidates) {
-    const el = document.querySelector(sel);
-    if (el && el.textContent.trim()) return el.textContent.trim();
+  for (const selector of textCandidates) {
+    const name = usableMangaName(document.querySelector(selector)?.textContent);
+    if (name) return name;
   }
-  // Fallback : titre de la page sans " - Comix"
-  return document.title.replace(/\s*[-|]\s*comix.*$/i, '').trim() || 'manga';
+
+  const metadataCandidates = [
+    'meta[property="og:title"]',
+    'meta[name="twitter:title"]',
+  ];
+  for (const selector of metadataCandidates) {
+    const name = usableMangaName(document.querySelector(selector)?.getAttribute('content'));
+    if (name) return name;
+  }
+
+  for (const selector of ['h1[class*="title"]', 'main h1', 'h1']) {
+    const name = usableMangaName(document.querySelector(selector)?.textContent);
+    if (name) return name;
+  }
+
+  const pageTitle = usableMangaName(document.title);
+  if (pageTitle) return pageTitle;
+  return mangaNameFromTitlePath(location.pathname) || 'comix-title';
 }
 
 // ── Slugification pour le nom de fichier ZIP ──────────────────────────────────
