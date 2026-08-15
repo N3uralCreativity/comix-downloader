@@ -2007,6 +2007,107 @@ try {
 
 // ── Logique principale ────────────────────────────────────────────────────────
 
+function usableSingleDownloadMangaName(value) {
+  const name = String(value || '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*[-|]\s*comix(?:\.to)?(?:\s*[-|].*)?$/i, '')
+    .trim();
+  const comparable = name.toLowerCase().replace(/[.!\u2026]+$/g, '').trim();
+  if (!comparable || /^(?:untitled(?: (?:page|document))?|loading|just a moment|please wait|checking (?:your )?browser|comix(?:\.to)?|manga)$/.test(comparable)) {
+    return '';
+  }
+  return name;
+}
+
+function singleDownloadTitleFromUrl(chapterUrl) {
+  const match = String(chapterUrl || '').match(/\/title\/([^/?#]+)/i);
+  if (!match) return '';
+  let slug = match[1];
+  try { slug = decodeURIComponent(slug); } catch (_) {}
+  const parts = slug.split('-').filter(Boolean);
+  if (parts.length > 1 && /^[a-z0-9]{4,5}$/i.test(parts[0])) parts.shift();
+  const title = parts.join(' ').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  return usableSingleDownloadMangaName(
+    title.replace(/(^|\s)([a-z])/g, (_, gap, letter) => gap + letter.toUpperCase())
+  );
+}
+
+function singleDownloadMangaToken(mangaName, cfg) {
+  const maxLen = Math.max(10, Math.floor(Number(cfg && cfg['naming.slugMaxLen']) || 60));
+  let token = String(mangaName || '');
+  try { token = token.normalize('NFD'); } catch (_) {}
+  token = token
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, maxLen);
+  return token || 'comix';
+}
+
+// Individual chapter downloads have no per-run output controls. Resolve format,
+// metadata, and naming in the worker so an open page cannot override newer saved
+// settings with a stale cached ZIP/default value.
+function normalizeSingleChapterDownloadRequest(chapterUrl, cfg, rawOptions) {
+  cfg = cfg || {};
+  const input = rawOptions && typeof rawOptions === 'object' && !Array.isArray(rawOptions)
+    ? rawOptions
+    : {};
+  const sourceMeta = input.seriesMeta && typeof input.seriesMeta === 'object'
+    ? { ...input.seriesMeta }
+    : {};
+  const chapterLabel = String(input.chapterLabel || chapterLabelFromUrl(chapterUrl) || 'Chapter');
+  const mangaName = usableSingleDownloadMangaName(input.mangaName)
+    || usableSingleDownloadMangaName(sourceMeta.title)
+    || singleDownloadTitleFromUrl(chapterUrl)
+    || 'Comix Title';
+  const slug = String(input.slug || sourceMeta.slug ||
+    ((String(chapterUrl || '').match(/\/title\/([^/?#]+)/i) || [])[1] || '')).trim();
+  const scanlator = String(input.scanlator || input.group || '').trim();
+  const groupId = String(input.groupId || '').trim();
+  const chapterNumber = chapterLabel.replace(/^ch/i, '');
+  const mangaToken = singleDownloadMangaToken(mangaName, cfg);
+  const template = cfg['naming.singleZipTpl'] || '{manga}-Ch{chapter}';
+  const parts = {
+    manga: mangaToken,
+    chapter: chapterNumber,
+    label: chapterLabel,
+    num: chapterNumber,
+    scanlator,
+    group: scanlator,
+    groupId,
+    slug,
+  };
+  const rendered = typeof CDLSettings !== 'undefined'
+    ? CDLSettings.renderName(template, parts, 196)
+    : `${mangaToken}-${chapterLabel}`;
+  const archiveBase = rendered && rendered !== 'comix'
+    ? rendered
+    : `${mangaToken}-${chapterLabel}`;
+  const options = {
+    ...input,
+    format: cfg['output.format'] || 'zip',
+    includeComicInfo: cfg['output.includeComicInfo'] !== false,
+    includeSeriesMeta: false,
+    folderLayout: 'default',
+    chapterLabel,
+    mangaName,
+    slug,
+    scanlator,
+    group: scanlator,
+    groupId,
+    seriesMeta: {
+      ...sourceMeta,
+      title: mangaName,
+      slug,
+      sourceUrl: sourceMeta.sourceUrl || chapterUrl,
+    },
+  };
+  return { zipName: `${archiveBase}.zip`, options };
+}
+
 // Extraction tabs are opened in the background (active:false). comix.to's reader
 // throttles its own loading while it thinks the tab is hidden, so a background
 // extraction crawls and times out. We add a #cdlx marker to the tab URL; the
@@ -2021,8 +2122,11 @@ function withExtractMarker(url) {
 }
 
 async function handleDownloadRequest(chapterUrl, zipName, originTabId, options) {
-  cdlLog('info', `Download started: ${zipName}`);
   const cfg = await loadCfg();
+  const normalized = normalizeSingleChapterDownloadRequest(chapterUrl, cfg, options);
+  zipName = normalized.zipName;
+  options = normalized.options;
+  cdlLog('info', `Download started: ${zipName}`);
   try {
     // Ouvrir un onglet en arrière-plan
     const tab = await chrome.tabs.create({
@@ -3869,7 +3973,7 @@ async function saveGeneratedArchive({
 
 function sanitizeFilename(name, ext) {
   ext = (ext || 'zip').replace(/^\./, '');
-  const base = name
+  const base = String(name || '')
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
     .replace(/\.(zip|cbz|pdf)$/i, '')
     .replace(/\.+$/, '')

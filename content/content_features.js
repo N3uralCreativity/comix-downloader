@@ -533,10 +533,7 @@
         chapterUrl: location.href,
         zipName: manga + '-' + label,
         options: {
-          format: cfg['output.format'] || 'zip',
-          includeComicInfo: cfg['output.includeComicInfo'] !== false,
-          includeSeriesMeta: false,
-          folderLayout: 'default',
+          useSavedOutputSettings: true,
           chapterLabel: label,
           mangaName: manga,
           slug: currentSlug(),   // so the background records it in the per-series manifest

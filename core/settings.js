@@ -252,7 +252,7 @@
       label: 'CBZ chapter file name', help: 'Name of each CBZ chapter. Tokens: {entry} {manga} {chapter} {label} {num} {num2} {num4} {rest} {scanlator} {group} {groupId} {language} {date}. {entry} keeps the existing generated name.',
       warn: 'A scanlator or group token is empty when Comix does not provide source metadata. Characters not allowed in filenames are replaced with "_" automatically.' },
     'naming.singleZipTpl': { type: 'template', maxLen: 80, risk: 'none',
-      label: 'Single-chapter ZIP name', help: 'Tokens: {manga} {chapter} {date}.' },
+      label: 'Single-chapter ZIP name', help: 'Tokens: {manga} {chapter} {label} {num} {num2} {num4} {scanlator} {group} {groupId} {date}.' },
     'naming.allZipTpl': { type: 'template', maxLen: 80, risk: 'none',
       label: '"Download All" ZIP name', help: 'Tokens: {manga} {date}.' },
     'naming.slugMaxLen': { type: 'int', min: 10, max: 120, risk: 'none',

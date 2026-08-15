@@ -73,7 +73,11 @@ function getIdleContent() {
 function applyBtnTextClass(btn) { btn.classList.toggle('cdl-has-text', isIconText()); }
 
 function getChapterSourceMetadata(element) {
-  const row = element?.closest?.('.mchap-row');
+  const row = element?.matches?.('.mchap-row')
+    ? element
+    : element?.closest?.('.mchap-row')
+      || element?.closest?.('.mchap-item')?.querySelector?.('.mchap-row')
+      || element?.parentElement?.querySelector?.('.mchap-row');
   const groupEl = row?.querySelector?.('.mchap-row__group');
   const group = groupEl ? ((groupEl.querySelector('span') || groupEl).textContent || '').trim() : '';
   const groupId = groupEl
@@ -82,11 +86,20 @@ function getChapterSourceMetadata(element) {
   return { scanlator: group, group, groupId };
 }
 
-function buildSingleZipName(mangaName, chapterLabel) {
+function buildSingleZipName(mangaName, chapterLabel, sourceMeta = {}) {
   const num = String(chapterLabel || '').replace(/^ch/i, '');
+  const scanlator = String(sourceMeta.scanlator || sourceMeta.group || '').trim();
   if (typeof CDLSettings !== 'undefined') {
     const slug = slugify(mangaName);
-    const base = CDLSettings.renderName(CFG['naming.singleZipTpl'] || '{manga}-Ch{chapter}', { manga: slug, chapter: num, num: num }, 196);
+    const base = CDLSettings.renderName(CFG['naming.singleZipTpl'] || '{manga}-Ch{chapter}', {
+      manga: slug,
+      chapter: num,
+      label: chapterLabel,
+      num,
+      scanlator,
+      group: scanlator,
+      groupId: String(sourceMeta.groupId || '').trim(),
+    }, 196);
     return (base || slug || 'comix') + '.zip';
   }
   return `${slugify(mangaName)}-${chapterLabel}.zip`;
@@ -927,7 +940,7 @@ function injectButtonForRow(bookmarkBtn) {
     e.preventDefault();
     e.stopPropagation();
     if (btn.getAttribute('data-state') === 'loading') return;
-    startDownload(btn, chapterUrl, buildSingleZipName(getMangaName(), chapterLabel), sourceMeta);
+    startDownload(btn, chapterUrl, buildSingleZipName(getMangaName(), chapterLabel, sourceMeta), sourceMeta);
   });
 
   bookmarkBtn.insertAdjacentElement('afterend', btn);
@@ -989,10 +1002,7 @@ function startDownload(btn, chapterUrl, zipName, sourceMeta) {
 function buildSingleChapterOptions(chapterUrl, sourceMeta = {}) {
   const scanlator = String(sourceMeta.scanlator || sourceMeta.group || '').trim();
   return {
-    format: CFG['output.format'] || 'zip',
-    includeComicInfo: CFG['output.includeComicInfo'] !== false,
-    includeSeriesMeta: false,
-    folderLayout: 'default',
+    useSavedOutputSettings: true,
     chapterLabel: extractChapterLabel(chapterUrl),
     scanlator,
     group: scanlator,
@@ -2066,6 +2076,219 @@ function chapterKeyOf(label) {
   return String(label || '');
 }
 
+function chapterNumericValue(label) {
+  const match = String(label || '').trim().match(/^(?:ch(?:apter)?\.?\s*)?(\d+(?:\.\d+)?)/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+// Parse quick selections such as "1, 14, 21, 94" and "20-25" against the
+// chapters that are actually available for the active translator/group.
+function parseSpecificChapterSelection(value, chapters) {
+  const available = Array.isArray(chapters) ? chapters : [];
+  const terms = String(value || '').split(/[,;\n]+/).map((term) => term.trim()).filter(Boolean);
+  const selected = new Map();
+  const unmatched = [];
+  const invalid = [];
+  const numericRows = available
+    .map((chapter) => ({ chapter, value: chapterNumericValue(chapter.chapterLabel) }))
+    .filter((entry) => entry.value != null);
+  const exact = new Map();
+  for (const entry of numericRows) {
+    const key = String(entry.value);
+    if (!exact.has(key)) exact.set(key, entry.chapter);
+  }
+
+  const addChapter = (chapter) => {
+    if (chapter) selected.set(chapterKeyOf(chapter.chapterLabel), chapter);
+  };
+
+  for (const term of terms) {
+    const range = term.match(/^(?:ch(?:apter)?\.?\s*)?(\d+(?:\.\d+)?)\s*-\s*(?:ch(?:apter)?\.?\s*)?(\d+(?:\.\d+)?)$/i);
+    if (range) {
+      let from = Number(range[1]);
+      let to = Number(range[2]);
+      if (!Number.isFinite(from) || !Number.isFinite(to)) { invalid.push(term); continue; }
+      if (from > to) { const swap = from; from = to; to = swap; }
+      const matches = numericRows.filter((entry) => entry.value >= from && entry.value <= to);
+      if (!matches.length) unmatched.push(term);
+      else matches.forEach((entry) => addChapter(entry.chapter));
+      continue;
+    }
+
+    const single = term.match(/^(?:ch(?:apter)?\.?\s*)?(\d+(?:\.\d+)?)$/i);
+    if (!single) { invalid.push(term); continue; }
+    const chapter = exact.get(String(Number(single[1])));
+    if (chapter) addChapter(chapter);
+    else unmatched.push(term);
+  }
+
+  return {
+    chapters: [...selected.values()].sort((a, b) => {
+      const av = chapterNumericValue(a.chapterLabel);
+      const bv = chapterNumericValue(b.chapterLabel);
+      return (av == null ? Infinity : av) - (bv == null ? Infinity : bv);
+    }),
+    unmatched,
+    invalid,
+    empty: terms.length === 0,
+  };
+}
+
+let _specificChapterPicker = null;
+
+function getComixChapterSearchInput() {
+  return getChaptersSection().querySelector(
+    'input[placeholder*="Search chapter" i], input[type="search"]'
+  );
+}
+
+function setComixChapterSearch(value) {
+  const input = getComixChapterSearchInput();
+  if (!input) return false;
+  const next = String(value || '');
+  try {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (setter) setter.call(input, next);
+    else input.value = next;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  } catch (_) {
+    try { input.value = next; input.dispatchEvent(new Event('input', { bubbles: true })); return true; }
+    catch (_) { return false; }
+  }
+}
+
+function cleanupSpecificChapterPickerRows() {
+  document.querySelectorAll('.cdl-specific-chapter-check').forEach((node) => node.remove());
+  document.querySelectorAll('.mchap-item.cdl-specific-picked').forEach((node) => node.classList.remove('cdl-specific-picked'));
+}
+
+function syncSpecificChapterPickerRows() {
+  const picker = _specificChapterPicker;
+  if (!picker) return;
+  const items = getChaptersSection().querySelectorAll('.mchap-item');
+  items.forEach((item) => {
+    const link = item.querySelector('a.mchap-row__primary[href], a[href*="-chapter-"]');
+    if (!link) return;
+    const url = normalizeChapterUrl(link.getAttribute('href') || link.href);
+    const row = picker.rowsByUrl.get(url);
+    if (!row) return;
+    const key = chapterKeyOf(row.chapterLabel);
+    const allowed = picker.allowAllSources || picker.allowedUrls.has(url);
+    let wrapper = item.querySelector('.cdl-specific-chapter-check');
+    if (!wrapper) {
+      wrapper = document.createElement('label');
+      wrapper.className = 'cdl-specific-chapter-check';
+      wrapper.title = allowed ? `Select ${row.chapterLabel}` : 'This chapter is outside the selected translator group';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.setAttribute('aria-label', `Select ${row.chapterLabel}`);
+      wrapper.appendChild(input);
+      const bookmark = item.querySelector('.mchap-bookmark, [class*="mchap-bookmark"]');
+      if (bookmark) bookmark.insertAdjacentElement('beforebegin', wrapper);
+      else item.appendChild(wrapper);
+      input.addEventListener('change', () => {
+        if (!_specificChapterPicker || input.disabled) return;
+        _specificChapterPicker.toggle(row, input.checked);
+      });
+    }
+    const input = wrapper.querySelector('input');
+    const selected = picker.selections.get(key);
+    input.disabled = !allowed;
+    input.checked = !!selected && normalizeChapterUrl(selected.chapterUrl) === url;
+    wrapper.title = allowed ? `Select ${row.chapterLabel}` : 'This chapter is outside the selected translator group';
+    wrapper.classList.toggle('is-disabled', !allowed);
+    item.classList.toggle('cdl-specific-picked', input.checked);
+  });
+}
+
+function closeSpecificChapterPicker(commitSelection) {
+  const picker = _specificChapterPicker;
+  if (!picker) return;
+  _specificChapterPicker = null;
+  if (!commitSelection) {
+    picker.selections.clear();
+    picker.snapshot.forEach((chapter, key) => picker.selections.set(key, chapter));
+  }
+  cleanupSpecificChapterPickerRows();
+  picker.toolbar.remove();
+  document.removeEventListener('keydown', picker.onKeydown, true);
+  if (picker.searchChanged) setComixChapterSearch(picker.originalSearch);
+  picker.backdrop.style.display = '';
+  picker.onClose(commitSelection);
+}
+
+function openSpecificChapterPicker({ backdrop, rows, allowedChapters, allowAllSources, selections, sourceLabel, onClose }) {
+  closeSpecificChapterPicker(false);
+  const rowsByUrl = new Map();
+  for (const row of rows) rowsByUrl.set(normalizeChapterUrl(row.chapterUrl), row);
+  const allowedUrls = new Set((allowedChapters || []).map((row) => normalizeChapterUrl(row.chapterUrl)));
+  const searchInput = getComixChapterSearchInput();
+  const toolbar = document.createElement('div');
+  toolbar.id = 'cdl-specific-picker-toolbar';
+  toolbar.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
+  _setHTML(toolbar, `
+    <div class="cdl-specific-picker-title">
+      <strong>Select chapters</strong>
+      <span>${escapeHtml(sourceLabel || 'All groups')}</span>
+    </div>
+    <div class="cdl-specific-picker-controls">
+      <input type="search" id="cdl-specific-picker-search" placeholder="Search chapter number" aria-label="Search chapter number">
+      <span id="cdl-specific-picker-count">0 selected</span>
+      <button type="button" class="cdl-op-btn" id="cdl-specific-picker-back">Back</button>
+      <button type="button" class="cdl-op-btn primary" id="cdl-specific-picker-done">Done</button>
+    </div>`);
+  document.body.appendChild(toolbar);
+  backdrop.style.display = 'none';
+
+  const picker = {
+    backdrop,
+    toolbar,
+    rowsByUrl,
+    allowedUrls,
+    allowAllSources: !!allowAllSources,
+    selections,
+    snapshot: new Map(selections),
+    originalSearch: searchInput?.value || '',
+    searchChanged: false,
+    onClose,
+    onKeydown: null,
+    toggle(row, checked) {
+      const key = chapterKeyOf(row.chapterLabel);
+      if (checked) this.selections.set(key, row);
+      else this.selections.delete(key);
+      this.update();
+    },
+    update() {
+      const count = this.selections.size;
+      toolbar.querySelector('#cdl-specific-picker-count').textContent = `${count} selected`;
+      toolbar.querySelector('#cdl-specific-picker-done').disabled = count === 0;
+      syncSpecificChapterPickerRows();
+    },
+  };
+  picker.onKeydown = (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    closeSpecificChapterPicker(false);
+  };
+  _specificChapterPicker = picker;
+  document.addEventListener('keydown', picker.onKeydown, true);
+
+  const pickerSearch = toolbar.querySelector('#cdl-specific-picker-search');
+  pickerSearch.value = picker.originalSearch;
+  pickerSearch.addEventListener('input', () => {
+    picker.searchChanged = pickerSearch.value !== picker.originalSearch;
+    setComixChapterSearch(pickerSearch.value);
+  });
+  toolbar.querySelector('#cdl-specific-picker-back').addEventListener('click', () => closeSpecificChapterPicker(false));
+  toolbar.querySelector('#cdl-specific-picker-done').addEventListener('click', () => closeSpecificChapterPicker(true));
+  picker.update();
+  getChaptersSection().scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
 // Resolve the set of already-downloaded chapter keys for this series.
 function getDownloadedKeySet() {
   return new Promise((resolve) => {
@@ -2325,7 +2548,7 @@ function injectOptsStyles() {
       --cdl-muted:var(--text-2,#9da4a5); --cdl-faint:var(--text-3,#6f7778); --cdl-border:rgba(255,255,255,0.10); --cdl-border-soft:rgba(255,255,255,0.06);
       --cdl-hover:rgba(255,255,255,0.06); --cdl-accent:var(--accent,#66e8fa); --cdl-accent-bg:rgb(var(--accent-rgb,102 232 250) / 0.14);
       --cdl-ok:var(--success,#4ade80);
-      width:440px; max-width:100%; max-height:88vh; overflow-y:auto; background:var(--cdl-bg);
+      width:440px; max-width:100%; max-height:88vh; overflow-x:hidden; overflow-y:auto; background:var(--cdl-bg);
       color:var(--cdl-text); border:1px solid var(--cdl-border); border-radius:14px;
       box-shadow:0 18px 44px rgba(0,0,0,0.5); font-size:13px; }
     #cdl-opts-panel[data-cdl-theme="light"] {
@@ -2352,9 +2575,10 @@ function injectOptsStyles() {
     .cdl-op-check input { margin-top:2px; accent-color:var(--cdl-accent); width:15px; height:15px; flex-shrink:0; }
     .cdl-op-check .t { color:var(--cdl-text); font-size:12.5px; }
     .cdl-op-check .d { color:var(--cdl-faint); font-size:11px; }
-    .cdl-op-field { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .cdl-op-field { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .cdl-op-field label { color:var(--cdl-text); font-size:12.5px; }
-    #cdl-opts-panel select, #cdl-opts-panel input[type="number"] {
+    .cdl-op-field select { min-width:0; max-width:68%; }
+    #cdl-opts-panel select, #cdl-opts-panel input[type="number"], #cdl-opts-panel input[type="text"] {
       background:var(--cdl-header-bg); color:var(--cdl-text); border:1px solid var(--cdl-border);
       border-radius:7px; padding:5px 8px; font-size:12.5px; }
     .cdl-op-scope { display:flex; flex-direction:column; gap:7px; }
@@ -2362,6 +2586,12 @@ function injectOptsStyles() {
     .cdl-op-scope input[type="radio"] { accent-color:var(--cdl-accent); }
     .cdl-op-scope input[type="number"] { width:64px; }
     .cdl-op-range { display:flex; align-items:center; gap:6px; color:var(--cdl-muted); }
+    .cdl-op-specific { display:none; margin:8px 0 0 24px; }
+    .cdl-op-specific.active { display:block; }
+    .cdl-op-specific-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px; align-items:center; }
+    #cdl-op-specific-input { width:100%; min-width:0; box-sizing:border-box; }
+    .cdl-op-specific-status { min-height:17px; margin-top:5px; color:var(--cdl-faint); font-size:11px; line-height:1.4; }
+    .cdl-op-specific-status.has-error { color:#f59e0b; }
     .cdl-op-estimate { font-size:12px; color:var(--cdl-muted); background:var(--cdl-header-bg);
       border:1px solid var(--cdl-border-soft); border-radius:8px; padding:8px 10px; }
     .cdl-op-foot { display:flex; align-items:center; justify-content:space-between; gap:8px;
@@ -2371,6 +2601,38 @@ function injectOptsStyles() {
     .cdl-op-btn.primary { background:var(--cdl-accent); border-color:var(--cdl-accent); color:var(--accent-ink, #07101f); }
     .cdl-op-btn.primary:hover { filter:brightness(1.08); }
     .cdl-op-btn:disabled { opacity:.45; cursor:default; }
+    #cdl-specific-picker-toolbar {
+      --cdl-bg:var(--surface,#2a3134); --cdl-header-bg:var(--surface-2,#323a3e); --cdl-text:var(--text,#cdd5d6);
+      --cdl-text-strong:var(--text-emphasis,#ecf4f5); --cdl-muted:var(--text-2,#9da4a5); --cdl-border:rgba(255,255,255,0.12);
+      --cdl-hover:rgba(255,255,255,0.06); --cdl-accent:var(--accent,#66e8fa);
+      position:fixed; z-index:2147483647; left:50%; bottom:18px; transform:translateX(-50%);
+      width:min(720px,calc(100vw - 24px)); box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:16px;
+      padding:10px 12px; color:var(--cdl-text); background:var(--cdl-bg); border:1px solid var(--cdl-border); border-radius:8px;
+      box-shadow:0 12px 32px rgba(0,0,0,.45); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; font-size:12px; }
+    #cdl-specific-picker-toolbar[data-cdl-theme="light"] {
+      --cdl-bg:#fff; --cdl-header-bg:#f7f8fb; --cdl-text:#2b3146; --cdl-text-strong:#14171f;
+      --cdl-muted:#6b7180; --cdl-border:rgba(17,20,32,.14); --cdl-hover:rgba(17,20,32,.05); }
+    .cdl-specific-picker-title { min-width:120px; display:flex; flex-direction:column; gap:2px; }
+    .cdl-specific-picker-title strong { color:var(--cdl-text-strong); font-size:13px; }
+    .cdl-specific-picker-title span { color:var(--cdl-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
+    .cdl-specific-picker-controls { flex:1; display:grid; grid-template-columns:minmax(130px,1fr) auto auto auto; align-items:center; gap:7px; }
+    #cdl-specific-picker-search { min-width:0; width:100%; box-sizing:border-box; padding:7px 9px; border:1px solid var(--cdl-border);
+      border-radius:7px; color:var(--cdl-text); background:var(--cdl-header-bg); font:inherit; }
+    #cdl-specific-picker-count { min-width:68px; color:var(--cdl-muted); text-align:right; }
+    .cdl-specific-chapter-check { position:relative; z-index:10000000; width:28px; height:28px; flex:0 0 28px; display:grid; place-items:center; margin-left:5px;
+      border:1px solid var(--cdl-border,rgba(255,255,255,.16)); border-radius:6px; cursor:pointer; box-sizing:border-box; }
+    .cdl-specific-chapter-check:hover { background:var(--cdl-hover,rgba(255,255,255,.06)); }
+    .cdl-specific-chapter-check input { width:15px; height:15px; margin:0; accent-color:var(--accent,#66e8fa); cursor:pointer; }
+    .cdl-specific-chapter-check.is-disabled { opacity:.35; cursor:not-allowed; }
+    .mchap-item.cdl-specific-picked { outline:1px solid var(--accent,#66e8fa); outline-offset:-1px; }
+    @media (max-width:640px) {
+      .cdl-op-specific-row { grid-template-columns:1fr; }
+      #cdl-specific-picker-toolbar { align-items:stretch; flex-direction:column; gap:8px; bottom:10px; }
+      .cdl-specific-picker-title { min-width:0; flex-direction:row; justify-content:space-between; }
+      .cdl-specific-picker-title span { max-width:52vw; }
+      .cdl-specific-picker-controls { grid-template-columns:minmax(0,1fr) auto auto; }
+      #cdl-specific-picker-count { grid-column:1 / -1; grid-row:2; text-align:left; }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -2459,6 +2721,14 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
           <label><input type="radio" name="cdl-op-scope" value="all"> All chapters (<span id="cdl-op-all-n">${chapters.length}</span>)</label>
           <label><input type="radio" name="cdl-op-scope" value="new"${newCount === 0 ? ' disabled' : ''}> Only new — not yet downloaded (<span id="cdl-op-new-n">${newCount}</span>)</label>
           <label><input type="radio" name="cdl-op-scope" value="range"> <span class="cdl-op-range">Range&nbsp;<input type="number" id="cdl-op-from" min="1" max="${chapters.length}" value="1">to<input type="number" id="cdl-op-to" min="1" max="${chapters.length}" value="${chapters.length}"></span></label>
+          <label><input type="radio" name="cdl-op-scope" value="specific"> Specific chapters (<span id="cdl-op-specific-n">0</span>)</label>
+        </div>
+        <div class="cdl-op-specific" id="cdl-op-specific-controls">
+          <div class="cdl-op-specific-row">
+            <input type="text" id="cdl-op-specific-input" placeholder="1, 14, 21, 94 or 20-25" aria-label="Specific chapter numbers">
+            <button type="button" class="cdl-op-btn" id="cdl-op-pick">Choose from list</button>
+          </div>
+          <div class="cdl-op-specific-status" id="cdl-op-specific-status"></div>
         </div>
       </div>
       <div class="cdl-op-estimate" id="cdl-op-estimate"></div>
@@ -2501,6 +2771,15 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
 
   const currentScope = () => (panel.querySelector('input[name="cdl-op-scope"]:checked') || {}).value || 'all';
   const clampInt = (v, lo, hi, d) => { v = parseInt(v, 10); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+  const specificSelections = new Map();
+  const specificInput = q('#cdl-op-specific-input');
+  const specificControls = q('#cdl-op-specific-controls');
+  const specificStatus = q('#cdl-op-specific-status');
+  const orderedSpecificChapters = () => [...specificSelections.values()].sort((a, b) => {
+    const av = chapterNumericValue(a.chapterLabel);
+    const bv = chapterNumericValue(b.chapterLabel);
+    return (av == null ? Infinity : av) - (bv == null ? Infinity : bv);
+  });
   const selectedChapters = () => {
     const scope = currentScope();
     if (scope === 'new') return chapters.filter((c) => !downloaded.has(chapterKeyOf(c.chapterLabel)));
@@ -2510,6 +2789,7 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
       if (a > b) { const t = a; a = b; b = t; }
       return chapters.slice(a - 1, b);
     }
+    if (scope === 'specific') return orderedSpecificChapters();
     return chapters.slice();
   };
   // Tell the user up front when finished CBZ files will also go to their server.
@@ -2545,8 +2825,59 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
     q('#cdl-op-estimate').textContent = `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title) · ${packaging}${lib}${pdf}`;
     q('#cdl-op-start').disabled = n === 0;
   };
-  panel.querySelectorAll('input[name="cdl-op-scope"], #cdl-op-from, #cdl-op-to')
-    .forEach((el) => el.addEventListener('input', updateEstimate));
+
+  const renderSpecificSelection = (result = {}) => {
+    const count = specificSelections.size;
+    q('#cdl-op-specific-n').textContent = String(count);
+    specificStatus.classList.toggle('has-error', !!(result.invalid?.length || result.unmatched?.length));
+    const messages = [];
+    if (result.unmatched?.length) messages.push(`Not found: ${result.unmatched.join(', ')}`);
+    if (result.invalid?.length) messages.push(`Invalid: ${result.invalid.join(', ')}`);
+    specificStatus.textContent = messages.join(' · ') || (count ? `${count} chapter${count === 1 ? '' : 's'} ready` : '');
+    updateEstimate();
+  };
+  const applySpecificQuery = () => {
+    const result = parseSpecificChapterSelection(specificInput.value, chapters);
+    specificSelections.clear();
+    result.chapters.forEach((chapter) => specificSelections.set(chapterKeyOf(chapter.chapterLabel), chapter));
+    renderSpecificSelection(result);
+  };
+  const syncSpecificControls = () => {
+    specificControls.classList.toggle('active', currentScope() === 'specific');
+  };
+
+  panel.querySelectorAll('input[name="cdl-op-scope"]').forEach((el) => {
+    el.addEventListener('change', () => { syncSpecificControls(); updateEstimate(); });
+  });
+  [q('#cdl-op-from'), q('#cdl-op-to')].forEach((el) => el.addEventListener('input', updateEstimate));
+  specificInput.addEventListener('input', () => {
+    scopeRadio('specific').checked = true;
+    syncSpecificControls();
+    applySpecificQuery();
+  });
+  q('#cdl-op-pick').addEventListener('click', () => {
+    scopeRadio('specific').checked = true;
+    syncSpecificControls();
+    if (specificInput.value.trim()) applySpecificQuery();
+    openSpecificChapterPicker({
+      backdrop,
+      rows,
+      allowedChapters: chapters,
+      allowAllSources: currentGroup === GROUP_ALL,
+      selections: specificSelections,
+      sourceLabel: currentGroup === GROUP_ALL ? 'All groups' : currentGroup,
+      onClose: (committed) => {
+        if (committed) {
+          specificInput.value = orderedSpecificChapters()
+            .map((chapter) => String(chapter.chapterLabel || '').replace(/^ch/i, ''))
+            .join(', ');
+        }
+        renderSpecificSelection();
+      },
+    });
+  });
+  syncSpecificControls();
+  renderSpecificSelection();
   updateEstimate();
 
   // Switching translator rebuilds the active chapter set and its counts.
@@ -2568,11 +2899,15 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
       fromI.max = String(chapters.length); toI.max = String(chapters.length);
       toI.value = String(chapters.length);
       if (parseInt(fromI.value, 10) > chapters.length) fromI.value = '1';
-      updateEstimate();
+      if (specificInput.value.trim()) applySpecificQuery();
+      else renderSpecificSelection();
     });
   }
 
-  const close = () => backdrop.remove();
+  const close = () => {
+    if (_specificChapterPicker?.backdrop === backdrop) closeSpecificChapterPicker(false);
+    backdrop.remove();
+  };
   q('#cdl-op-close').addEventListener('click', close);
   q('#cdl-op-cancel').addEventListener('click', close);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
@@ -3652,6 +3987,7 @@ function scanAndInject() {
   injectDownloadAllButton();
   injectSubscribeButton();
   markDownloadedButtons();
+  syncSpecificChapterPickerRows();
 }
 
 let _cdlBodyObserver = null;
@@ -3675,6 +4011,7 @@ function observeDOM() {
       if (shouldScan) break;
     }
     if (shouldScan) scanAndInject();
+    else if (_specificChapterPicker) syncSpecificChapterPickerRows();
     // Also watch for the Follow button appearing late (React deferred render on mobile).
     const FOLLOW_LIKE_RE = /(?:^|\s)(?:mpage__)?(?:follow(?:[-_]?btn)?)\b/i;
     for (const mut of mutations) {
@@ -3700,6 +4037,7 @@ function observeDOM() {
 }
 function disconnectDOM() {
   if (_cdlBodyObserver) { _cdlBodyObserver.disconnect(); _cdlBodyObserver = null; }
+  closeSpecificChapterPicker(false);
 }
 
 // ── Point d'entrée ────────────────────────────────────────────────────────────
