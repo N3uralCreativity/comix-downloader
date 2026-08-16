@@ -1444,7 +1444,7 @@ function escapeHtml(s) {
 
 const CHAPTER_PATH_RE = /\/title\/[a-z0-9-]+\/\d+-chapter-[\w.-]+/gi;
 const CHAPTERS_PER_PAGE = 20;
-const MAX_CHAPTER_LIST_PAGES = 100;
+const CHAPTER_LIST_FETCH_CONCURRENCY = 4;
 const CHAPTER_LIST_WAIT_MS = 7000;
 const CHAPTER_LIST_NAV_RETRIES = 3;
 
@@ -1522,6 +1522,12 @@ function getExactChapterTotal(jsonStr = '') {
   return 0;
 }
 
+function getChapterListPageCount(total, pageSize = CHAPTERS_PER_PAGE) {
+  const safeTotal = Math.max(0, Math.floor(Number(total) || 0));
+  const safePageSize = Math.max(1, Math.floor(Number(pageSize) || CHAPTERS_PER_PAGE));
+  return Math.ceil(safeTotal / safePageSize);
+}
+
 async function fetchChapterListPage(buildId, slug, page) {
   try {
     const r = await fetch(`/_next/data/${buildId}/title/${slug}.json?page=${page}`, {
@@ -1532,6 +1538,23 @@ async function fetchChapterListPage(buildId, slug, page) {
   } catch (_) {
     return [];
   }
+}
+
+async function fetchChapterListPages(buildId, slug, total) {
+  const pageCount = getChapterListPageCount(total);
+  if (!pageCount) return [];
+
+  const results = new Array(pageCount);
+  let nextPage = 1;
+  const workerCount = Math.min(CHAPTER_LIST_FETCH_CONCURRENCY, pageCount);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextPage <= pageCount) {
+      const page = nextPage++;
+      results[page - 1] = await fetchChapterListPage(buildId, slug, page);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 function getChaptersSection() {
@@ -1680,8 +1703,13 @@ function chapterPagerNumberButtons() {
 // the current page), falling back to the chevrons/window edges. Converges on `target`.
 async function goToChapterPage(target) {
   target = Math.max(1, Math.floor(Number(target) || 1));
+  const startingPage = getCurrentRenderedChapterPage();
+  const maxMoves = Math.max(
+    CHAPTER_LIST_NAV_RETRIES + 1,
+    Math.abs(target - startingPage) + (CHAPTER_LIST_NAV_RETRIES * 2)
+  );
   let failedMoves = 0;
-  for (let guard = 0; guard < MAX_CHAPTER_LIST_PAGES; guard++) {
+  for (let guard = 0; guard < maxMoves; guard++) {
     const cur = getCurrentRenderedChapterPage();
     const hasRows = extractChapterUrlsFromDom().length > 0;
     if (cur === target && hasRows) return true;
@@ -1728,32 +1756,42 @@ async function walkChapterListPages(collect) {
   const originalPage = getCurrentRenderedChapterPage();
   const originalScrollY = window.scrollY;
   let expectedTotal = 0;
+  let pageSize = 0;
+  let previousTo = 0;
   let completed = false;
+  const seenRanges = new Set();
   try {
     if (!await goToChapterPage(1)) {
       throw new Error('Comix\'s chapter list stopped responding before page 1 could be read.');
     }
-    for (let i = 0; i < MAX_CHAPTER_LIST_PAGES; i++) {
+    while (true) {
       const urls = extractChapterUrlsFromDom();
       const range = getChapterListRange(getChaptersSection());
-      if (!urls.length || !range || !Number.isFinite(range.total) || range.total <= 0) {
+      if (!urls.length || !range || !Number.isFinite(range.total) || range.total <= 0 ||
+          range.from <= 0 || range.to < range.from || range.to > range.total) {
         throw new Error('Comix\'s chapter list returned an empty or incomplete page.');
       }
       if (!expectedTotal) expectedTotal = range.total;
       if (range.total !== expectedTotal) {
         throw new Error('Comix\'s chapter list changed while it was being read.');
       }
+      const rangeKey = `${range.from}-${range.to}-${range.total}`;
+      if (seenRanges.has(rangeKey) || (previousTo > 0 && range.from <= previousTo)) {
+        throw new Error(`Comix's chapter list did not advance past items ${range.from}-${range.to}.`);
+      }
+      seenRanges.add(rangeKey);
+      if (!pageSize) pageSize = range.to - range.from + 1;
       collect();
       if (range.to >= range.total) {
         completed = true;
         return { total: expectedTotal };
       }
-      const nextPage = Math.floor((range.to - 1) / CHAPTERS_PER_PAGE) + 2;
+      previousTo = range.to;
+      const nextPage = Math.floor((range.to - 1) / pageSize) + 2;
       if (!await goToChapterPage(nextPage)) {
         throw new Error(`Comix's chapter list stopped responding on page ${nextPage}.`);
       }
     }
-    throw new Error(`Comix's chapter list exceeded ${MAX_CHAPTER_LIST_PAGES} pages.`);
   } finally {
     if (!await restoreRenderedChapterPage(originalPage) && !extractChapterUrlsFromDom().length) {
       await recoverChapterListView();
@@ -1872,14 +1910,9 @@ async function getAllChapters() {
     const total = getExactChapterTotal(jsonStr);
 
     if (buildId && slug && total > 0) {
-      // Exact total known: fetch every page from 1, independent of the current pagination page.
-      const maxPages = Math.min(Math.ceil(total / CHAPTERS_PER_PAGE), MAX_CHAPTER_LIST_PAGES);
-      const pageNums = [];
-      for (let p = 1; p <= maxPages; p++) pageNums.push(p);
-
-      const results = await Promise.all(
-        pageNums.map(p => fetchChapterListPage(buildId, slug, p))
-      );
+      // Exact total known: fetch every page with bounded concurrency, independent
+      // of the currently rendered chapter-list page.
+      const results = await fetchChapterListPages(buildId, slug, total);
 
       for (const urls of results) {
         allUrls.push(...urls);
@@ -1887,7 +1920,7 @@ async function getAllChapters() {
     } else if (buildId && slug && allUrls.length > 0) {
       // Unknown total: fetch pages until the endpoint returns no new chapter links.
       const seenUrls = new Set(allUrls);
-      for (let p = 1; p <= MAX_CHAPTER_LIST_PAGES; p++) {
+      for (let p = 1; ; p++) {
         const urls = await fetchChapterListPage(buildId, slug, p);
         if (!urls.length) break;
 

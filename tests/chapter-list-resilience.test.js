@@ -60,6 +60,10 @@ check('chapter pagination rejects empty or incomplete pages',
   walkPages.includes('empty or incomplete page'));
 check('chapter pagination reports a failed page instead of returning partial data',
   walkPages.includes('stopped responding on page'));
+check('chapter pagination follows the reported total without an absolute page cap',
+  walkPages.includes('while (true)') && !walkPages.includes('MAX_CHAPTER_LIST_PAGES'));
+check('chapter pagination rejects repeated page ranges',
+  walkPages.includes('seenRanges.has') && walkPages.includes('did not advance past items'));
 
 const collectRows = extractFunction('collectChapterRowsWithGroups');
 check('Download All temporarily reads the unfiltered All groups list',

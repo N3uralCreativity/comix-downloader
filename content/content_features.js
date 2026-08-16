@@ -35,7 +35,6 @@
   var CHAPTER_HREF_RE = /\/\d+-chapter-/i;
   var STYLE_ID = 'cdl-features-style';
   var HIDDEN_CLASS = 'cdl-dupe-hidden';
-  var MAX_PAGES = 100;
 
   // comix.to is a Next.js SPA; the page type can change without a content-script
   // re-run, so derive it from location.pathname on demand instead of once at load.
@@ -312,7 +311,7 @@
     Core.extractChapterPaths(payload).forEach(function (p) { var u = absolute(p); if (u) urls.add(u); });
 
     if (buildId && slug) {
-      for (var page = 1; page <= MAX_PAGES; page++) {
+      for (var page = 1; ; page++) {
         var text = '';
         try {
           var r = await fetch('/_next/data/' + buildId + '/title/' + slug + '.json?page=' + page, { headers: { Accept: 'application/json' } });
