@@ -24,6 +24,7 @@ let _dlAllSessionSyncRequest = 0;
 
 // Retry timer for Download All button injection (React renders Follow btn late on mobile)
 let _dlAllInjRetryTimer = null;
+let _chapterListCollectionControl = null;
 
 // SVG icône téléchargement (flèche vers le bas + barre)
 // The "Angle Tray" brand mark (icons/icon.svg), filled with currentColor so the
@@ -148,7 +149,7 @@ function applyDynamicStyles() {
     .${DOWNLOAD_BTN_CLASS}[data-state="idle"]:hover { color:${accent}; filter:brightness(1.25); }
     .cdl-dl-all-btn, .cdl-dl-all-btn svg { color:${accent}!important; }
     ` : ''}
-    ${noAnim ? `.${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg{animation:none!important;} #cdl-all-popup{animation:none!important;} .${DOWNLOAD_BTN_CLASS},.cdl-ap-bar,.cdl-ap-zip-fill,.cdl-ap-close{transition:none!important;} .cdl-ap-activity-indicator,.cdl-ap-bar::after,.cdl-ap-zip-fill::after,.cdl-ap-stage.is-active .cdl-ap-stage-dot,.cdl-ap-log-item.active::before{animation:none!important;}` : ''}
+    ${noAnim ? `.${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg{animation:none!important;} #cdl-all-popup{animation:none!important;} .${DOWNLOAD_BTN_CLASS},.cdl-ap-bar,.cdl-ap-zip-fill,.cdl-ap-close{transition:none!important;} .cdl-ap-activity-indicator,.cdl-ap-bar,.cdl-ap-bar::after,.cdl-ap-zip-fill::after,.cdl-ap-stage.is-active .cdl-ap-stage-dot,.cdl-ap-log-item.active::before{animation:none!important;}` : ''}
   `;
   document.head.appendChild(style);
 }
@@ -345,6 +346,7 @@ function injectStyles() {
       color: var(--cdl-text-strong);
     }
     .cdl-ap-title svg { width: 16px; height: 16px; color: var(--cdl-accent); }
+    .cdl-ap-title-context { color: var(--cdl-muted); font-weight: 500; }
     .cdl-ap-close {
       background: none;
       border: none;
@@ -483,6 +485,10 @@ function injectStyles() {
       position: relative;
       overflow: hidden;
     }
+    #cdl-all-popup[data-progress-mode="indeterminate"] .cdl-ap-bar {
+      width: 34% !important;
+      animation: cdl-ap-indeterminate 1.25s ease-in-out infinite;
+    }
     .cdl-ap-bar::after, .cdl-ap-zip-fill::after {
       content: '';
       position: absolute;
@@ -499,6 +505,24 @@ function injectStyles() {
       color: var(--cdl-faint);
       text-align: right;
       font-variant-numeric: tabular-nums;
+    }
+    .cdl-cl-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding-top: 1px;
+      color: var(--cdl-faint);
+      font-size: 10px;
+      text-align: center;
+    }
+    .cdl-cl-metrics span { min-width: 0; white-space: nowrap; }
+    .cdl-cl-metrics strong {
+      display: block;
+      overflow: hidden;
+      color: var(--cdl-text-strong);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      text-overflow: ellipsis;
     }
     .cdl-ap-archive {
       display: none;
@@ -790,7 +814,7 @@ function injectStyles() {
     }
     @media (prefers-reduced-motion: reduce) {
       #cdl-all-popup, .cdl-ap-activity-indicator, .cdl-ap-bar::after,
-      .cdl-ap-zip-fill, .cdl-ap-zip-fill::after, .cdl-ap-stage-dot,
+      .cdl-ap-bar, .cdl-ap-zip-fill, .cdl-ap-zip-fill::after, .cdl-ap-stage-dot,
       .cdl-ap-log-item.active::before { animation: none !important; transition: none !important; }
     }
     @media (max-width: 640px) {
@@ -1071,6 +1095,7 @@ function _cdlClientDiagnosticCode(kind, message) {
   const definitions = {
     start: ['CDL-START-001', 'The download operation could not be started.'],
     tab_open: ['CDL-TAB-001', 'The background chapter tab could not be opened.'],
+    chapter_list: ['CDL-LIST-001', 'The title chapter list could not be read completely.'],
     chapter_extraction: ['CDL-EXTRACT-001', 'The chapter page could not be read.'],
     image_download: ['CDL-IMAGE-001', 'One or more chapter images could not be downloaded.'],
     chapter_packaging: ['CDL-PACK-001', 'A completed chapter could not be added to the output.'],
@@ -1448,6 +1473,32 @@ const CHAPTER_LIST_FETCH_CONCURRENCY = 4;
 const CHAPTER_LIST_WAIT_MS = 7000;
 const CHAPTER_LIST_NAV_RETRIES = 3;
 
+function createChapterListCollectionControl(onProgress) {
+  const abortController = new AbortController();
+  return {
+    cancelled: false,
+    signal: abortController.signal,
+    cancel() {
+      if (this.cancelled) return;
+      this.cancelled = true;
+      abortController.abort();
+    },
+    checkpoint() {
+      if (!this.cancelled) return;
+      const error = new Error('Chapter-list loading was cancelled.');
+      error.code = 'CDL_CHAPTER_LIST_CANCELLED';
+      throw error;
+    },
+    report(progress) {
+      if (!this.cancelled && typeof onProgress === 'function') onProgress(progress || {});
+    },
+  };
+}
+
+function isChapterListCollectionCancelled(error) {
+  return error?.code === 'CDL_CHAPTER_LIST_CANCELLED';
+}
+
 function unique(items) {
   return [...new Set(items)];
 }
@@ -1528,29 +1579,47 @@ function getChapterListPageCount(total, pageSize = CHAPTERS_PER_PAGE) {
   return Math.ceil(safeTotal / safePageSize);
 }
 
-async function fetchChapterListPage(buildId, slug, page) {
+async function fetchChapterListPage(buildId, slug, page, collection) {
   try {
+    collection?.checkpoint?.();
     const r = await fetch(`/_next/data/${buildId}/title/${slug}.json?page=${page}`, {
-      headers: { 'Accept': 'application/json' }
+      headers: { 'Accept': 'application/json' },
+      signal: collection?.signal,
     });
+    collection?.checkpoint?.();
     if (!r.ok) return [];
     return extractChapterUrlsFromPayload(await r.text());
   } catch (_) {
+    collection?.checkpoint?.();
     return [];
   }
 }
 
-async function fetchChapterListPages(buildId, slug, total) {
+async function fetchChapterListPages(buildId, slug, total, collection) {
   const pageCount = getChapterListPageCount(total);
   if (!pageCount) return [];
 
   const results = new Array(pageCount);
   let nextPage = 1;
+  let completedPages = 0;
+  let entriesRead = 0;
   const workerCount = Math.min(CHAPTER_LIST_FETCH_CONCURRENCY, pageCount);
   const workers = Array.from({ length: workerCount }, async () => {
     while (nextPage <= pageCount) {
+      collection?.checkpoint?.();
       const page = nextPage++;
-      results[page - 1] = await fetchChapterListPage(buildId, slug, page);
+      const urls = await fetchChapterListPage(buildId, slug, page, collection);
+      results[page - 1] = urls;
+      completedPages++;
+      entriesRead += urls.length;
+      collection?.report?.({
+        phase: 'reading',
+        page: completedPages,
+        totalPages: pageCount,
+        itemsRead: entriesRead,
+        totalItems: total,
+        uniqueChapters: entriesRead,
+      });
     }
   });
   await Promise.all(workers);
@@ -1581,10 +1650,12 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function waitForChapterListChange(previousSignature) {
+async function waitForChapterListChange(previousSignature, collection) {
   const started = Date.now();
   while (Date.now() - started < CHAPTER_LIST_WAIT_MS) {
+    collection?.checkpoint?.();
     await wait(120);
+    collection?.checkpoint?.();
     const signature = getChapterListSignature();
     if (signature && signature !== previousSignature && extractChapterUrlsFromDom().length > 0) {
       return true;
@@ -1593,9 +1664,10 @@ async function waitForChapterListChange(previousSignature) {
   return false;
 }
 
-async function waitForChapterMenuItems(timeoutMs = 1500) {
+async function waitForChapterMenuItems(timeoutMs = 1500, collection) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
+    collection?.checkpoint?.();
     const items = [...document.querySelectorAll('[role="menuitemradio"]')];
     if (items.length) return items;
     await wait(50);
@@ -1612,8 +1684,9 @@ function getCurrentChapterGroupLabel() {
   return (control?.querySelector('span')?.textContent || control?.textContent || '').trim();
 }
 
-async function selectChapterGroup(label) {
+async function selectChapterGroup(label, collection) {
   if (!label) return false;
+  collection?.checkpoint?.();
   const control = getChapterGroupControl();
   if (!control) return false;
   if (getCurrentChapterGroupLabel().toLowerCase() === label.toLowerCase()) {
@@ -1622,13 +1695,13 @@ async function selectChapterGroup(label) {
 
   const before = getChapterListSignature();
   if (control.getAttribute('aria-expanded') !== 'true') control.click();
-  const items = await waitForChapterMenuItems();
+  const items = await waitForChapterMenuItems(1500, collection);
   const item = items.find((candidate) =>
     (candidate.textContent || '').trim().toLowerCase() === label.toLowerCase()
   );
   if (!item) return false;
   item.click();
-  if (await waitForChapterListChange(before)) return true;
+  if (await waitForChapterListChange(before, collection)) return true;
   return getCurrentChapterGroupLabel().toLowerCase() === label.toLowerCase() &&
     extractChapterUrlsFromDom().length > 0;
 }
@@ -1647,7 +1720,8 @@ function getChapterSortButtons() {
 // A failed chapter API request can leave comix.to on an active page with an empty
 // list. Switching sort once makes the site issue a fresh request; then restore the
 // user's original sort before pagination continues.
-async function recoverChapterListView() {
+async function recoverChapterListView(collection) {
+  collection?.checkpoint?.();
   if (extractChapterUrlsFromDom().length > 0) return true;
   const buttons = getChapterSortButtons();
   const active = buttons.find((button) => button.getAttribute('aria-pressed') === 'true' || button.classList.contains('is-on'));
@@ -1655,9 +1729,10 @@ async function recoverChapterListView() {
   const alternatives = buttons.filter((button) => button !== active);
 
   for (const alternative of alternatives) {
+    collection?.checkpoint?.();
     const before = getChapterListSignature();
     alternative.click();
-    if (!await waitForChapterListChange(before)) continue;
+    if (!await waitForChapterListChange(before, collection)) continue;
 
     const original = getChapterSortButtons().find((button) =>
       (button.textContent || '').trim().toLowerCase() === originalLabel.toLowerCase()
@@ -1667,7 +1742,7 @@ async function recoverChapterListView() {
     }
     const changed = getChapterListSignature();
     original.click();
-    if (await waitForChapterListChange(changed)) return true;
+    if (await waitForChapterListChange(changed, collection)) return true;
     if (extractChapterUrlsFromDom().length > 0) return true;
   }
   return false;
@@ -1701,8 +1776,9 @@ function chapterPagerNumberButtons() {
 // forward with "Next page" alone stalls partway (dropping the OLDEST chapters, since the list
 // is newest-first). Navigate by the numbered buttons (which always include current±2 around
 // the current page), falling back to the chevrons/window edges. Converges on `target`.
-async function goToChapterPage(target) {
+async function goToChapterPage(target, collection) {
   target = Math.max(1, Math.floor(Number(target) || 1));
+  collection?.checkpoint?.();
   const startingPage = getCurrentRenderedChapterPage();
   const maxMoves = Math.max(
     CHAPTER_LIST_NAV_RETRIES + 1,
@@ -1710,11 +1786,12 @@ async function goToChapterPage(target) {
   );
   let failedMoves = 0;
   for (let guard = 0; guard < maxMoves; guard++) {
+    collection?.checkpoint?.();
     const cur = getCurrentRenderedChapterPage();
     const hasRows = extractChapterUrlsFromDom().length > 0;
     if (cur === target && hasRows) return true;
     if (!hasRows) {
-      if (failedMoves >= CHAPTER_LIST_NAV_RETRIES || !await recoverChapterListView()) return false;
+      if (failedMoves >= CHAPTER_LIST_NAV_RETRIES || !await recoverChapterListView(collection)) return false;
       failedMoves++;
       continue;
     }
@@ -1734,13 +1811,14 @@ async function goToChapterPage(target) {
     }
     if (!btn) return false;
     btn.click();
-    if (await waitForChapterListChange(before)) {
+    if (await waitForChapterListChange(before, collection)) {
       failedMoves = 0;
       continue;
     }
     failedMoves++;
     if (failedMoves >= CHAPTER_LIST_NAV_RETRIES) return false;
     await wait(250 * failedMoves);
+    collection?.checkpoint?.();
   }
   return false;
 }
@@ -1752,7 +1830,7 @@ async function restoreRenderedChapterPage(page) {
 
 // Walk every chapter-list page (1 → last), invoking collect() on each rendered page. Robust to
 // the windowed pager; restores the page + scroll the user was on afterward.
-async function walkChapterListPages(collect) {
+async function walkChapterListPages(collect, collection) {
   const originalPage = getCurrentRenderedChapterPage();
   const originalScrollY = window.scrollY;
   let expectedTotal = 0;
@@ -1761,10 +1839,11 @@ async function walkChapterListPages(collect) {
   let completed = false;
   const seenRanges = new Set();
   try {
-    if (!await goToChapterPage(1)) {
+    if (!await goToChapterPage(1, collection)) {
       throw new Error('Comix\'s chapter list stopped responding before page 1 could be read.');
     }
     while (true) {
+      collection?.checkpoint?.();
       const urls = extractChapterUrlsFromDom();
       const range = getChapterListRange(getChaptersSection());
       if (!urls.length || !range || !Number.isFinite(range.total) || range.total <= 0 ||
@@ -1781,14 +1860,22 @@ async function walkChapterListPages(collect) {
       }
       seenRanges.add(rangeKey);
       if (!pageSize) pageSize = range.to - range.from + 1;
-      collect();
+      const summary = collect() || {};
+      collection?.report?.({
+        phase: 'reading',
+        page: Math.ceil(range.to / pageSize),
+        totalPages: getChapterListPageCount(range.total, pageSize),
+        itemsRead: range.to,
+        totalItems: range.total,
+        ...summary,
+      });
       if (range.to >= range.total) {
         completed = true;
         return { total: expectedTotal };
       }
       previousTo = range.to;
       const nextPage = Math.floor((range.to - 1) / pageSize) + 2;
-      if (!await goToChapterPage(nextPage)) {
+      if (!await goToChapterPage(nextPage, collection)) {
         throw new Error(`Comix's chapter list stopped responding on page ${nextPage}.`);
       }
     }
@@ -1802,13 +1889,16 @@ async function walkChapterListPages(collect) {
   }
 }
 
-async function collectChaptersFromRenderedPagination() {
+async function collectChaptersFromRenderedPagination(collection) {
   const firstPageUrls = extractChapterUrlsFromDom();
   const initialRange = getChapterListRange(getChaptersSection());
   if (!initialRange || initialRange.total <= firstPageUrls.length) return firstPageUrls;
 
   const allUrls = [];
-  const result = await walkChapterListPages(() => allUrls.push(...extractChapterUrlsFromDom()));
+  const result = await walkChapterListPages(() => {
+    allUrls.push(...extractChapterUrlsFromDom());
+    return { uniqueChapters: unique(allUrls).length, groups: 0 };
+  }, collection);
   const found = unique(allUrls);
   if (result.total > 0 && found.length < result.total) {
     throw new Error(`Only ${found.length} of ${result.total} chapter entries could be read. Please try Download All again.`);
@@ -1838,28 +1928,42 @@ function hasChapterGroupData(rows) {
   return Array.isArray(rows) && rows.some((row) => String(row?.group || '').trim());
 }
 
-async function collectChapterRowsWithGroups() {
+async function collectChapterRowsWithGroups(collection) {
   const section = getChaptersSection();
   const modernList = !!section.querySelector('.mpage__group, [role="group"][aria-label="Sort"], .npager');
   const originalGroup = getCurrentChapterGroupLabel();
   const originalPage = getCurrentRenderedChapterPage();
   const originalScrollY = window.scrollY;
   let switchedGroup = false;
-
-  if (modernList && !extractChapterUrlsFromDom().length && !await recoverChapterListView()) {
-    throw new Error('Comix\'s chapter list is temporarily unavailable. Please try Download All again.');
-  }
-  if (originalGroup && originalGroup.toLowerCase() !== 'all groups') {
-    if (!await selectChapterGroup('All groups')) {
-      throw new Error('The All groups chapter list could not be opened. Please try Download All again.');
-    }
-    switchedGroup = true;
-  }
-
   const seen = new Set();
+  const labels = new Set();
+  const groups = new Set();
   const rows = [];
-  const add = (rs) => { for (const r of rs) { if (!seen.has(r.chapterUrl)) { seen.add(r.chapterUrl); rows.push(r); } } };
+  const add = (rs) => {
+    for (const r of rs) {
+      if (seen.has(r.chapterUrl)) continue;
+      seen.add(r.chapterUrl);
+      rows.push(r);
+      labels.add(r.chapterLabel);
+      if (String(r.group || '').trim()) groups.add(String(r.group).trim());
+    }
+    return { uniqueChapters: labels.size, groups: groups.size };
+  };
+
+  collection?.report?.({ phase: 'opening' });
   try {
+    collection?.checkpoint?.();
+    if (modernList && !extractChapterUrlsFromDom().length && !await recoverChapterListView(collection)) {
+      throw new Error('Comix\'s chapter list is temporarily unavailable. Please try Download All again.');
+    }
+    if (originalGroup && originalGroup.toLowerCase() !== 'all groups') {
+      switchedGroup = true;
+      collection?.report?.({ phase: 'opening_groups' });
+      if (!await selectChapterGroup('All groups', collection)) {
+        throw new Error('The All groups chapter list could not be opened. Please try Download All again.');
+      }
+    }
+
     add(extractChapterRowsFromDom());
     if (!rows.length) {
       if (modernList) throw new Error('Comix\'s chapter list returned no chapter entries. Please try Download All again.');
@@ -1868,11 +1972,28 @@ async function collectChapterRowsWithGroups() {
 
     const initialRange = getChapterListRange(getChaptersSection());
     if (initialRange && initialRange.to < initialRange.total) {
-      const result = await walkChapterListPages(() => add(extractChapterRowsFromDom()));
+      const result = await walkChapterListPages(() => add(extractChapterRowsFromDom()), collection);
       if (result.total > 0 && rows.length < result.total) {
         throw new Error(`Only ${rows.length} of ${result.total} chapter entries could be read. Please try Download All again.`);
       }
+    } else {
+      collection?.report?.({
+        phase: 'reading',
+        page: 1,
+        totalPages: 1,
+        itemsRead: initialRange?.to || rows.length,
+        totalItems: initialRange?.total || rows.length,
+        uniqueChapters: labels.size,
+        groups: groups.size,
+      });
     }
+    collection?.report?.({
+      phase: 'organizing',
+      itemsRead: rows.length,
+      totalItems: rows.length,
+      uniqueChapters: labels.size,
+      groups: groups.size,
+    });
     return rows;
   } finally {
     if (switchedGroup) {
@@ -1891,9 +2012,12 @@ async function collectChapterRowsWithGroups() {
  *  4. Déduplication par numéro de chapitre (une seule source par chapitre)
  *  5. Sort ascending.
  */
-async function getAllChapters() {
+async function getAllChapters(collection) {
   const slug    = window.location.pathname.match(/\/title\/([^/]+)/)?.[1];
   let allUrls   = [];
+
+  collection?.checkpoint?.();
+  collection?.report?.({ phase: 'opening' });
 
   const scriptEl = document.getElementById('__NEXT_DATA__');
   if (scriptEl) {
@@ -1912,7 +2036,7 @@ async function getAllChapters() {
     if (buildId && slug && total > 0) {
       // Exact total known: fetch every page with bounded concurrency, independent
       // of the currently rendered chapter-list page.
-      const results = await fetchChapterListPages(buildId, slug, total);
+      const results = await fetchChapterListPages(buildId, slug, total, collection);
 
       for (const urls of results) {
         allUrls.push(...urls);
@@ -1921,7 +2045,8 @@ async function getAllChapters() {
       // Unknown total: fetch pages until the endpoint returns no new chapter links.
       const seenUrls = new Set(allUrls);
       for (let p = 1; ; p++) {
-        const urls = await fetchChapterListPage(buildId, slug, p);
+        collection?.checkpoint?.();
+        const urls = await fetchChapterListPage(buildId, slug, p, collection);
         if (!urls.length) break;
 
         const freshUrls = urls.filter(url => !seenUrls.has(url));
@@ -1931,6 +2056,15 @@ async function getAllChapters() {
         }
 
         if (!freshUrls.length && p > 1) break;
+        collection?.report?.({
+          phase: 'reading',
+          page: p,
+          totalPages: 0,
+          itemsRead: seenUrls.size,
+          totalItems: 0,
+          uniqueChapters: seenUrls.size,
+          groups: 0,
+        });
       }
     }
   }
@@ -1938,7 +2072,7 @@ async function getAllChapters() {
   // ─ Fallback DOM ─────────────────────────────────────────────────────
   const visibleTotal = getExactChapterTotal();
   if (allUrls.length === 0 || (visibleTotal > 0 && unique(allUrls).length < visibleTotal)) {
-    allUrls.push(...await collectChaptersFromRenderedPagination());
+    allUrls.push(...await collectChaptersFromRenderedPagination(collection));
   }
   allUrls = filterChapterUrlsForTitle(allUrls, slug);
 
@@ -1951,10 +2085,18 @@ async function getAllChapters() {
     if (!byLabel.has(label)) byLabel.set(label, { chapterUrl: url, chapterLabel: label });
   }
 
-  return [...byLabel.values()].sort(
+  const chapters = [...byLabel.values()].sort(
     (a, b) => parseFloat(a.chapterLabel.replace(/[^0-9.]/g, ''))
             - parseFloat(b.chapterLabel.replace(/[^0-9.]/g, ''))
   );
+  collection?.report?.({
+    phase: 'organizing',
+    itemsRead: allUrls.length,
+    totalItems: allUrls.length,
+    uniqueChapters: chapters.length,
+    groups: 0,
+  });
+  return chapters;
 }
 
 /** Lance (ou relance) la session Download All avec les params en cache. */
@@ -2466,35 +2608,69 @@ function injectDownloadAllButton() {
     if (!chrome?.runtime?.id) { alert('Extension reloaded — please refresh the page.'); return; }
     if (document.getElementById('cdl-all-popup') || document.getElementById('cdl-opts-panel')) return; // already running / panel open
 
-    // Indicateur de chargement pendant la collecte des chapitres
+    const mangaName = getMangaName();
     btn.disabled = true;
     _setHTML(btn, `${ICON_DOWNLOAD} Loading chapters…`);
+
+    let loadingPopup = null;
+    const collection = createChapterListCollectionControl((progress) => {
+      updateChapterListLoadingPopup(loadingPopup, progress);
+    });
+    _chapterListCollectionControl = collection;
+    loadingPopup = showChapterListLoadingPopup(mangaName, () => collection.cancel());
 
     let rows;
     let collectionError = null;
     try {
-      rows = await collectChapterRowsWithGroups();
+      rows = await collectChapterRowsWithGroups(collection);
       if (!rows.length) {
         // Legacy layout (no .mchap-row): fall back to the URL-only scraper.
-        const legacy = await getAllChapters();
+        const legacy = await getAllChapters(collection);
         rows = legacy.map((c) => ({ chapterUrl: c.chapterUrl, chapterLabel: c.chapterLabel, group: '', groupId: '' }));
       }
     } catch (error) {
-      console.warn('[ComixDL] Chapter-list collection failed:', error);
+      if (!isChapterListCollectionCancelled(error)) {
+        console.warn('[ComixDL] Chapter-list collection failed:', error);
+      }
       collectionError = error;
       rows = [];
     } finally {
+      if (_chapterListCollectionControl === collection) _chapterListCollectionControl = null;
       btn.disabled = false;
       _setHTML(btn, `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`);
     }
 
-    if (rows.length === 0) {
-      alert(collectionError?.message || 'No chapters found on this page.');
+    if (collection.cancelled || isChapterListCollectionCancelled(collectionError)) {
+      loadingPopup?.remove();
       return;
     }
 
+    if (rows.length === 0) {
+      const error = collectionError || new Error('No chapters found on this page.');
+      showChapterListLoadingError(loadingPopup, error, () => {
+        setTimeout(() => { if (btn.isConnected && !btn.disabled) btn.click(); }, 0);
+      });
+      return;
+    }
+
+    const uniqueChapters = new Set(rows.map((row) => row.chapterLabel)).size;
+    const groupCount = new Set(rows.map((row) => String(row.group || '').trim()).filter(Boolean)).size;
+    collection.report({
+      phase: 'ready',
+      itemsRead: rows.length,
+      totalItems: rows.length,
+      uniqueChapters,
+      groups: groupCount,
+    });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    if (collection.cancelled) {
+      loadingPopup?.remove();
+      return;
+    }
+    loadingPopup?.remove();
+
     // Open the options panel; it launches the download (or export) on Start.
-    showDownloadAllOptionsPanel(getMangaName(), rows);
+    showDownloadAllOptionsPanel(mangaName, rows);
   });
 
   if (mode === 'floating') document.body.appendChild(btn);
@@ -2998,6 +3174,187 @@ function exportChapterList(mangaName, chapters, meta) {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (_) {}
+}
+
+function showChapterListLoadingPopup(mangaName, onCancel) {
+  document.getElementById('cdl-all-popup')?.remove();
+
+  const popup = document.createElement('div');
+  popup.id = 'cdl-all-popup';
+  popup.dataset.view = 'chapter-list';
+  popup.dataset.progressMode = 'indeterminate';
+  popup.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
+  popup.setAttribute('role', 'dialog');
+  popup.setAttribute('aria-label', 'Comix Downloader chapter-list loading');
+  _setHTML(popup, `
+    <div class="cdl-ap-header">
+      <div class="cdl-ap-title">${ICON_DOWNLOAD}<span>Comix Downloader</span><span class="cdl-ap-title-context">/ Download All</span></div>
+      <button class="cdl-ap-close" type="button" title="Minimize" aria-label="Minimize">−</button>
+    </div>
+    <div class="cdl-ap-body">
+      <div class="cdl-ap-manga-name">${escapeHtml(mangaName)}</div>
+      <div class="cdl-ap-activity">
+        <span class="cdl-ap-activity-indicator" id="cdl-ap-activity-indicator" aria-hidden="true"></span>
+        <div class="cdl-ap-activity-copy" role="status" aria-live="polite">
+          <div class="cdl-ap-status-chapter" id="cdl-ap-chapter-status">Opening chapter list…</div>
+          <div class="cdl-ap-status-line" id="cdl-ap-img-status">Reading the current chapter page.</div>
+        </div>
+      </div>
+      <div class="cdl-ap-stages" aria-label="Chapter-list preparation stages">
+        <div class="cdl-ap-stage is-active" data-stage="download"><span class="cdl-ap-stage-dot"></span><span>Open list</span></div>
+        <div class="cdl-ap-stage" data-stage="zip"><span class="cdl-ap-stage-dot"></span><span>Read chapters</span></div>
+        <div class="cdl-ap-stage" data-stage="save"><span class="cdl-ap-stage-dot"></span><span>Options</span></div>
+      </div>
+      <div class="cdl-ap-bar-wrap" id="cdl-ap-main-progress" role="progressbar" aria-label="Chapter-list loading progress" aria-valuemin="0" aria-valuemax="100"><div class="cdl-ap-bar" id="cdl-ap-bar"></div></div>
+      <div class="cdl-ap-counter" id="cdl-ap-counter">Waiting for chapter total…</div>
+      <div class="cdl-cl-metrics" aria-label="Chapter-list totals">
+        <span><strong id="cdl-cl-entries">0</strong>entries</span>
+        <span><strong id="cdl-cl-chapters">0</strong>chapters</span>
+        <span><strong id="cdl-cl-groups">0</strong>groups</span>
+      </div>
+      <details class="cdl-error-details" id="cdl-ap-error-details" hidden>
+        <summary><span class="cdl-error-summary-label">See technical details</span><span class="cdl-error-code"></span></summary>
+        <div class="cdl-error-details-body">
+          <pre class="cdl-error-report"></pre>
+          <button type="button" class="cdl-error-copy-btn">Copy diagnostics</button>
+        </div>
+      </details>
+    </div>
+    <div class="cdl-ap-footer">
+      <button class="cdl-ap-cancel-btn" id="cdl-chapter-list-cancel" type="button">Cancel</button>
+    </div>`);
+  document.body.appendChild(popup);
+  _cdlPrepareDiagnosticDetails(popup.querySelector('#cdl-ap-error-details'));
+  _cdlEnsureThemeWatcher();
+  requestAnimationFrame(_cdlApplyPopupTheme);
+
+  popup.querySelector('.cdl-ap-close')?.addEventListener('click', () => {
+    const body = popup.querySelector('.cdl-ap-body');
+    body.style.display = body.style.display === 'none' ? '' : 'none';
+  });
+  popup.querySelector('#cdl-chapter-list-cancel')?.addEventListener('click', (event) => {
+    if (popup.dataset.cancelling === 'true') return;
+    popup.dataset.cancelling = 'true';
+    event.currentTarget.disabled = true;
+    const status = popup.querySelector('#cdl-ap-chapter-status');
+    const detail = popup.querySelector('#cdl-ap-img-status');
+    if (status) status.textContent = 'Cancelling chapter scan…';
+    if (detail) detail.textContent = 'Restoring your original chapter page and group.';
+    if (typeof onCancel === 'function') onCancel();
+  });
+  return popup;
+}
+
+function updateChapterListLoadingPopup(popup, progress = {}) {
+  if (!popup?.isConnected || popup.dataset.cancelling === 'true') return;
+  const q = (selector) => popup.querySelector(selector);
+  const phase = progress.phase || 'opening';
+  const status = q('#cdl-ap-chapter-status');
+  const detail = q('#cdl-ap-img-status');
+  const bar = q('#cdl-ap-bar');
+  const counter = q('#cdl-ap-counter');
+  const progressbar = q('#cdl-ap-main-progress');
+  const page = Math.max(0, Number(progress.page) || 0);
+  const totalPages = Math.max(0, Number(progress.totalPages) || 0);
+  const itemsRead = Math.max(0, Number(progress.itemsRead) || 0);
+  const totalItems = Math.max(0, Number(progress.totalItems) || 0);
+  const uniqueChapters = Math.max(0, Number(progress.uniqueChapters) || 0);
+  const groups = Math.max(0, Number(progress.groups) || 0);
+  const formatCount = (value) => value.toLocaleString();
+
+  if (q('#cdl-cl-entries')) q('#cdl-cl-entries').textContent = formatCount(itemsRead);
+  if (q('#cdl-cl-chapters')) q('#cdl-cl-chapters').textContent = formatCount(uniqueChapters);
+  if (q('#cdl-cl-groups')) q('#cdl-cl-groups').textContent = formatCount(groups);
+
+  if (phase === 'opening' || phase === 'opening_groups') {
+    _dlAllSetStage(popup, 'download');
+    popup.dataset.progressMode = 'indeterminate';
+    if (status) status.textContent = phase === 'opening_groups' ? 'Opening All groups…' : 'Opening chapter list…';
+    if (detail) detail.textContent = phase === 'opening_groups'
+      ? 'Preparing every available scanlator source.'
+      : 'Reading the current chapter page.';
+    if (counter) counter.textContent = 'Waiting for chapter total…';
+    if (progressbar) {
+      progressbar.removeAttribute('aria-valuenow');
+      progressbar.setAttribute('aria-valuetext', 'Loading chapter list');
+    }
+    return;
+  }
+
+  if (phase === 'reading') {
+    _dlAllSetStage(popup, 'zip');
+    if (status) status.textContent = 'Reading chapter list…';
+    if (totalPages > 0) {
+      const percent = Math.max(0, Math.min(100, page / totalPages * 100));
+      popup.dataset.progressMode = 'active';
+      if (bar) bar.style.width = `${percent}%`;
+      if (detail) detail.textContent = `Page ${page} of ${totalPages}`;
+      if (counter) counter.textContent = `${formatCount(itemsRead)} / ${formatCount(totalItems)} entries`;
+      if (progressbar) {
+        progressbar.setAttribute('aria-valuemax', String(totalPages));
+        progressbar.setAttribute('aria-valuenow', String(page));
+        progressbar.removeAttribute('aria-valuetext');
+      }
+    } else {
+      popup.dataset.progressMode = 'indeterminate';
+      if (detail) detail.textContent = `Page ${Math.max(1, page)}`;
+      if (counter) counter.textContent = `${formatCount(itemsRead)} entries read`;
+      if (progressbar) {
+        progressbar.removeAttribute('aria-valuenow');
+        progressbar.setAttribute('aria-valuetext', `${formatCount(itemsRead)} entries read`);
+      }
+    }
+    return;
+  }
+
+  _dlAllSetStage(popup, 'save', phase === 'ready' ? 'done' : '');
+  popup.dataset.progressMode = 'idle';
+  if (bar) bar.style.width = '100%';
+  if (status) status.textContent = phase === 'ready' ? 'Chapter list ready' : 'Organizing chapters…';
+  if (detail) detail.textContent = `${formatCount(uniqueChapters)} unique chapter${uniqueChapters === 1 ? '' : 's'}${groups ? ` from ${formatCount(groups)} group${groups === 1 ? '' : 's'}` : ''}.`;
+  if (counter) counter.textContent = `${formatCount(itemsRead)} entries processed`;
+  if (progressbar) {
+    progressbar.setAttribute('aria-valuemax', '100');
+    progressbar.setAttribute('aria-valuenow', '100');
+    progressbar.removeAttribute('aria-valuetext');
+  }
+}
+
+function showChapterListLoadingError(popup, error, onRetry) {
+  if (!popup?.isConnected) return;
+  popup.dataset.cancelling = 'false';
+  _dlAllSetStage(popup, popup.dataset.stage || 'download', 'error');
+  popup.dataset.progressMode = 'idle';
+  const status = popup.querySelector('#cdl-ap-chapter-status');
+  const detail = popup.querySelector('#cdl-ap-img-status');
+  if (status) {
+    status.textContent = 'Chapter list could not be loaded';
+    status.classList.add('error');
+  }
+  if (detail) detail.textContent = error?.message || 'No chapters were found on this page.';
+  _cdlAddPopupDiagnostic(popup, null, error, {
+    errorKind: 'chapter_list',
+    failurePhase: 'chapter_list',
+    context: { operation: 'download_all' },
+  });
+
+  const footer = popup.querySelector('.cdl-ap-footer');
+  if (!footer) return;
+  footer.replaceChildren();
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'cdl-ap-secondary-btn';
+  close.textContent = 'Close';
+  close.addEventListener('click', () => popup.remove());
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'cdl-ap-retry-btn';
+  retry.textContent = 'Retry';
+  retry.addEventListener('click', () => {
+    popup.remove();
+    if (typeof onRetry === 'function') onRetry();
+  });
+  footer.append(close, retry);
 }
 
 function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
@@ -4070,6 +4427,9 @@ function observeDOM() {
 }
 function disconnectDOM() {
   if (_cdlBodyObserver) { _cdlBodyObserver.disconnect(); _cdlBodyObserver = null; }
+  _chapterListCollectionControl?.cancel?.();
+  _chapterListCollectionControl = null;
+  document.querySelector('#cdl-all-popup[data-view="chapter-list"]')?.remove();
   closeSpecificChapterPicker(false);
 }
 

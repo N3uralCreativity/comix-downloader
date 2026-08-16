@@ -49,7 +49,7 @@ const goToPage = extractFunction('goToChapterPage');
 check('an active pager page is accepted only when chapter rows are present',
   goToPage.includes('cur === target && hasRows'));
 check('empty chapter pages invoke automatic list recovery',
-  goToPage.includes('recoverChapterListView()'));
+  goToPage.includes('recoverChapterListView(collection)'));
 check('chapter navigation has a bounded retry limit',
   goToPage.includes('CHAPTER_LIST_NAV_RETRIES'));
 
@@ -67,12 +67,15 @@ check('chapter pagination rejects repeated page ranges',
 
 const collectRows = extractFunction('collectChapterRowsWithGroups');
 check('Download All temporarily reads the unfiltered All groups list',
-  collectRows.includes("selectChapterGroup('All groups')"));
+  collectRows.includes("selectChapterGroup('All groups', collection)"));
 check('the original site group and page are restored after collection',
   collectRows.includes('selectChapterGroup(originalGroup)') &&
   collectRows.includes('restoreRenderedChapterPage(originalPage)'));
 check('partial row collections are rejected before opening download options',
   collectRows.includes('rows.length < result.total'));
+check('chapter-list cancellation remains active during page navigation',
+  goToPage.includes('collection?.checkpoint?.()') &&
+  extractFunction('waitForChapterListChange').includes('collection?.checkpoint?.()'));
 
 check('active progress frames periodically reconcile their durable session',
   source.includes('DOWNLOAD_ALL_SESSION_SYNC_MS = 2000') &&
