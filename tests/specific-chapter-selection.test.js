@@ -82,6 +82,18 @@ check('the options panel exposes quick entry and the real-list chapter picker',
   source.includes('function openSpecificChapterPicker(') &&
   source.includes('cdl-specific-chapter-check'));
 
+check('chapter picker checkboxes stay centered in chapter rows',
+  source.includes('align-self:center !important') &&
+  source.includes('justify-self:center') &&
+  source.includes('margin:auto 0 auto 5px'));
+
+check('chapter picker focuses the real list and blocks outside misclicks',
+  source.includes("layer.id = 'cdl-specific-picker-focus'") &&
+  source.includes('cdl-specific-focus-shade') &&
+  source.includes('Selecting chapters') &&
+  source.includes("chapterSection.addEventListener('click', picker.onChapterClick, true)") &&
+  source.includes('picker.focus = createSpecificChapterPickerFocus(chapterSection)'));
+
 check('specific selections feed the existing Download All subset',
   source.includes("if (scope === 'specific') return orderedSpecificChapters();") &&
   source.includes('_lastDlAllParams = { chapters: subset, mangaName, zipName, options };'));

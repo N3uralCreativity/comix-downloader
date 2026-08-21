@@ -2341,6 +2341,79 @@ function cleanupSpecificChapterPickerRows() {
   document.querySelectorAll('.mchap-item.cdl-specific-picked').forEach((node) => node.classList.remove('cdl-specific-picked'));
 }
 
+function createSpecificChapterPickerFocus(section) {
+  if (!section?.getBoundingClientRect) return null;
+  const layer = document.createElement('div');
+  layer.id = 'cdl-specific-picker-focus';
+  layer.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
+  layer.setAttribute('aria-hidden', 'true');
+  _setHTML(layer, `
+    <div class="cdl-specific-focus-shade" data-edge="top"></div>
+    <div class="cdl-specific-focus-shade" data-edge="left"></div>
+    <div class="cdl-specific-focus-shade" data-edge="right"></div>
+    <div class="cdl-specific-focus-shade" data-edge="bottom"></div>
+    <div class="cdl-specific-focus-frame"></div>`);
+  document.body.appendChild(layer);
+
+  const shades = [...layer.querySelectorAll('.cdl-specific-focus-shade')];
+  const frame = layer.querySelector('.cdl-specific-focus-frame');
+  let animationFrame = 0;
+  const setRect = (node, left, top, width, height) => {
+    node.style.left = `${left}px`;
+    node.style.top = `${top}px`;
+    node.style.width = `${Math.max(0, width)}px`;
+    node.style.height = `${Math.max(0, height)}px`;
+    node.style.display = width > 0 && height > 0 ? '' : 'none';
+  };
+  const render = () => {
+    animationFrame = 0;
+    if (!layer.isConnected) return;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const rect = section.getBoundingClientRect();
+    const gap = 7;
+    const left = Math.max(0, Math.min(viewportWidth, Math.floor(rect.left - gap)));
+    const right = Math.max(left, Math.min(viewportWidth, Math.ceil(rect.right + gap)));
+    const top = Math.max(0, Math.min(viewportHeight, Math.floor(rect.top - gap)));
+    const bottom = Math.max(top, Math.min(viewportHeight, Math.ceil(rect.bottom + gap)));
+    const middleHeight = bottom - top;
+
+    setRect(layer.querySelector('[data-edge="top"]'), 0, 0, viewportWidth, top);
+    setRect(layer.querySelector('[data-edge="left"]'), 0, top, left, middleHeight);
+    setRect(layer.querySelector('[data-edge="right"]'), right, top, viewportWidth - right, middleHeight);
+    setRect(layer.querySelector('[data-edge="bottom"]'), 0, bottom, viewportWidth, viewportHeight - bottom);
+    setRect(frame, left, top, right - left, middleHeight);
+  };
+  const update = () => {
+    if (animationFrame) return;
+    animationFrame = window.requestAnimationFrame(render);
+  };
+  const blockOutsideClick = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  shades.forEach((shade) => {
+    shade.addEventListener('pointerdown', blockOutsideClick, true);
+    shade.addEventListener('click', blockOutsideClick, true);
+  });
+  window.addEventListener('resize', update);
+  window.addEventListener('scroll', update, true);
+  const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
+  resizeObserver?.observe(section);
+  render();
+
+  return {
+    update,
+    destroy() {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+      resizeObserver?.disconnect();
+      layer.remove();
+    },
+  };
+}
+
 function syncSpecificChapterPickerRows() {
   const picker = _specificChapterPicker;
   if (!picker) return;
@@ -2378,6 +2451,7 @@ function syncSpecificChapterPickerRows() {
     wrapper.classList.toggle('is-disabled', !allowed);
     item.classList.toggle('cdl-specific-picked', input.checked);
   });
+  picker.focus?.update();
 }
 
 function closeSpecificChapterPicker(commitSelection) {
@@ -2389,6 +2463,9 @@ function closeSpecificChapterPicker(commitSelection) {
     picker.snapshot.forEach((chapter, key) => picker.selections.set(key, chapter));
   }
   cleanupSpecificChapterPickerRows();
+  picker.chapterSection?.removeEventListener('click', picker.onChapterClick, true);
+  picker.chapterSection?.removeEventListener('auxclick', picker.onChapterAuxClick, true);
+  picker.focus?.destroy();
   picker.toolbar.remove();
   document.removeEventListener('keydown', picker.onKeydown, true);
   if (picker.searchChanged) setComixChapterSearch(picker.originalSearch);
@@ -2407,7 +2484,7 @@ function openSpecificChapterPicker({ backdrop, rows, allowedChapters, allowAllSo
   toolbar.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
   _setHTML(toolbar, `
     <div class="cdl-specific-picker-title">
-      <strong>Select chapters</strong>
+      <strong><i aria-hidden="true"></i>Selecting chapters</strong>
       <span>${escapeHtml(sourceLabel || 'All groups')}</span>
     </div>
     <div class="cdl-specific-picker-controls">
@@ -2418,10 +2495,13 @@ function openSpecificChapterPicker({ backdrop, rows, allowedChapters, allowAllSo
     </div>`);
   document.body.appendChild(toolbar);
   backdrop.style.display = 'none';
+  const chapterSection = getChaptersSection();
 
   const picker = {
     backdrop,
     toolbar,
+    chapterSection,
+    focus: null,
     rowsByUrl,
     allowedUrls,
     allowAllSources: !!allowAllSources,
@@ -2431,6 +2511,8 @@ function openSpecificChapterPicker({ backdrop, rows, allowedChapters, allowAllSo
     searchChanged: false,
     onClose,
     onKeydown: null,
+    onChapterClick: null,
+    onChapterAuxClick: null,
     toggle(row, checked) {
       const key = chapterKeyOf(row.chapterLabel);
       if (checked) this.selections.set(key, row);
@@ -2444,6 +2526,22 @@ function openSpecificChapterPicker({ backdrop, rows, allowedChapters, allowAllSo
       syncSpecificChapterPickerRows();
     },
   };
+  picker.onChapterClick = (event) => {
+    const item = event.target.closest?.('.mchap-item');
+    if (!item || !chapterSection.contains(item) || event.target.closest?.('.cdl-specific-chapter-check')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const input = item.querySelector('.cdl-specific-chapter-check input');
+    if (!input || input.disabled) return;
+    input.checked = !input.checked;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  picker.onChapterAuxClick = (event) => {
+    const item = event.target.closest?.('.mchap-item');
+    if (!item || !chapterSection.contains(item)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
   picker.onKeydown = (event) => {
     if (event.key !== 'Escape') return;
     event.preventDefault();
@@ -2451,6 +2549,9 @@ function openSpecificChapterPicker({ backdrop, rows, allowedChapters, allowAllSo
   };
   _specificChapterPicker = picker;
   document.addEventListener('keydown', picker.onKeydown, true);
+  chapterSection.addEventListener('click', picker.onChapterClick, true);
+  chapterSection.addEventListener('auxclick', picker.onChapterAuxClick, true);
+  picker.focus = createSpecificChapterPickerFocus(chapterSection);
 
   const pickerSearch = toolbar.querySelector('#cdl-specific-picker-search');
   pickerSearch.value = picker.originalSearch;
@@ -2461,7 +2562,7 @@ function openSpecificChapterPicker({ backdrop, rows, allowedChapters, allowAllSo
   toolbar.querySelector('#cdl-specific-picker-back').addEventListener('click', () => closeSpecificChapterPicker(false));
   toolbar.querySelector('#cdl-specific-picker-done').addEventListener('click', () => closeSpecificChapterPicker(true));
   picker.update();
-  getChaptersSection().scrollIntoView({ block: 'start', behavior: 'smooth' });
+  chapterSection.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
 // Resolve the set of already-downloaded chapter keys for this series.
@@ -2810,6 +2911,11 @@ function injectOptsStyles() {
     .cdl-op-btn.primary { background:var(--cdl-accent); border-color:var(--cdl-accent); color:var(--accent-ink, #07101f); }
     .cdl-op-btn.primary:hover { filter:brightness(1.08); }
     .cdl-op-btn:disabled { opacity:.45; cursor:default; }
+    #cdl-specific-picker-focus { position:fixed; inset:0; z-index:2147483645; pointer-events:none; }
+    .cdl-specific-focus-shade { position:fixed; pointer-events:auto; cursor:default; background:rgba(5,8,11,.46); }
+    #cdl-specific-picker-focus[data-cdl-theme="light"] .cdl-specific-focus-shade { background:rgba(17,20,32,.28); }
+    .cdl-specific-focus-frame { position:fixed; box-sizing:border-box; pointer-events:none; border:1px solid rgba(102,232,250,.82);
+      border-radius:8px; box-shadow:0 0 0 3px rgba(102,232,250,.11),0 10px 32px rgba(0,0,0,.18); }
     #cdl-specific-picker-toolbar {
       --cdl-bg:var(--surface,#2a3134); --cdl-header-bg:var(--surface-2,#323a3e); --cdl-text:var(--text,#cdd5d6);
       --cdl-text-strong:var(--text-emphasis,#ecf4f5); --cdl-muted:var(--text-2,#9da4a5); --cdl-border:rgba(255,255,255,0.12);
@@ -2822,13 +2928,15 @@ function injectOptsStyles() {
       --cdl-bg:#fff; --cdl-header-bg:#f7f8fb; --cdl-text:#2b3146; --cdl-text-strong:#14171f;
       --cdl-muted:#6b7180; --cdl-border:rgba(17,20,32,.14); --cdl-hover:rgba(17,20,32,.05); }
     .cdl-specific-picker-title { min-width:120px; display:flex; flex-direction:column; gap:2px; }
-    .cdl-specific-picker-title strong { color:var(--cdl-text-strong); font-size:13px; }
+    .cdl-specific-picker-title strong { display:flex; align-items:center; gap:7px; color:var(--cdl-text-strong); font-size:13px; }
+    .cdl-specific-picker-title strong i { width:7px; height:7px; flex:0 0 7px; border-radius:50%; background:var(--cdl-accent);
+      box-shadow:0 0 0 3px rgba(102,232,250,.13); }
     .cdl-specific-picker-title span { color:var(--cdl-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
     .cdl-specific-picker-controls { flex:1; display:grid; grid-template-columns:minmax(130px,1fr) auto auto auto; align-items:center; gap:7px; }
     #cdl-specific-picker-search { min-width:0; width:100%; box-sizing:border-box; padding:7px 9px; border:1px solid var(--cdl-border);
       border-radius:7px; color:var(--cdl-text); background:var(--cdl-header-bg); font:inherit; }
     #cdl-specific-picker-count { min-width:68px; color:var(--cdl-muted); text-align:right; }
-    .cdl-specific-chapter-check { position:relative; z-index:10000000; width:28px; height:28px; flex:0 0 28px; display:grid; place-items:center; margin-left:5px;
+    .cdl-specific-chapter-check { position:relative; z-index:10000000; width:28px; height:28px; flex:0 0 28px; display:grid; place-items:center; align-self:center !important; justify-self:center; margin:auto 0 auto 5px; line-height:0;
       border:1px solid var(--cdl-border,rgba(255,255,255,.16)); border-radius:6px; cursor:pointer; box-sizing:border-box; }
     .cdl-specific-chapter-check:hover { background:var(--cdl-hover,rgba(255,255,255,.06)); }
     .cdl-specific-chapter-check input { width:15px; height:15px; margin:0; accent-color:var(--accent,#66e8fa); cursor:pointer; }
