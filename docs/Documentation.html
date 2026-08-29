@@ -244,7 +244,7 @@
     <a class="brand" href="index.html">
       <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
       Comix Downloader
-      <span class="ver">v4.2.28</span>
+      <span class="ver">v4.2.30</span>
     </a>
     <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -279,7 +279,7 @@
       <a href="#whats-new-stats" class="sub">— Reading stats</a>
       <a href="#whats-new-flags" class="sub">— Community flags</a>
       <a href="#settings">Settings</a>
-      <a href="#plus">Plus sync</a>
+      <a href="#plus">Plus preview</a>
       <a href="#library">Output, library &amp; sync</a>
       <a href="#push-library" class="sub">— Push to library</a>
       <a href="#warning">The background-tab warning</a>
@@ -569,7 +569,7 @@
         <li><strong>Naming</strong> — image padding and templates for chapter folders, ZIP names, and CBZ chapter files. CBZ templates can include chapter, scanlator/group, language, and series metadata, with a live preview.</li>
         <li><strong>Appearance</strong> — the on-page buttons and the progress panel.</li>
         <li><strong>Advanced</strong> — riskier options like image re-encoding and scramble handling.</li>
-        <li><strong>Sync &amp; Library</strong> — watch series for new chapters, push finished CBZs to your own server, and optionally configure Plus encrypted cross-device sync.</li>
+        <li><strong>Sync &amp; Library</strong> — watch series for new chapters and push finished CBZs to your own server.</li>
         <li><strong>About &amp; Backup</strong> — export/import settings, and reset to defaults.</li>
       </ul>
 
@@ -605,19 +605,11 @@
 
     <!-- optional Plus service -->
     <section class="doc-sec" id="plus">
-      <h2>Comix Downloader Plus</h2>
-      <p><strong>Plus is optional.</strong> It adds end-to-end encrypted synchronization, five-device support, and a rolling 30-day restore history. It does not unlock downloads or replace any existing feature, and the free extension still requires no account.</p>
+      <h2>Comix Downloader Plus preview</h2>
+      <p><strong>Plus is optional and still in development.</strong> It is planned to add end-to-end encrypted synchronization, five-device support, reading migration, external sources, and a rolling 30-day restore history. Plus is not available in the current public extension, and there is no account, trial, or checkout to start yet.</p>
 
-      <h3>Starting the 30-day trial</h3>
-      <ol class="steps">
-        <li>Open <strong>Settings &rarr; Sync &amp; Library</strong> and find the Comix Downloader Plus section.</li>
-        <li>Select <strong>Start 30-day trial</strong>, grant access to the exact Plus API origin, and verify the six-digit code sent to your email.</li>
-        <li>Complete the hosted Stripe Managed Payments checkout. A payment method is required; the subscription renews at US$1.50/month after 30 days unless cancelled.</li>
-        <li>Create the encryption key and store the recovery code somewhere separate from the browser. The service cannot recover that code for you.</li>
-        <li>Select the categories you want to synchronize. Every category starts unchecked; <strong>Select recommended</strong> is only a shortcut.</li>
-        <li>Run the first backup. Later eligible changes synchronize after a short delay, at browser startup, and every 15 minutes while the browser is running.</li>
-        <li>If every approved device and the recovery code are lost, verify the account email again and reset cloud encryption. Local extension data remains on the device.</li>
-      </ol>
+      <h3>Current status</h3>
+      <p>The interface below is an early internal build and may change before release. When Plus is ready, availability will be announced in the changelog and on <a href="https://github.com/N3uralCreativity/comix-downloader/releases" target="_blank" rel="noopener">GitHub Releases</a>. The planned service will not move downloads or any existing extension feature behind an account.</p>
 
       <div class="shot" style="margin-top:16px;">
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings &mdash; Sync &amp; Library &mdash; Comix Downloader Plus</span></div>
@@ -626,7 +618,7 @@
 
       <div class="callout">
         <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        <div><strong>Plus is dormant until you start setup.</strong><p style="margin-top:8px;">A free installation makes no Plus API request. Plus synchronizes only selected metadata and never uploads comic images, archives, activity logs, active downloads, library credentials, cookies, CAPTCHA data, notice state, or review state. See the <a href="plus.html">Plus details</a> and <a href="privacy.html#plus">privacy policy</a>.</p></div>
+        <div><strong>Plus is not active in the public extension.</strong><p style="margin-top:8px;">The current release makes no Plus API request and requires no account. The planned service will synchronize only selected encrypted metadata and will never upload comic images, archives, activity logs, active downloads, library credentials, cookies, CAPTCHA data, notice state, or review state. See the <a href="plus.html">Plus preview</a> and <a href="privacy.html#plus">privacy policy</a>.</p></div>
       </div>
     </section>
 
