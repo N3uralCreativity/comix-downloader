@@ -244,7 +244,7 @@
     <a class="brand" href="index.html">
       <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
       Comix Downloader
-      <span class="ver">v4.2.30</span>
+      <span class="ver">v4.2.28</span>
     </a>
     <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -252,9 +252,10 @@
     <nav class="nav-links" id="nav-links">
       <a href="index.html">Home</a>
       <a href="Documentation.html" class="active">Documentation</a>
+      <a href="plus.html">Plus</a>
       <a href="privacy.html">Privacy</a>
       <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
-    </nav>
+    <a class="nav-signin" href="plus.html#notify"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in<span class="nav-signin-soon">Soon</span></a></nav>
   </div>
 </header>
 
@@ -278,6 +279,7 @@
       <a href="#whats-new-stats" class="sub">— Reading stats</a>
       <a href="#whats-new-flags" class="sub">— Community flags</a>
       <a href="#settings">Settings</a>
+      <a href="#plus">Plus sync</a>
       <a href="#library">Output, library &amp; sync</a>
       <a href="#push-library" class="sub">— Push to library</a>
       <a href="#warning">The background-tab warning</a>
@@ -500,7 +502,7 @@
     <!-- what's new in v2.4 -->
     <section class="doc-sec" id="whats-new">
       <h2>What&rsquo;s new in v2.4</h2>
-      <p>Beyond downloading, v2.4 adds on-site enhancements that make comix.to nicer to use. The comix.to ad and popup blocker is <strong>on by default</strong>; the other enhancements are opt-in. Manage them from the <a href="#settings">Settings</a> page (mostly under the &ldquo;Additional features&rdquo; and &ldquo;Home&rdquo; tabs). Everything personal stays on your device.</p>
+      <p>Beyond downloading, v2.4 adds on-site enhancements that make comix.to nicer to use. The comix.to ad and popup blocker is <strong>on by default</strong>; the other enhancements are opt-in. Manage them from the <a href="#settings">Settings</a> page (mostly under the &ldquo;Additional features&rdquo; and &ldquo;Home&rdquo; tabs). Free features keep personal data on your device unless you explicitly configure your own library server or start Plus setup.</p>
 
       <h3 id="whats-new-home">A Home page that&rsquo;s actually yours</h3>
       <p>Replace comix.to&rsquo;s Home with a focused layout you control: choose which sections appear and drag them into the order you want &mdash; Continue Reading, New Chapters from comics you follow, Recently Followed &mdash; plus a unified <strong>&ldquo;What&rsquo;s New&rdquo;</strong> feed, a featured hero spotlight, a welcome header, and hover previews (cover and synopsis).</p>
@@ -567,7 +569,7 @@
         <li><strong>Naming</strong> — image padding and templates for chapter folders, ZIP names, and CBZ chapter files. CBZ templates can include chapter, scanlator/group, language, and series metadata, with a live preview.</li>
         <li><strong>Appearance</strong> — the on-page buttons and the progress panel.</li>
         <li><strong>Advanced</strong> — riskier options like image re-encoding and scramble handling.</li>
-        <li><strong>Sync &amp; Library</strong> — watch series for new chapters, and push finished CBZs to your own server.</li>
+        <li><strong>Sync &amp; Library</strong> — watch series for new chapters, push finished CBZs to your own server, and optionally configure Plus encrypted cross-device sync.</li>
         <li><strong>About &amp; Backup</strong> — export/import settings, and reset to defaults.</li>
       </ul>
 
@@ -598,6 +600,33 @@
       <div class="shot" style="margin-top:6px;">
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings — Advanced</span></div>
         <img src="assets/settings-advanced.png" alt="Settings page, Advanced tab with risk warnings">
+      </div>
+    </section>
+
+    <!-- optional Plus service -->
+    <section class="doc-sec" id="plus">
+      <h2>Comix Downloader Plus</h2>
+      <p><strong>Plus is optional.</strong> It adds end-to-end encrypted synchronization, five-device support, and a rolling 30-day restore history. It does not unlock downloads or replace any existing feature, and the free extension still requires no account.</p>
+
+      <h3>Starting the 30-day trial</h3>
+      <ol class="steps">
+        <li>Open <strong>Settings &rarr; Sync &amp; Library</strong> and find the Comix Downloader Plus section.</li>
+        <li>Select <strong>Start 30-day trial</strong>, grant access to the exact Plus API origin, and verify the six-digit code sent to your email.</li>
+        <li>Complete the hosted Stripe Managed Payments checkout. A payment method is required; the subscription renews at US$1.50/month after 30 days unless cancelled.</li>
+        <li>Create the encryption key and store the recovery code somewhere separate from the browser. The service cannot recover that code for you.</li>
+        <li>Select the categories you want to synchronize. Every category starts unchecked; <strong>Select recommended</strong> is only a shortcut.</li>
+        <li>Run the first backup. Later eligible changes synchronize after a short delay, at browser startup, and every 15 minutes while the browser is running.</li>
+        <li>If every approved device and the recovery code are lost, verify the account email again and reset cloud encryption. Local extension data remains on the device.</li>
+      </ol>
+
+      <div class="shot" style="margin-top:16px;">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings &mdash; Sync &amp; Library &mdash; Comix Downloader Plus</span></div>
+        <img src="assets/plus-dashboard-sync.png" alt="Comix Downloader Plus account, encrypted sync categories, device count, and restore controls">
+      </div>
+
+      <div class="callout">
+        <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <div><strong>Plus is dormant until you start setup.</strong><p style="margin-top:8px;">A free installation makes no Plus API request. Plus synchronizes only selected metadata and never uploads comic images, archives, activity logs, active downloads, library credentials, cookies, CAPTCHA data, notice state, or review state. See the <a href="plus.html">Plus details</a> and <a href="privacy.html#plus">privacy policy</a>.</p></div>
       </div>
     </section>
 
@@ -770,6 +799,7 @@
     <div class="right">
       <a class="status-btn" href="https://everythingmoe.com/monitor" target="_blank" rel="noopener" title="Check comix.to status on EverythingMoe"><span class="status-dot"></span>Comix Status</a>
       <a class="changelog-btn" href="changelog.html"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>Changelog</a>
+      <a href="plus.html">Plus</a>
       <a href="index.html">Home</a>
       <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">Firefox</a>
       <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome</a>

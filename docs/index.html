@@ -133,6 +133,20 @@
   .split li svg { position: absolute; left: 0; top: 2px; width: 19px; height: 19px; color: var(--accent); }
 
   .android-band { margin-top: 88px; }
+  .plus-band {
+    margin-top: 88px;
+    padding: 34px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    align-items: center;
+    gap: 28px;
+  }
+  .plus-band .plus-title { display: flex; align-items: center; gap: 10px; }
+  .plus-band h2 { font-size: 24px; line-height: 1.15; font-weight: 800; letter-spacing: 0; }
+  .plus-band .tag { padding: 3px 7px; border: 1px solid var(--accent-line); border-radius: 4px; background: var(--accent-wash); color: var(--accent-deep); font: 700 9px/1 var(--mono); }
+  .plus-band p { margin-top: 8px; max-width: 68ch; color: var(--ink-soft); font-size: 14.5px; }
   .android-card {
     display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
     padding: 30px 32px;
@@ -150,6 +164,7 @@
     .steps { grid-template-columns: 1fr; gap: 28px; padding: 40px 0; }
     .split { grid-template-columns: 1fr; gap: 32px; padding-top: 56px; }
     .android-card .btn { margin-left: 0; }
+    .plus-band { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -161,7 +176,7 @@
     <a class="brand" href="index.html">
       <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
       Comix Downloader
-      <span class="ver">v4.2.30</span>
+      <span class="ver">v4.2.28</span>
     </a>
     <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -169,9 +184,10 @@
     <nav class="nav-links" id="nav-links">
       <a href="index.html" class="active">Home</a>
       <a href="Documentation.html">Documentation</a>
+      <a href="plus.html">Plus</a>
       <a href="privacy.html">Privacy</a>
       <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
-    </nav>
+    <a class="nav-signin" href="plus.html#notify"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in<span class="nav-signin-soon">Soon</span></a></nav>
   </div>
 </header>
 
@@ -314,7 +330,16 @@
     </div>
   </section>
 
-  <!-- android -->
+  <!-- plus -->
+  <section class="plus-band" aria-labelledby="plus-home-title">
+    <div>
+      <div class="plus-title"><h2 id="plus-home-title">Comix Downloader Plus</h2><span class="tag">OPTIONAL</span></div>
+      <p>Cross-device sync with end-to-end encrypted backups and 30-day restore history. Free for 30 days, then US$1.50/month. The extension and every current feature remain free without an account.</p>
+    </div>
+    <a class="btn btn-ghost" href="plus.html">See Plus details &rarr;</a>
+  </section>
+
+  <!-- mobile setup -->
   <section class="android-band">
     <div class="android-card">
       <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true" style="width:46px;height:46px;flex:none;"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
@@ -335,6 +360,7 @@
     <div class="right">
       <a class="status-btn" href="https://everythingmoe.com/monitor" target="_blank" rel="noopener" title="Check comix.to status on EverythingMoe"><span class="status-dot"></span>Comix Status</a>
       <a class="changelog-btn" href="changelog.html"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>Changelog</a>
+      <a href="plus.html">Plus</a>
       <a href="Documentation.html">Docs</a>
       <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">Firefox</a>
       <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome</a>

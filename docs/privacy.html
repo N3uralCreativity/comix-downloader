@@ -3,395 +3,82 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Privacy Policy &amp; Legal Notice — Comix Downloader</title>
-<meta name="description" content="Privacy Policy and Legal Notice for the Comix Downloader browser extension. No personal data is collected; everything personal stays on your device, and the community features share only anonymous one-way hashes.">
+<title>Privacy Policy and Legal Notice - Comix Downloader</title>
+<meta name="description" content="How the free Comix Downloader extension and optional Comix Downloader Plus service handle local data, encrypted sync, accounts, and billing.">
 <meta name="theme-color" content="#774fd0">
 <link rel="canonical" href="https://n3uralcreativity.top/comix-downloader/privacy.html">
-
-<!-- Open Graph / social sharing -->
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="Comix Downloader">
-<meta property="og:title" content="Privacy Policy &amp; Legal Notice — Comix Downloader">
-<meta property="og:description" content="Comix Downloader collects no personal data; everything personal stays on your device. Read the full privacy policy and legal notice.">
-<meta property="og:url" content="https://n3uralcreativity.top/comix-downloader/privacy.html">
-<meta property="og:image" content="https://n3uralcreativity.top/comix-downloader/assets/screenshot-title.jpg">
-<meta property="og:image:width" content="1125">
-<meta property="og:image:height" content="780">
-<meta property="og:image:alt" content="Comix Downloader on a comix.to title page">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Privacy Policy &amp; Legal Notice — Comix Downloader">
-<meta name="twitter:description" content="Comix Downloader collects no personal data; everything personal stays on your device. Read the full privacy policy and legal notice.">
-<meta name="twitter:image" content="https://n3uralcreativity.top/comix-downloader/assets/screenshot-title.jpg">
-<meta name="twitter:image:alt" content="Comix Downloader on a comix.to title page">
-<link rel="icon" type="image/png" href="assets/icon128.png?v=2">
-<link rel="stylesheet" href="site.css">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Comix Downloader"><meta property="og:title" content="Privacy Policy - Comix Downloader"><meta property="og:description" content="Clear disclosures for the local extension and optional end-to-end encrypted Plus service."><meta property="og:url" content="https://n3uralcreativity.top/comix-downloader/privacy.html"><meta property="og:image" content="https://n3uralcreativity.top/comix-downloader/assets/screenshot-title.jpg">
+<link rel="icon" type="image/png" href="assets/icon128.png?v=2"><link rel="stylesheet" href="site.css">
 <style>
-  /* ── Privacy / legal page ── */
-  .legal-hero { padding: 54px 0 6px; }
-  .legal-hero .eyebrow { display: inline-block; margin-bottom: 18px; }
-  .legal-hero h1 { font-size: clamp(32px, 4.2vw, 48px); line-height: 1.04; letter-spacing: -0.03em; font-weight: 800; }
-  .legal-hero .updated { margin-top: 16px; font: 500 12.5px/1 var(--mono); color: var(--muted); }
-  .legal-hero .lede { margin-top: 18px; font-size: 17px; color: var(--ink-soft); max-width: 64ch; }
-
-  .summary {
-    display: flex; gap: 14px; margin: 30px 0 6px;
-    padding: 20px 22px; border-radius: var(--radius);
-    background: var(--accent-wash); border: 1px solid var(--accent-line);
-  }
-  .summary .ico { flex-shrink: 0; width: 22px; height: 22px; color: var(--accent-deep); margin-top: 1px; }
-  .summary strong { color: var(--accent-deep); }
-  .summary p { color: var(--ink-soft); font-size: 14.5px; }
-  .summary p + p { margin-top: 7px; }
-
-  .layout { display: grid; grid-template-columns: 248px 1fr; gap: 50px; align-items: start; padding: 28px 0 0; }
-
-  .toc { position: sticky; top: 84px; }
-  .toc .kicker { display: block; margin-bottom: 12px; }
-  .toc ol { list-style: none; display: grid; gap: 4px; counter-reset: toc; }
-  .toc a {
-    display: block; color: var(--ink-soft); font-size: 13.5px; line-height: 1.35;
-    padding: 6px 10px; border-radius: 6px; border-left: 2px solid transparent;
-    transition: background .14s, color .14s, border-color .14s;
-  }
-  .toc a:hover { background: var(--surface-2); color: var(--ink); }
-  .toc a::before { counter-increment: toc; content: counter(toc) ". "; color: var(--faint); font: 600 12px var(--mono); }
-
-  .legal-body section { padding: 28px 0; border-top: 1px solid var(--line); scroll-margin-top: 80px; }
-  .legal-body section:first-child { border-top: none; padding-top: 6px; }
-  .legal-body h2 { font-size: 21px; font-weight: 750; letter-spacing: -0.02em; line-height: 1.2; display: flex; align-items: baseline; gap: 11px; }
-  .legal-body h2 .num { color: var(--accent); font: 700 15px/1 var(--mono); flex-shrink: 0; }
-  .legal-body h3 { font-size: 15.5px; font-weight: 700; color: var(--ink); margin-top: 22px; }
-  .legal-body p { color: var(--ink-soft); font-size: 15px; margin-top: 11px; }
-  .legal-body ul { margin: 13px 0 0; padding: 0; list-style: none; display: grid; gap: 9px; }
-  .legal-body ul li { position: relative; padding-left: 17px; color: var(--ink-soft); font-size: 15px; }
-  .legal-body ul li::before { content: ""; position: absolute; left: 0; top: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-  .legal-body a { font-weight: 600; }
-
-  .dl { margin-top: 14px; display: grid; gap: 2px; }
-  .dl > div { padding: 13px 0; border-bottom: 1px dashed var(--line); display: grid; grid-template-columns: 200px 1fr; gap: 18px; }
-  .dl > div:last-child { border-bottom: none; }
-  .dl dt { font-weight: 700; color: var(--ink); font-size: 14px; }
-  .dl dt code { font-size: 12px; }
-  .dl dd { color: var(--ink-soft); font-size: 14.5px; }
-
-  .ph { background: var(--accent-wash); border: 1px dashed var(--accent-line); color: var(--accent-deep); padding: 1px 7px; border-radius: 5px; font: 600 0.85em var(--mono); }
-
-  .legal-note {
-    margin-top: 16px; padding: 16px 18px; border-radius: var(--radius);
-    background: var(--surface-2); border: 1px solid var(--line);
-    font-size: 13.5px; color: var(--ink-soft);
-  }
-  .legal-note strong { color: var(--ink); }
-  .uc { text-transform: uppercase; letter-spacing: 0.01em; font-size: 12.5px; line-height: 1.7; }
-
-  @media (max-width: 900px) {
-    .layout { grid-template-columns: 1fr; gap: 8px; }
-    .toc { position: static; margin: 8px 0 4px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
-    .toc ol { grid-template-columns: 1fr 1fr; }
-    .dl > div { grid-template-columns: 1fr; gap: 4px; }
-  }
+  .legal-hero{padding:54px 0 6px}.legal-hero .eyebrow{display:inline-block;margin-bottom:18px}.legal-hero h1{font-size:48px;line-height:1.04;letter-spacing:0;font-weight:800}.legal-hero .updated{margin-top:16px;font:500 12.5px/1 var(--mono);color:var(--muted)}.legal-hero .lede{margin-top:18px;font-size:17px;color:var(--ink-soft);max-width:68ch}
+  .summary{display:flex;gap:14px;margin:30px 0 6px;padding:20px 22px;border-radius:var(--radius);background:var(--accent-wash);border:1px solid var(--accent-line)}.summary .ico{flex:none;width:22px;height:22px;color:var(--accent-deep);margin-top:1px}.summary strong{color:var(--accent-deep)}.summary p{color:var(--ink-soft);font-size:14.5px}.summary p+p{margin-top:7px}
+  .layout{display:grid;grid-template-columns:248px 1fr;gap:50px;align-items:start;padding:28px 0 0}.toc{position:sticky;top:84px}.toc .kicker{display:block;margin-bottom:12px}.toc ol{list-style:none;display:grid;gap:4px;counter-reset:toc}.toc a{display:block;color:var(--ink-soft);font-size:13.5px;line-height:1.35;padding:6px 10px;border-radius:6px;border-left:2px solid transparent}.toc a:hover{background:var(--surface-2);color:var(--ink)}.toc a:before{counter-increment:toc;content:counter(toc) ". ";color:var(--faint);font:600 12px var(--mono)}
+  .legal-body section{padding:28px 0;border-top:1px solid var(--line);scroll-margin-top:80px}.legal-body section:first-child{border-top:0;padding-top:6px}.legal-body h2{font-size:21px;font-weight:750;letter-spacing:0;line-height:1.2;display:flex;align-items:baseline;gap:11px}.legal-body h2 .num{color:var(--accent);font:700 15px/1 var(--mono);flex:none}.legal-body h3{font-size:15.5px;font-weight:700;margin-top:22px}.legal-body p{color:var(--ink-soft);font-size:15px;margin-top:11px}.legal-body ul{margin:13px 0 0;padding:0;list-style:none;display:grid;gap:9px}.legal-body li{position:relative;padding-left:17px;color:var(--ink-soft);font-size:15px}.legal-body li:before{content:"";position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:50%;background:var(--accent)}.legal-body a{font-weight:600}.dl{margin-top:14px;display:grid;gap:2px}.dl>div{padding:13px 0;border-bottom:1px dashed var(--line);display:grid;grid-template-columns:210px 1fr;gap:18px}.dl>div:last-child{border-bottom:0}.dl dt{font-weight:700;font-size:14px}.dl dd{color:var(--ink-soft);font-size:14.5px}.legal-note{margin-top:16px;padding:16px 18px;border-radius:var(--radius);background:var(--surface-2);border:1px solid var(--line);font-size:13.5px;color:var(--ink-soft)}
+  @media(max-width:900px){.layout{grid-template-columns:1fr;gap:8px}.toc{position:static;margin:8px 0 4px;padding:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-2)}.toc ol{grid-template-columns:1fr 1fr}.dl>div{grid-template-columns:1fr;gap:4px}}@media(max-width:560px){.legal-hero h1{font-size:36px}.toc ol{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
-
-<header class="nav">
-  <div class="nav-inner">
-    <a class="brand" href="index.html">
-      <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
-      Comix Downloader
-      <span class="ver">v4.2.30</span>
-    </a>
-    <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-    </button>
-    <nav class="nav-links" id="nav-links">
-      <a href="index.html">Home</a>
-      <a href="Documentation.html">Documentation</a>
-      <a href="privacy.html" class="active">Privacy</a>
-      <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
-    </nav>
-  </div>
-</header>
+<header class="nav"><div class="nav-inner">
+  <a class="brand" href="index.html"><svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>Comix Downloader<span class="ver">v4.2.28</span></a>
+  <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+  <nav class="nav-links" id="nav-links"><a href="index.html">Home</a><a href="Documentation.html">Documentation</a><a href="plus.html">Plus</a><a href="privacy.html" class="active">Privacy</a><a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a><a class="nav-signin" href="plus.html#notify"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in<span class="nav-signin-soon">Soon</span></a></nav>
+</div></header>
 
 <main class="container" id="main" tabindex="-1">
-
-  <section class="legal-hero">
-    <span class="eyebrow">Legal</span>
-    <h1>Privacy Policy &amp; Legal Notice</h1>
-    <div class="updated">Last updated: 19 July 2026 · Effective: 5 July 2026</div>
-    <p class="lede">This document explains how the Comix Downloader browser extension handles information, the browser permissions it uses, and the legal terms that apply to its use. Please read it carefully.</p>
-
-    <div class="summary">
-      <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-      <div>
-        <p><strong>In short:</strong> Comix Downloader does not collect, transmit, sell, or share any personal information. It has no analytics and no tracking. Almost everything it does happens locally inside your own browser, and the data it stores (settings, download history, reading stats, resume positions) stays on your device. There are <strong>two exceptions</strong>: <strong>(1)</strong> the optional <strong>Push-to-library</strong> feature (off by default) uploads the comic files it builds to a server <em>you</em> configure — at your request, to a destination you choose, never to the Developer; and <strong>(2)</strong> the built-in <strong>community features</strong> (the profile tenure badge and community chapter flags) and the Developer's occasional <strong>notices</strong> talk to a tiny open-source service that only ever receives <em>anonymous, one-way hashed identifiers, coarse counters, and — for notices — the extension's version number</em>; no names, no readable ids, no titles, no reading history. Neither the Developer nor anyone else can identify you from it.</p>
-        <p><strong>Also important:</strong> The extension is a general-purpose tool. You are solely responsible for using it lawfully and in accordance with the terms of any website you access. See the Legal Disclaimer and Acceptable Use sections below.</p>
-      </div>
-    </div>
+  <section class="legal-hero"><span class="eyebrow">Privacy and legal</span><h1>Privacy Policy and Legal Notice</h1><div class="updated">Last updated: 17 August 2026 - Effective: 17 August 2026</div><p class="lede">This policy separates the free, mostly local browser extension from the optional Comix Downloader Plus account and encrypted synchronization service.</p>
+    <div class="summary"><svg class="ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><div><p><strong>Free mode:</strong> no account is required, no reading analytics are sent to the Developer, and existing features remain available. Local settings, logs, reading data, downloads, and credentials stay in the browser except for actions you explicitly direct to comix.to, your library server, or the anonymous community service.</p><p><strong>Plus mode:</strong> only after you start setup, the service processes an email address, account and device records, billing entitlement, and encrypted synchronization payloads. Reading metadata is encrypted in your browser before upload, and the service does not hold the key needed to read it.</p></div></div>
   </section>
 
-  <div class="layout">
+  <div class="layout"><aside class="toc"><span class="kicker">Contents</span><ol>
+    <li><a href="#scope">Scope and controller</a></li><li><a href="#free">Free extension data</a></li><li><a href="#community">Community service</a></li><li><a href="#plus">Plus account data</a></li><li><a href="#sync">Encrypted sync</a></li><li><a href="#billing">Billing and email</a></li><li><a href="#permissions">Browser permissions</a></li><li><a href="#retention">Retention and deletion</a></li><li><a href="#security">Security</a></li><li><a href="#providers">Providers and transfers</a></li><li><a href="#rights">Privacy rights</a></li><li><a href="#stores">Store disclosures</a></li><li><a href="#children">Children</a></li><li><a href="#legal">Legal terms</a></li><li><a href="#changes">Changes</a></li><li><a href="#contact">Contact</a></li>
+  </ol></aside>
 
-    <!-- Table of contents -->
-    <aside class="toc">
-      <span class="kicker">Contents</span>
-      <ol>
-        <li><a href="#scope">Who we are &amp; scope</a></li>
-        <li><a href="#definitions">Definitions</a></li>
-        <li><a href="#data">Information the extension handles</a></li>
-        <li><a href="#permissions">Browser permissions &amp; why</a></li>
-        <li><a href="#not-collected">What we do not collect or do</a></li>
-        <li><a href="#third-party">comix.to &amp; third parties</a></li>
-        <li><a href="#storage">Storage, retention &amp; your control</a></li>
-        <li><a href="#sharing">Data sharing &amp; disclosure</a></li>
-        <li><a href="#security">Security</a></li>
-        <li><a href="#children">Children's privacy</a></li>
-        <li><a href="#gdpr">International users &amp; GDPR</a></li>
-        <li><a href="#ccpa">California privacy rights</a></li>
-        <li><a href="#stores">Browser-store disclosures</a></li>
-        <li><a href="#cookies">Cookies &amp; tracking</a></li>
-        <li><a href="#disclaimer">Legal disclaimer &amp; liability</a></li>
-        <li><a href="#acceptable-use">Acceptable use &amp; copyright</a></li>
-        <li><a href="#dmca">Copyright / DMCA complaints</a></li>
-        <li><a href="#license">Open-source license</a></li>
-        <li><a href="#changes">Changes to this policy</a></li>
-        <li><a href="#law">Governing law</a></li>
-        <li><a href="#contact">Contact</a></li>
-      </ol>
-    </aside>
+  <div class="legal-body">
+    <section id="scope"><h2><span class="num">01</span> Scope and controller</h2><p>Comix Downloader is a browser extension published by N3uralCreativity (the Developer, we, or us). Comix Downloader Plus is an optional account, billing, and encrypted synchronization service for that extension. This policy applies to both. It does not apply to comix.to, image delivery networks, a library server you configure, browser stores, Stripe, Link, Resend, or Cloudflare under their own policies.</p><p>Comix Downloader and Plus are independent projects and are not affiliated with, endorsed by, or sponsored by comix.to.</p></section>
 
-    <!-- Body -->
-    <div class="legal-body">
+    <section id="free"><h2><span class="num">02</span> Free extension data</h2><h3>Stored locally</h3><p>The free extension can store settings, per-series presets, download markers, watched series, resume positions, reading statistics, technical logs, running-download checkpoints, notice state, and review-prompt state in browser local storage. Push-to-library credentials also remain local and are excluded from settings exports.</p><h3>Processed for requested functions</h3><p>When you request a download, the extension reads public title and chapter information, opens chapter pages, fetches images, builds archives, and hands files to the browser download manager. When enabled, it can contact comix.to to check watched series or contact a library endpoint you configured to upload a finished CBZ.</p><h3>What free mode does not do</h3><ul><li>No account or Plus API request is made unless you explicitly start Plus setup.</li><li>No advertising, behavioral analytics, fingerprinting, or sale of data is used.</li><li>Downloaded images, ZIP files, CBZ files, local logs, cookies, CAPTCHA information, and library credentials are never sent to Plus.</li></ul></section>
 
-      <section id="scope">
-        <h2><span class="num">01</span> Who we are &amp; scope</h2>
-        <p>“Comix Downloader” (the “<strong>Extension</strong>”) is a free, open-source browser extension published by <strong>N3uralCreativity</strong> (the “<strong>Developer</strong>”, “we”, “us”). It adds download controls to the third-party website comix.to so that you can save comic chapters to your own device, and locally blocks the site's intrusive click ads and popups.</p>
-        <p>This Privacy Policy &amp; Legal Notice (the “<strong>Policy</strong>”) applies to the Extension as distributed through the Chrome Web Store, the Mozilla Firefox Add-ons site (AMO), the project's GitHub repository, and any other channel where we publish it. It does <strong>not</strong> apply to comix.to or to any other website, service, or software you may use alongside the Extension.</p>
-        <p>By installing or using the Extension, you acknowledge that you have read and understood this Policy.</p>
-      </section>
+    <section id="community"><h2><span class="num">03</span> Anonymous community service</h2><p>The profile tenure badge, community chapter flags, and remote notices use a separate open-source Cloudflare Worker. It receives one-way hashes derived from public comix.to identifiers, coarse flag counters, and the extension version needed to select a notice. It does not receive an email, readable user ID, title name, reading record, or downloaded content.</p><p>Cloudflare necessarily handles network information such as an IP address while delivering a request. The application does not intentionally store those addresses for community features.</p></section>
 
-      <section id="definitions">
-        <h2><span class="num">02</span> Definitions</h2>
-        <dl class="dl">
-          <div><dt>Personal data</dt><dd>Any information relating to an identified or identifiable natural person (e.g. name, email, IP address, account identifiers).</dd></div>
-          <div><dt>Local storage</dt><dd>Storage provided by your browser (the <code>storage.local</code> area) that resides only on your device and is not synchronized to us.</dd></div>
-          <div><dt>Process</dt><dd>To read, transform, or act upon data in your browser's memory at the moment of a download — without retaining or transmitting it.</dd></div>
-          <div><dt>Third-party site</dt><dd>Any website not operated by the Developer, including comix.to and its content-delivery networks (CDNs).</dd></div>
-        </dl>
-      </section>
+    <section id="plus"><h2><span class="num">04</span> Plus account and service data</h2><p>Plus remains off until you choose Start trial and grant the requested permission. Setup and operation can process:</p><dl class="dl">
+      <div><dt>Email address</dt><dd>Used for six-digit verification codes, account identification, one pre-renewal trial reminder, payment failures, receipts, security notices, and deletion warnings. It is not added to a marketing list.</dd></div>
+      <div><dt>Authentication records</dt><dd>Hashed verification codes, opaque session-token hashes, expiry times, and revocation state. Raw tokens are returned to and stored by the extension, not stored in readable form in the service database.</dd></div>
+      <div><dt>Device records</dt><dd>An opaque random device ID, a name such as browser/platform, public ECDH key, approval state, and last-seen timestamp. Up to five active devices are supported.</dd></div>
+      <div><dt>Entitlement records</dt><dd>Trial, active, grace, cancellation, expiry, renewal dates, and Stripe customer/subscription identifiers. We do not receive full payment card details.</dd></div>
+      <div><dt>Operational records</dt><dd>Opaque request IDs, error codes, API timing, ciphertext size, schema version, revision number, and timestamps used for security and service reliability. Logs must not include email, tokens, title names, reading records, or ciphertext.</dd></div>
+      <div><dt>Rate-limit records</dt><dd>A keyed hash derived from the requesting IP address and time-window counters, retained briefly to prevent verification-code abuse. It is not used for tracking or advertising.</dd></div>
+    </dl></section>
 
-      <section id="data">
-        <h2><span class="num">03</span> Information the extension handles</h2>
-        <p>The Extension is designed to function with the least information possible. There are two categories:</p>
+    <section id="sync"><h2><span class="num">05</span> End-to-end encrypted synchronization</h2><p>You choose each category. All categories are unchecked until you select them. Eligible categories are settings and presets, watched series, reading progress and resume positions, downloaded-chapter markers, and reading statistics.</p><p>The extension serializes the selected data and encrypts it locally with AES-256-GCM. The service receives only the encrypted envelope and limited metadata: opaque account/device identifiers, revision, schema version, size, and timestamps. It stores ciphertext in Cloudflare R2 and metadata in D1. The service does not receive the unwrapped data-encryption key.</p><p>The recovery code wraps the encryption key. Existing devices transfer that key to a new device using ECDH. Losing all approved devices and the recovery code makes cloud data unreadable; the only recovery is to verify the account email again and reset cloud sync. That reset never deletes local extension data.</p><p>Plus never synchronizes activity logs, active downloads, images, ZIP/CBZ files, library credentials, authentication cookies, notices, review state, or CAPTCHA information.</p></section>
 
-        <h3>a) Data stored locally on your device</h3>
-        <p>Stored in your browser's private <code>storage.local</code> area. It is never sent anywhere and is readable only by the Extension on your machine:</p>
-        <ul>
-          <li><strong>Your settings</strong> (<code>cdlSettings</code>) — your chosen preferences (download behavior, output format, naming, appearance, etc.). These contain no personal data.</li>
-          <li><strong>Activity log</strong> (<code>cdlLogs</code>) — a short, rolling, technical log of recent download events (e.g. “ZIP saved”, “chapter failed”) shown in the popup to help you and us diagnose issues. It contains no personal data and is capped to a small number of entries.</li>
-          <li><strong>Download history</strong> (<code>cdlManifest</code>) — which chapters of which series you have already downloaded, so the extension can offer to fetch only new ones. Stored as series/chapter identifiers; no personal data.</li>
-          <li><strong>Per-series preferences</strong> (<code>cdlSeriesPrefs</code>) — optional output choices you ask the extension to remember for a given series.</li>
-          <li><strong>Subscriptions</strong> (<code>cdlSubscriptions</code>) — the series you chose to watch for new chapters, and the last chapter list seen for each. No personal data.</li>
-          <li><strong>Reading stats</strong> (<code>cdlReadStats</code>) — if you enable the optional reading-stats / catch-up features: per-day chapter counts, active reading time, and your average reading pace. Computed and kept entirely on your device; never transmitted.</li>
-          <li><strong>Resume positions &amp; last-read</strong> (<code>cdlReaderScroll</code>, <code>cdlLastRead</code>) — if you enable the optional resume / recap features: the scroll position where you stopped in a chapter and the last chapter you opened per series. Local only.</li>
-          <li><strong>Your own flags</strong> (<code>cdlFlaggedChapters</code>) — chapter identifiers you have flagged through the community-flags feature, kept locally so the extension doesn't let you flag the same chapter twice.</li>
-          <li><strong>Download-session snapshot</strong> (<code>cdlDownloadAllSession</code>) — the progress of a running “Download All” (counts and chapter labels), kept so the progress panel can be restored after a page refresh or browser restart. Local only.</li>
-          <li><strong>Library connection</strong> (<code>cdlLibrary</code>) — only if you set up Push-to-library: the server address, method, and any username/password or token <em>you</em> enter. These credentials are stored locally for the sole purpose of uploading to <em>your</em> server, are never sent to the Developer, and are deliberately excluded from the settings export file.</li>
-        </ul>
+    <section id="billing"><h2><span class="num">06</span> Billing and transactional email</h2><p>Stripe Managed Payments provides checkout for the 30-day card-backed trial and US$1.50 monthly subscription, with Link acting as merchant of record. Stripe and Link handle payment methods, applicable indirect taxes, invoices, renewals, refunds, transaction support, and legally required records. Plus receives only the identifiers and subscription state needed to grant access.</p><p>Stripe and Link deliver receipts and subscription-related messages, including the trial-ending reminder. Resend delivers account verification, security, and deletion-related service emails from <code>plus@n3uralcreativity.top</code>. Plus does not use newsletters, abandoned-cart campaigns, or promotional email.</p><p>A one-way email hash and Stripe customer ID may remain after account deletion solely to enforce one trial per verified account/customer and prevent repeated-trial abuse. This record is not used to contact, profile, or advertise to you.</p></section>
 
-        <h3>b) Data processed transiently (not stored)</h3>
-        <p>The Extension reads the following in your browser's memory only while performing the relevant action, then discards it:</p>
-        <ul>
-          <li>The web address (URL) and on-page data of the comix.to chapter you ask it to download, in order to locate the page images, and (optionally) public series details shown on the title page (cover, author, description, genres) to write metadata into the saved files.</li>
-          <li>The image files themselves, which are fetched from comix.to's image hosts and assembled into ZIP or CBZ output entirely within your browser.</li>
-          <li>While ad blocking is enabled, the destination of a clicked link or requested popup, used only to distinguish a link or share action you intentionally opened from an unsolicited ad. These destinations are neither stored nor transmitted by the Extension.</li>
-        </ul>
-        <p>This transient data is handed to your browser's own download manager to save the resulting file. The Developer never receives any of it.</p>
+    <section id="permissions"><h2><span class="num">07</span> Browser permissions</h2><dl class="dl">
+      <div><dt><code>storage</code></dt><dd>Stores local extension settings, download state, and optional Plus account/session/key material.</dd></div><div><dt><code>downloads</code></dt><dd>Saves archives and a user-requested Plus data export through the normal browser download manager.</dd></div><div><dt><code>tabs</code> and <code>scripting</code></dt><dd>Open temporary chapter tabs and extract the images needed for requested downloads.</dd></div><div><dt><code>alarms</code></dt><dd>Schedules update checks, watched-series checks, and, only for configured Plus accounts, synchronization every 15 minutes while the browser runs.</dd></div><div><dt><code>notifications</code></dt><dd>Shows watched-series and extension service notifications selected by the user.</dd></div><div><dt><code>contextMenus</code></dt><dd>Adds download commands to comix.to context menus.</dd></div><div><dt><code>declarativeNetRequestWithHostAccess</code></dt><dd>Applies static header rules only to extension-originated requests for known comix.to image hosts.</dd></div><div><dt>comix.to and image hosts</dt><dd>Fetches title pages, chapters, covers, and page images.</dd></div><div><dt>Community Worker</dt><dd>Contacts the exact anonymous community/notices Worker origin.</dd></div><div><dt>Optional Plus API origin</dt><dd>Requested only when Plus setup starts. Firefox also asks for optional consent for identifying information, authentication information, browsing activity metadata, and technical/interaction data used by Plus.</dd></div><div><dt>Optional library server</dt><dd>Requested on demand for an endpoint the user enters for Push-to-library.</dd></div>
+    </dl></section>
 
-        <h3>c) Optional features that send data off your device</h3>
-        <p>These are <strong>off by default</strong> and only act after you explicitly enable and configure them:</p>
-        <ul>
-          <li><strong>Watch for new chapters (Subscriptions).</strong> When enabled, the Extension periodically makes background requests <em>to comix.to itself</em> (the same site you download from) to check your subscribed series for new chapters, and may show you a desktop notification. These requests go only to comix.to; no data is sent to the Developer or any third party.</li>
-          <li><strong>Push-to-library.</strong> When enabled, after building a CBZ the Extension uploads that file to the server <em>you</em> specify (e.g. a WebDAV or HTTP folder watched by your own Komga/Kavita install), using the address and credentials you entered. The files and credentials go only to your chosen server. The Developer receives nothing. This feature requires you to grant access to that specific server when you save its address.</li>
-          <li><strong>Custom Home, read-ahead and similar reading enhancements.</strong> When enabled, these make requests <em>only to comix.to</em> (its pages and its own API, using the session your browser already has there) — for example to list the series you follow, or to pre-load the next chapter as you near the end of the current one. Nothing about this leaves comix.to and your device.</li>
-        </ul>
+    <section id="retention"><h2><span class="num">08</span> Retention and deletion</h2><ul><li>Verification codes expire after 10 minutes, allow five attempts, and are removed after expiry cleanup.</li><li>Access tokens expire after 15 minutes; rotating refresh sessions expire after 30 days or on logout/revocation.</li><li>The latest encrypted state and one daily restore point are retained for 30 days. A limited number of Before restore points are also retained within that period.</li><li>Cancellation keeps Plus active through the paid or trial period. Failed payments receive a seven-day service grace period.</li><li>Expired accounts are read-only for 90 days, then encrypted snapshots and sync metadata are deleted.</li><li>Delete cloud data removes snapshots but leaves the account. Reset cloud encryption removes snapshots and wrapped key data while preserving local data.</li><li>Delete account revokes sessions and devices, deletes synchronized data, and requests billing cancellation. Stripe and Link retain records required by law; the one-trial anti-abuse record described in Section 6 remains.</li></ul></section>
 
-        <h3>d) Built-in community features (tenure badge &amp; chapter flags)</h3>
-        <p>Version 2.4 added two small community features that are part of the Extension: a <strong>profile tenure badge</strong> (other extension users can see roughly how long you've used the Extension) and <strong>community chapter flags</strong> (see how many other users flagged a chapter as broken / missing / wrong, and flag chapters yourself). They are powered by a tiny, open-source Cloudflare Worker operated for this project (its source is in the public repository). This is the <strong>only</strong> server component associated with the Extension, and it is deliberately designed to know as little as possible:</p>
-        <ul>
-          <li><strong>What it receives:</strong> an opaque, salted, one-way SHA-256 hash of your comix.to user id (for the badge), an equally opaque hash of a chapter id plus a flag category (broken / missing / wrong) when you flag a chapter, and lookup requests for such hashes. One-way means the original ids cannot be recovered from what is sent.</li>
-          <li><strong>What it stores:</strong> hash → a coarse first-seen date (for the badge), and hash → aggregate flag counts. Nothing else.</li>
-          <li><strong>What it never receives:</strong> your name, email, comix.to username, readable user or chapter ids, series titles, reading history, settings, or downloads. There are no cookies, no sessions, and no advertising or analytics identifiers.</li>
-          <li><strong>Network metadata:</strong> like any web request, these calls technically expose your IP address to the receiving infrastructure (Cloudflare). The Worker does not log, store, or use IP addresses; transport-level handling by Cloudflare is governed by Cloudflare's own policies.</li>
-          <li><strong>Control:</strong> these features stop entirely when you uninstall the Extension. Because the stored entries are irreversible hashes, they cannot be linked back to you by the Developer or anyone else; if you nonetheless want your entries removed, contact us (Section 21) and we will help.</li>
-        </ul>
+    <section id="security"><h2><span class="num">09</span> Security</h2><p>Controls include HTTPS, local authenticated encryption, opaque random identifiers, hashed tokens and codes, short access-token lifetime, rotating refresh tokens, verification attempt limits, per-email and per-IP rate limits, webhook HMAC verification, idempotent webhook processing, five-device enforcement, encrypted restore points, and deletion controls.</p><p>The encryption key and private device key are stored in browser local storage so the extension can synchronize without asking for the recovery code every time. Anyone who fully controls your browser profile may be able to access them. No electronic system is absolutely secure.</p></section>
 
-        <h3>e) Remote notices &amp; announcements</h3>
-        <p>The Extension can show occasional notices the Developer posts — for example a heads-up that comix.to changed and a fix is on the way, or an important warning. To retrieve them it makes a request to the <strong>same</strong> open-source Worker described in 3(d), at its <code>/v1/notices</code> address. That request sends only the <strong>Extension's version number</strong> (so a notice can be targeted to the versions it applies to) and a cache-busting timestamp — it contains no identifiers, hashes, account data, or reading history of any kind. The Worker returns the current announcement text, which is displayed on the page and can be dismissed; dismissed notices are remembered <em>locally</em> so they don't reappear. Nothing personal is sent or stored, and there are no cookies, sessions, analytics, or advertising identifiers.</p>
-      </section>
+    <section id="providers"><h2><span class="num">10</span> Providers and international processing</h2><p>Cloudflare provides Worker execution, D1 database storage, R2 object storage, and network security. Resend delivers service email. Stripe Managed Payments provides checkout, and Link acts as merchant of record. Browser stores distribute packages. These providers may process data in countries outside your own under their terms, data-processing agreements, and legally recognized transfer mechanisms.</p><p>We do not sell personal data, share it for cross-context behavioral advertising, or use it to determine creditworthiness.</p></section>
 
-      <section id="permissions">
-        <h2><span class="num">04</span> Browser permissions &amp; why</h2>
-        <p>The Extension requests the minimum permissions required to do its job. Each is used only for the purpose described:</p>
-        <dl class="dl">
-          <div><dt><code>storage</code></dt><dd>To save your settings and the activity log locally on your device.</dd></div>
-          <div><dt><code>downloads</code></dt><dd>To save the ZIP archive it builds to your computer using the browser's normal download mechanism.</dd></div>
-          <div><dt><code>scripting</code></dt><dd>To read the list of page images from a chapter page so the correct files can be downloaded.</dd></div>
-          <div><dt><code>tabs</code></dt><dd>To briefly open background tabs that load each chapter (so their images can be extracted) and to send progress updates to the page you started from. These tabs are closed automatically.</dd></div>
-          <div><dt><code>contextMenus</code></dt><dd>To add “Download this chapter / whole series” entries to the right-click menu on comix.to pages.</dd></div>
-          <div><dt><code>alarms</code></dt><dd>Only used by the optional “Watch for new chapters” feature, to schedule the periodic background check at the interval you choose.</dd></div>
-          <div><dt><code>notifications</code></dt><dd>Only used by the optional “Watch for new chapters” feature, to show a desktop notification when a subscribed series has new chapters.</dd></div>
-          <div><dt><code>declarativeNetRequestWithHostAccess</code></dt><dd>To set the correct <code>Referer</code> and remove the <code>Origin</code> header on the Extension's <em>own</em> image-download requests to comix.to's image CDNs (the <code>wowpic</code> hosts), which those servers require before they will serve a chapter image. This rule only rewrites those two headers on the Extension's own fetches to those specific image hosts — it does <strong>not</strong> block, redirect, monitor, or read any of your other browsing, and it applies to no other site.</dd></div>
-          <div><dt>Host access<br><span style="font-weight:400;color:var(--muted)">comix.to &amp; its image hosts</span></dt><dd>To fetch chapter pages, page images, and series covers — from comix.to, its cover host (<code>static.comix.to</code>), and its image CDNs (the <code>wowpic1–9.store</code> hosts that serve chapter page images). The Extension runs only on comix.to pages and only contacts comix.to and the image hosts it uses.</dd></div>
-          <div><dt>Host access<br><span style="font-weight:400;color:var(--muted)">community service (workers.dev)</span></dt><dd>To reach the small open-source Worker behind the tenure badge, community chapter flags (Section 3(d)) and remote notices (Section 3(e)). Only anonymous one-way hashes, coarse counters, and the extension's version number are ever exchanged with it.</dd></div>
-          <div><dt>Optional host access<br><span style="font-weight:400;color:var(--muted)">your library server only</span></dt><dd>Requested on demand <em>only</em> if you enable Push-to-library, and granted only for the exact server address you enter — so the Extension can upload CBZ files there. It is never requested otherwise.</dd></div>
-        </dl>
-        <p>The Extension does not request access to your browsing history, bookmarks, microphone, camera, or location. Apart from comix.to, its image hosts, and the community service above, it contacts no other site unless you explicitly configure Push-to-library to your own server.</p>
-      </section>
+    <section id="rights"><h2><span class="num">11</span> Your privacy rights</h2><p>Depending on your jurisdiction, you may have rights of access, correction, deletion, restriction, objection, and portability. Plus settings provide account status, export, cloud deletion, device revocation, sign-out, and account deletion. Contact us for another request and provide the verified account email through a private channel so the account can be located.</p><p>EU/UK processing bases include performance of the Plus contract for account, sync, and billing functions; consent for optional categories and permissions; legitimate interests for security, abuse prevention, and minimal community features; and legal obligations for billing records. You may complain to your local data-protection authority.</p></section>
 
-      <section id="not-collected">
-        <h2><span class="num">05</span> What we do not collect or do</h2>
-        <ul>
-          <li>We do <strong>not</strong> collect, store, or transmit any personal data.</li>
-          <li>We operate <strong>no</strong> backend except the single, minimal community Worker described in Section 3(d) — which receives only anonymous one-way hashes and coarse counters, and could not identify you even if we wanted it to.</li>
-          <li>We use <strong>no</strong> analytics, telemetry, crash reporting, advertising, fingerprinting, or tracking of any kind.</li>
-          <li>We do <strong>not</strong> create user accounts or profiles, and we do not require sign-in.</li>
-          <li>We do <strong>not</strong> sell, rent, share, or monetize any information. There is nothing to sell.</li>
-          <li>We do <strong>not</strong> read any website other than comix.to (the Extension runs only on comix.to pages), and we do not modify the content you download.</li>
-        </ul>
-      </section>
+    <section id="stores"><h2><span class="num">12</span> Browser-store disclosures</h2><h3>Chrome Web Store</h3><p>Data is used only to provide or secure user-facing extension and optional Plus functions. It is not used for advertising, unrelated profiling, lending, or sale. Plus is dormant until setup and asks for its specific API host permission at that point.</p><h3>Firefox Add-ons</h3><p>Free use requires no data-collection permission. Plus declares optional <code>personallyIdentifyingInfo</code>, <code>authenticationInfo</code>, <code>browsingActivity</code>, and <code>technicalAndInteraction</code> categories. The extension requests those categories during user-initiated Plus setup.</p></section>
 
-      <section id="third-party">
-        <h2><span class="num">06</span> comix.to &amp; third parties</h2>
-        <p>The Extension interacts with the third-party website <strong>comix.to</strong> and its content-delivery networks in order to fetch the pages and images you ask it to download. The Developer does not own, operate, or control comix.to, and is not affiliated with, endorsed by, or sponsored by it.</p>
-        <p>Your use of comix.to is governed by comix.to's own terms of service and privacy policy, not by this Policy. Any data that comix.to or your network provider may collect about your visits (for example, server logs or your IP address when your browser requests a page or image) is outside the Developer's control and responsibility. We encourage you to review the policies of any third-party site you use.</p>
-        <p>The community features in Section 3(d) run on <strong>Cloudflare Workers</strong>, an infrastructure provider. Cloudflare processes the network traffic needed to deliver those requests (as any host would) under its own privacy policy; the Worker application itself stores only the anonymous hashes and counters described above.</p>
-      </section>
+    <section id="children"><h2><span class="num">13</span> Children</h2><p>The extension is a general utility and is not directed to children. Plus requires the legal capacity to enter a paid subscription or authorization from a parent/guardian where applicable. We do not knowingly create Plus accounts for children who cannot lawfully consent. Third-party comic content may be unsuitable for minors and remains the responsibility of the site and the user or guardian.</p></section>
 
-      <section id="storage">
-        <h2><span class="num">07</span> Storage, retention &amp; your control</h2>
-        <p>All data the Extension keeps is stored locally and remains under your control:</p>
-        <ul>
-          <li><strong>Settings</strong> persist until you change them, reset them to defaults, or remove the Extension.</li>
-          <li><strong>Activity log</strong> is a small rolling buffer; older entries are dropped automatically, and you can clear it at any time from the popup.</li>
-          <li><strong>Reading data</strong> (stats, resume positions, last-read, your own flags) is capped in size, stays on your device, and disappears with the rest when you uninstall. Turning the corresponding features off stops new data from being recorded.</li>
-          <li><strong>Reset:</strong> the settings page includes a “Reset to defaults” action (with confirmation) that restores all preferences.</li>
-          <li><strong>Removal:</strong> uninstalling the Extension deletes all of its locally stored data from your browser.</li>
-        </ul>
-        <p>The only server-side records that exist anywhere are the anonymous hash → date and hash → count entries of the community service (Section 3(d)). They contain no personal data, cannot be traced back to you, and become permanently orphaned the moment you uninstall. If you would like them removed anyway, contact us (Section 21).</p>
-      </section>
+    <section id="legal"><h2><span class="num">14</span> Legal notice and acceptable use</h2><p>The extension is a neutral tool and does not host or distribute comic content. Users are responsible for complying with copyright law, local law, and third-party site terms, and should download only content they are legally entitled to copy.</p><p class="legal-note"><strong>No legal advice.</strong> The extension and Plus are provided "as is" and "as available" to the maximum extent permitted by law. Nothing in this policy limits mandatory consumer rights. Plus-specific billing and service terms are in the <a href="terms.html">Terms of Service</a> and <a href="refund.html">Refund Policy</a>.</p></section>
 
-      <section id="sharing">
-        <h2><span class="num">08</span> Data sharing &amp; disclosure</h2>
-        <p>We do not share data with anyone, because we do not collect or receive any personal data. The only “transfers” that occur are (a) the ZIP or CBZ file the Extension hands to your browser's download manager — or, for supported CBZ output if you configured it, to your own library server — at your request, and (b) the anonymous hashes and counters of the community service (Section 3(d)).</p>
-        <p>We hold no personal data that could be disclosed in response to a legal request, sold in a corporate transaction, or exposed in a breach of our systems. The community service's records are anonymous aggregates that identify no one.</p>
-      </section>
+    <section id="changes"><h2><span class="num">15</span> Changes to this policy</h2><p>We may update this policy for product, security, provider, or legal changes. The updated date will change, and material changes may be highlighted in release notes or a service notice. New synchronization categories will remain opt-in.</p></section>
 
-      <section id="security">
-        <h2><span class="num">09</span> Security</h2>
-        <p>Because the Extension keeps your data in your browser's local storage, the principal safeguard for it is the security of your own device and browser profile. The Extension's source code — including the community Worker's — is publicly available for inspection on GitHub. Network requests to fetch comic images use the connections provided by comix.to and its image hosts; requests to the community service are made over HTTPS and carry only the anonymous hashes described in Section 3(d).</p>
-        <p>No method of electronic storage or transmission is ever completely secure, and we cannot guarantee absolute security.</p>
-      </section>
-
-      <section id="children">
-        <h2><span class="num">10</span> Children's privacy</h2>
-        <p>The Extension is a utility intended for a general audience and is not directed to children. It does not knowingly collect any information from anyone, including children under the age of 13 (or the equivalent minimum age in your jurisdiction). Because the Extension collects no personal data at all, it cannot knowingly collect personal data from children.</p>
-        <p>Note that the comic content available on comix.to is published by a third party and may include material that is not appropriate for minors. Supervision of access to such third-party content is the responsibility of a parent or guardian.</p>
-      </section>
-
-      <section id="gdpr">
-        <h2><span class="num">11</span> International users &amp; GDPR / UK GDPR</h2>
-        <p>The Extension can be used worldwide. It performs its processing locally on your device and does not transmit personal data to the Developer. The community service (Section 3(d)) handles only irreversibly hashed, unlinkable identifiers and coarse counters; to the extent any of that were nonetheless considered personal data under the EU General Data Protection Regulation (GDPR) or UK GDPR, it is processed on the basis of the Developer's legitimate interest in providing the community features, with data minimisation applied by design (one-way hashing, no readable ids, no IP retention, coarse aggregates only).</p>
-        <p>For transparency, the data-subject rights such laws provide (access, rectification, erasure, restriction, portability, and objection) would, in practice, be satisfied entirely by the local controls described in Section 7 (changing settings, clearing the log, or uninstalling), since you alone hold any data the Extension uses. If you believe you have a privacy concern, you may contact us using the details in Section 21.</p>
-      </section>
-
-      <section id="ccpa">
-        <h2><span class="num">12</span> California privacy rights (CCPA / CPRA)</h2>
-        <p>We do not collect “personal information” as defined by the California Consumer Privacy Act (CCPA), as amended by the CPRA. We have not sold or shared personal information in the preceding twelve months, and we do not do so now. Consequently, there is no California consumer information for us to disclose, delete, correct, or opt you out of selling. California residents are nonetheless welcome to contact us with any questions.</p>
-      </section>
-
-      <section id="stores">
-        <h2><span class="num">13</span> Browser-store disclosures</h2>
-        <h3>Google Chrome Web Store — Limited Use</h3>
-        <p>The Extension's use of information obtained through it complies with the Chrome Web Store User Data Policy, including the Limited Use requirements. The Extension does not collect or transmit personal user data to the Developer or to any third party, and does not use or transfer data for advertising, creditworthiness, or any purpose unrelated to its function. The optional Push-to-library feature uploads the files you download only to a server <em>you</em> configure; the community features exchange only the anonymous hashes described in Section 3(d), used solely to display the badge and flag counts.</p>
-        <h3>Mozilla Add-ons (AMO)</h3>
-        <p>The Extension collects <strong>no personal data</strong> for the Developer. All settings, logs, history, reading data and credentials remain in local browser storage on your device; the optional Push-to-library feature sends downloaded files only to your own configured server; and the community features transmit only anonymous, one-way-hashed identifiers and coarse counters as described in Section 3(d).</p>
-      </section>
-
-      <section id="cookies">
-        <h2><span class="num">14</span> Cookies &amp; tracking technologies</h2>
-        <p>The Extension does not set cookies, does not use web beacons or pixels, and does not employ any tracking or fingerprinting technology. The local browser storage it uses for your settings and log is not a cookie and is not used to track you across sites or sessions.</p>
-      </section>
-
-      <section id="disclaimer">
-        <h2><span class="num">15</span> Legal disclaimer &amp; limitation of liability</h2>
-        <p class="legal-note"><strong>This document is provided for transparency and does not constitute legal advice.</strong> It is not a substitute for advice from a qualified lawyer regarding your specific circumstances.</p>
-        <p class="uc">The extension is provided “as is” and “as available”, without warranty of any kind, whether express, implied, or statutory, including but not limited to the implied warranties of merchantability, fitness for a particular purpose, title, and non-infringement. The developer does not warrant that the extension will be uninterrupted, error-free, secure, or compatible with any particular website (including comix.to, whose structure may change at any time and break the extension).</p>
-        <p class="uc">To the maximum extent permitted by applicable law, in no event shall the developer be liable for any direct, indirect, incidental, special, consequential, exemplary, or punitive damages, or for any loss of data, profits, or goodwill, arising out of or relating to your use of, or inability to use, the extension — even if advised of the possibility of such damages. Your sole and exclusive remedy is to stop using and uninstall the extension.</p>
-        <p>Some jurisdictions do not allow the exclusion of certain warranties or the limitation of certain liabilities; in those jurisdictions, the above exclusions and limitations apply to the fullest extent permitted by law and nothing in this Policy limits any rights you have that cannot lawfully be limited.</p>
-      </section>
-
-      <section id="acceptable-use">
-        <h2><span class="num">16</span> Acceptable use &amp; copyright responsibility</h2>
-        <p>The Extension is a neutral, general-purpose tool that automates actions you could otherwise perform manually in your browser. It does not host, store, upload, distribute, or supply any comic, manga, manhwa, image, or other content; it operates entirely on your device and only accesses content that you direct it to and that your browser is already able to reach.</p>
-        <p>You agree that you are <strong>solely responsible</strong> for your use of the Extension, including ensuring that it is lawful where you live and that it complies with the terms of service of comix.to and of any other site you access. In particular:</p>
-        <ul>
-          <li>Comics, manga, and similar works are typically protected by copyright. Downloading or retaining copies you are not authorized to make may be unlawful in your jurisdiction.</li>
-          <li>You should only download content that you are legally entitled to download — for example, content that is in the public domain, that is offered for download by the rights holder, or that you have the necessary rights or permission to copy.</li>
-          <li>The Developer does not encourage, induce, or condone copyright infringement or any other unlawful use of the Extension, and provides it for lawful personal use only.</li>
-        </ul>
-        <p>If you do not agree to take this responsibility, do not use the Extension.</p>
-      </section>
-
-      <section id="dmca">
-        <h2><span class="num">17</span> Copyright / DMCA complaints</h2>
-        <p>The Extension does not host or distribute any content, so there is no content hosted by the Developer to remove. If comic content is accessible to you, it is served by comix.to or another third party; copyright complaints about that content should be directed to the operator of the site that hosts it.</p>
-        <p>If you are a rights holder and believe the Extension's <em>source code</em> or its <em>listing text</em> itself infringes your rights, please contact us using the details in Section 21 with: (a) identification of the work; (b) the material you object to; (c) your contact information; and (d) a statement of your good-faith belief and authority to act. We will review and respond in good faith.</p>
-      </section>
-
-      <section id="license">
-        <h2><span class="num">18</span> Open-source license</h2>
-        <p>The Extension is free and open-source software released under the <strong>MIT License</strong>. The full license text is included with the source code in the project's GitHub repository. The MIT License governs your rights to use, copy, modify, and redistribute the Extension's <em>code</em>; it does not grant any rights in third-party comic content.</p>
-      </section>
-
-      <section id="changes">
-        <h2><span class="num">19</span> Changes to this policy</h2>
-        <p>We may update this Policy from time to time — for example, to reflect new features or legal requirements. When we do, we will revise the “Last updated” date at the top of this page and publish the new version here. Material changes may also be noted in the project's release notes. Your continued use of the Extension after an update takes effect constitutes acceptance of the revised Policy.</p>
-      </section>
-
-      <section id="law">
-        <h2><span class="num">20</span> Governing law</h2>
-        <p>This Policy and any dispute arising out of or relating to it or the Extension are governed by the laws of <span class="ph">FRANCE</span>, without regard to its conflict-of-laws rules, and subject to any mandatory consumer-protection rights you have in your place of residence.</p>
-      </section>
-
-      <section id="contact">
-        <h2><span class="num">21</span> Contact</h2>
-        <p>Questions, privacy concerns, or legal notices regarding the Extension can be sent to:</p>
-        <ul>
-          <li><strong>GitHub:</strong> <a href="https://github.com/N3uralCreativity/comix-downloader/issues" target="_blank" rel="noopener">github.com/N3uralCreativity/comix-downloader/issues</a> (preferred for general questions)</li>
-          <li><strong>Developer:</strong> N3uralCreativity</li>
-        </ul>
-      </section>
-
-    </div>
-  </div>
+    <section id="contact"><h2><span class="num">16</span> Contact</h2><p>Developer: N3uralCreativity, France. General support is available through <a href="https://github.com/N3uralCreativity/comix-downloader/issues" target="_blank" rel="noopener">GitHub issues</a>. Do not post an email address, payment detail, access token, recovery code, or synchronized data in a public issue. Ask for a private contact channel for privacy or billing matters.</p></section>
+  </div></div>
 </main>
 
-<footer class="footer">
-  <div class="footer-inner">
-    <span class="brand" style="font-weight:700;"><svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>Comix Downloader</span>
-    <span class="sep">·</span>
-    <span>MIT © N3uralCreativity</span>
-    <div class="right">
-      <a class="status-btn" href="https://everythingmoe.com/monitor" target="_blank" rel="noopener" title="Check comix.to status on EverythingMoe"><span class="status-dot"></span>Comix Status</a>
-      <a class="changelog-btn" href="changelog.html"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>Changelog</a>
-      <a href="privacy.html">Privacy</a>
-    </div>
-  </div>
-</footer>
-
+<footer class="footer"><div class="footer-inner"><span class="brand" style="font-weight:700;"><svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>Comix Downloader</span><span class="sep">&middot;</span><span>MIT &copy; N3uralCreativity</span><div class="right"><a class="changelog-btn" href="changelog.html"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>Changelog</a><a href="plus.html">Plus</a><a href="terms.html">Terms</a><a href="refund.html">Refunds</a><a href="privacy.html">Privacy</a></div></div></footer>
 <script src="site.js" defer></script>
-
 </body>
 </html>
