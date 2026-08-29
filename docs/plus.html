@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comix Downloader Plus - Coming soon</title>
+<meta name="description" content="A preview of Comix Downloader Plus: optional cross-device continuity, reading migration between platforms, external sources and 30-day restore history. In development, not yet available.">
+<meta name="theme-color" content="#15171b">
+<link rel="canonical" href="https://n3uralcreativity.top/comix-downloader/plus.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Comix Downloader">
+<meta property="og:title" content="Comix Downloader Plus - Coming soon">
+<meta property="og:description" content="A preview of what Plus will be. In development.">
+<meta property="og:url" content="https://n3uralcreativity.top/comix-downloader/plus.html">
+<meta property="og:image" content="https://n3uralcreativity.top/comix-downloader/assets/plus-dashboard-sync.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Comix Downloader Plus - Coming soon">
+<meta name="twitter:description" content="A preview of what Plus will be. In development.">
+<meta name="twitter:image" content="https://n3uralcreativity.top/comix-downloader/assets/plus-dashboard-sync.png">
+<link rel="icon" type="image/png" href="assets/icon128.png?v=2">
+<link rel="preload" as="image" href="assets/plus-dashboard-sync.png">
+<link rel="stylesheet" href="site.css">
+<style>
+  .plus-page { --plus-max: 1080px; }
+  .plus-shell { width: min(var(--plus-max), calc(100% - 56px)); margin: 0 auto; }
+  .plus-page .footer { margin-top: 40px; }
+  .plus-page .footer-inner { max-width: var(--plus-max); }
+
+  /* ── dark nav, this page only ── */
+  .plus-page .nav { background: #15171b; border-bottom: 1px solid #2e3239; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .plus-page .nav .brand { color: #f8f8fb; white-space: nowrap; }
+  .plus-page .nav .cdl-mark .ink { fill: #f8f8fb; }
+  .plus-page .nav .cdl-mark .glow { fill: #8b5cf6; }
+  .plus-page .brand .ver { color: #bda7ff; background: rgba(139,92,246,.14); border-color: #5b4a7c; }
+  .plus-page .nav-links a { color: #9fa4ae; }
+  .plus-page .nav-links a:hover { color: #f8f8fb; background: #22262c; }
+  .plus-page .nav-links a.active { color: #f8f8fb; background: #22262c; }
+  .plus-page .nav-links .nav-signin { color: #f7f7fa; background: #1c1f24; border-color: #464b55; box-shadow: none; }
+  .plus-page .nav-links .nav-signin:hover { color: #fff; background: #25282e; border-color: #626874; }
+  .plus-page .nav-links .nav-signin::before { background: #3b3f47; }
+  .plus-page .nav-links .nav-signin-soon { color: #bda7ff; background: rgba(139,92,246,.14); border-color: #5b4a7c; }
+  .plus-page .nav-burger { color: #f8f8fb; background: #1c1f24; border-color: #464b55; box-shadow: none; }
+  .plus-page .nav-burger:hover { background: #25282e; border-color: #626874; }
+
+  /* ── hero ── */
+  .plus-hero { padding: 74px 0 90px; color: #f8f8fb; background: #15171b; text-align: center; }
+  .plus-hero-inner { display: flex; flex-direction: column; align-items: center; max-width: 900px; margin: 0 auto; }
+  .plus-pill { display: inline-flex; align-items: center; gap: 9px; padding: 6px 12px; border: 1px solid #3b3f47; border-radius: 999px; font: 600 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: #bda7ff; }
+  .plus-pill i { display: block; width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6; }
+  .plus-hero h1 { margin-top: 24px; max-width: 20ch; font-size: 56px; line-height: 1.03; letter-spacing: -.035em; font-weight: 800; color: #fff; }
+  .plus-hero .lede { margin-top: 20px; max-width: 56ch; font-size: 17.5px; line-height: 1.6; color: #c8cbd2; }
+  .plus-hero-cta { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 18px; margin-top: 30px; }
+  .plus-hero-cta .btn-soon {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 14px 20px; border: 1px solid #3b3f47; border-radius: var(--radius-sm);
+    background: #23262b; color: #7f858f;
+    font-weight: 600; font-size: 15px; font-family: inherit;
+    cursor: not-allowed; box-shadow: none;
+  }
+  .plus-hero-cta .btn-soon svg { width: 17px; height: 17px; flex: none; }
+  .plus-offer { display: flex; align-items: baseline; gap: 9px; text-align: left; }
+  .plus-offer strong { font-size: 20px; font-weight: 800; color: #9fa4ae; }
+  .plus-offer span { font-size: 13px; color: #7f858f; }
+  .plus-offer .strike { text-decoration: none; }
+  .plus-fine { margin-top: 14px; font-size: 12px; color: #8b9099; }
+  .plus-signin-note { margin-top: 20px; padding-top: 20px; border-top: 1px solid #2e3239; width: min(100%, 460px); font-size: 13.5px; color: #9fa4ae; scroll-margin-top: 90px; }
+  .plus-signin-note a { color: #bda7ff; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+  .plus-signin-note a:hover { color: #d3c4ff; }
+
+  /* ── overlapping product window ── */
+  .plus-shot { margin-top: -62px; padding: 0 56px; }
+  .plus-product-window { overflow: hidden; border: 1px solid #3c4149; border-radius: 10px; background: #151719; box-shadow: 0 28px 80px rgba(0,0,0,.38); }
+  .plus-window-bar { height: 40px; display: flex; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid #30343a; background: #1d2024; }
+  .plus-window-bar i { display: block; width: 8px; height: 8px; border-radius: 50%; background: #4e535d; }
+  .plus-window-bar span { margin-left: 9px; color: #9297a0; font: 500 10.5px/1 var(--mono); }
+  .plus-product-window { position: relative; }
+  .plus-product-window img { width: 100%; height: auto; }
+  .plus-preview-tag {
+    position: absolute; right: 14px; top: 54px;
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 10px; border: 1px solid #5b4a7c; border-radius: 999px;
+    background: rgba(21,23,25,.86); backdrop-filter: blur(6px);
+    color: #bda7ff; font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  }
+  .plus-shot figcaption { margin-top: 12px; font-size: 12.5px; color: var(--muted); text-align: center; }
+
+  /* ── three outcomes ── */
+  .plus-outcomes { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); max-width: var(--plus-max); margin: 52px auto 0; padding: 0 28px; }
+  .plus-outcome { padding-right: 28px; }
+  .plus-outcome + .plus-outcome { padding: 0 28px; border-left: 1px solid var(--line); }
+  .plus-outcome + .plus-outcome + .plus-outcome { padding: 0 0 0 28px; }
+  .plus-outcome svg { width: 20px; height: 20px; color: var(--accent); }
+  .plus-outcome h3 { margin-top: 14px; font-size: 16px; font-weight: 750; }
+  .plus-outcome p { margin-top: 6px; font-size: 14px; color: var(--ink-soft); }
+
+  /* ── free band ── */
+  .plus-roadmap { max-width: var(--plus-max); margin: 56px auto 0; padding: 0 28px; }
+  .plus-roadmap h2 { font-size: 22px; font-weight: 750; letter-spacing: -.02em; }
+  .plus-roadmap ol { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0; margin-top: 18px; padding: 0; list-style: none; border-top: 1px solid var(--line-strong); }
+  .plus-roadmap li { padding: 18px 24px 0 0; }
+  .plus-roadmap li + li { padding-left: 24px; border-left: 1px solid var(--line); }
+  .plus-stage { display: flex; align-items: center; gap: 8px; font: 700 10px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  .plus-stage i { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); }
+  .plus-stage.now { color: var(--accent-deep); }
+  .plus-stage.now i { background: var(--accent); }
+  .plus-roadmap h3 { margin-top: 12px; font-size: 15.5px; font-weight: 750; }
+  .plus-roadmap p { margin-top: 5px; font-size: 13.5px; color: var(--ink-soft); }
+
+  .plus-free-band { margin-top: 56px; padding: 20px 28px; background: var(--accent-wash); border-top: 1px solid var(--accent-line); border-bottom: 1px solid var(--accent-line); }
+  .plus-free-band p { max-width: var(--plus-max); margin: 0 auto; font-size: 14.5px; color: var(--accent-deep); }
+
+  /* ── compare + faq ── */
+  .plus-detail { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 64px; max-width: var(--plus-max); margin: 0 auto; padding: 56px 28px 0; }
+  .plus-detail h2 { font-size: 22px; font-weight: 750; letter-spacing: -.02em; }
+  .plus-compare { margin-top: 16px; }
+  .plus-row { display: grid; grid-template-columns: minmax(0,1.4fr) 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .plus-row span:first-child { font-weight: 650; }
+  .plus-row-head { padding: 9px 0; border-bottom: 1px solid var(--line-strong); }
+  .plus-row-head span { font: 700 10px/1.3 var(--mono); text-transform: uppercase; color: var(--muted); }
+  .plus-row-head span:last-child { color: var(--accent-deep); }
+  .plus-row:last-child { border-bottom: 1px solid var(--line-strong); }
+  .plus-row .free { color: var(--ink-soft); }
+  .plus-row .none { color: var(--muted); }
+  .plus-row .yes { color: var(--accent-deep); font-weight: 700; }
+  .plus-faq-list { margin-top: 16px; border-top: 1px solid var(--line-strong); }
+  .plus-faq-item { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .plus-faq-item strong { font-size: 14px; font-weight: 700; }
+  .plus-faq-item p { margin-top: 4px; font-size: 13.5px; color: var(--ink-soft); }
+
+  .plus-legal { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 32px; max-width: var(--plus-max); margin: 56px auto 0; padding: 0 28px 8px; }
+  .plus-legal p { font-size: 12.5px; color: var(--muted); }
+  .plus-legal div { display: flex; gap: 14px; font-size: 12px; }
+  .plus-legal a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+  .plus-legal a:hover { color: var(--accent); }
+
+  @media (max-width: 900px) {
+    .plus-hero h1 { font-size: 44px; }
+    .plus-shot { padding: 0 28px; }
+    .plus-outcomes { grid-template-columns: 1fr; gap: 26px; }
+    .plus-outcome, .plus-outcome + .plus-outcome, .plus-outcome + .plus-outcome + .plus-outcome { padding: 0; border-left: 0; }
+    .plus-outcome + .plus-outcome { padding-top: 26px; border-top: 1px solid var(--line); }
+    .plus-roadmap ol { grid-template-columns: 1fr; }
+    .plus-roadmap li, .plus-roadmap li + li { padding: 18px 0 0; border-left: 0; }
+    .plus-roadmap li + li { border-top: 1px solid var(--line); }
+    .plus-detail { grid-template-columns: 1fr; gap: 44px; }
+  }
+  @media (max-width: 620px) {
+    .plus-shell { width: calc(100% - 32px); }
+    .plus-hero { padding: 54px 0 74px; }
+    .plus-hero h1 { font-size: 36px; }
+    .plus-hero .lede { font-size: 16px; }
+    .plus-hero-cta { flex-direction: column; align-items: stretch; }
+    .plus-hero-cta .btn { width: 100%; }
+    .plus-offer { justify-content: center; }
+    .plus-shot { margin-top: -46px; padding: 0 16px; }
+    .plus-outcomes, .plus-detail, .plus-legal, .plus-roadmap { padding-left: 20px; padding-right: 20px; }
+    .plus-preview-tag { top: auto; bottom: 12px; right: 12px; }
+    .plus-row { grid-template-columns: 1fr; gap: 3px; padding: 14px 0; }
+    .plus-row-head { display: none; }
+    .plus-row span:nth-child(2)::before { content: "Free — "; color: var(--muted); }
+    .plus-row span:nth-child(3)::before { content: "Plus — "; color: var(--muted); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .plus-page *, .plus-page *:before, .plus-page *:after { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body class="plus-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="nav"><div class="nav-inner">
+  <a class="brand" href="index.html"><svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>Comix Downloader<span class="ver">PLUS</span></a>
+  <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+  <nav class="nav-links" id="nav-links"><a href="index.html">Home</a><a href="Documentation.html">Documentation</a><a href="plus.html" class="active">Plus</a><a href="privacy.html">Privacy</a><a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a><a class="nav-signin" href="plus.html#notify"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in<span class="nav-signin-soon">Soon</span></a></nav>
+</div></header>
+
+<main id="main" tabindex="-1">
+  <section class="plus-hero" aria-labelledby="plus-title">
+    <div class="plus-shell plus-hero-inner">
+      <span class="plus-pill"><i></i>In development &middot; not yet available</span>
+      <h1 id="plus-title">A preview of what Plus will be.</h1>
+      <p class="lede">Plus is an optional subscription we are building alongside the free extension: continuity across the browsers you read from, reading migration between platforms, and external sources. Nothing here is live yet, and the free extension is not waiting on it.</p>
+      <div class="plus-hero-cta">
+        <button class="btn-soon" type="button" disabled aria-disabled="true"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Start 30-day free trial</button>
+        <p class="plus-offer"><strong>Planned: 30 days free</strong><span>then US$1.50/mo + tax</span></p>
+      </div>
+      <p class="plus-fine">Pricing and trial length are the current plan, not a commitment. Nothing is charged today.</p>
+      <p class="plus-signin-note" id="notify">Want to know when it opens? <a href="https://github.com/N3uralCreativity/comix-downloader/releases" target="_blank" rel="noopener">Watch releases on GitHub</a> &mdash; the launch is announced there and in the changelog.</p>
+    </div>
+  </section>
+
+  <div class="plus-shot">
+    <figure class="plus-product-window">
+      <div class="plus-window-bar" aria-hidden="true"><i></i><i></i><i></i><span>Settings / Sync &amp; Library / Comix Downloader Plus &mdash; work in progress</span></div>
+      <span class="plus-preview-tag">Early build</span>
+      <img src="assets/plus-dashboard-sync.png" width="1600" alt="Early build of the Comix Downloader Plus settings panel showing synchronization categories and account status" fetchpriority="high">
+    </figure>
+    <figcaption class="plus-shell">An early build of the Plus panel. The final interface may differ.</figcaption>
+  </div>
+
+  <section class="plus-outcomes" aria-label="What Plus is planned to add">
+    <article class="plus-outcome">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
+      <h3>Five approved devices</h3>
+      <p>Settings, watched series and reading positions on every browser you approve.</p>
+    </article>
+    <article class="plus-outcome">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v14"/><path d="m7 11 5 5 5-5"/><path d="M5 22h14"/></svg>
+      <h3>Reading migration</h3>
+      <p>Carry your progress between reading platforms, and read from external sources.</p>
+    </article>
+    <article class="plus-outcome">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
+      <h3>Thirty days of restore</h3>
+      <p>Roll back a wrong change without losing the state you had before it.</p>
+    </article>
+  </section>
+
+  <section class="plus-roadmap" aria-labelledby="roadmap-title">
+    <h2 id="roadmap-title">Where it stands</h2>
+    <ol>
+      <li>
+        <span class="plus-stage now"><i></i>Now</span>
+        <h3>Building and testing</h3>
+        <p>Sync, devices and restore are running in internal builds. The panel above is one of them.</p>
+      </li>
+      <li>
+        <span class="plus-stage"><i></i>Next</span>
+        <h3>Closed beta</h3>
+        <p>A small group tests migration and external sources on real libraries before anything is charged.</p>
+      </li>
+      <li>
+        <span class="plus-stage"><i></i>Later</span>
+        <h3>Public release</h3>
+        <p>Sign-up opens with the trial. Announced in the changelog and on GitHub releases.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="plus-free-band" aria-label="Free stays free">
+    <p><strong>Free stays free.</strong> Downloads, ZIP, CBZ, subscriptions and reader tools remain accountless and unchanged, before and after Plus ships.</p>
+  </section>
+
+  <div class="plus-detail">
+    <section aria-labelledby="compare-title">
+      <h2 id="compare-title">Free today vs Plus as planned</h2>
+      <div class="plus-compare">
+        <div class="plus-row plus-row-head"><span>Capability</span><span>Free</span><span>Plus (planned)</span></div>
+        <div class="plus-row"><span>Downloads and formats</span><span class="free">Included</span><span class="free">Included</span></div>
+        <div class="plus-row"><span>Account</span><span class="free">Not required</span><span class="free">Required</span></div>
+        <div class="plus-row"><span>Cross-device sync</span><span class="free">Local only</span><span class="yes">Five devices</span></div>
+        <div class="plus-row"><span>Restore history</span><span class="free">Manual export</span><span class="yes">30 days</span></div>
+        <div class="plus-row"><span>Reading migration</span><span class="none">Not available</span><span class="yes">Included</span></div>
+        <div class="plus-row"><span>External sources</span><span class="none">Not available</span><span class="yes">Included</span></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="faq-title">
+      <h2 id="faq-title">Questions</h2>
+      <div class="plus-faq-list">
+        <div class="plus-faq-item"><strong>Can I subscribe or sign in now?</strong><p>Not yet. Plus is in development, so there is no account to sign in to until release.</p></div>
+        <div class="plus-faq-item"><strong>When does it launch?</strong><p>No date is set. It ships when the beta holds up, and it is announced in the changelog.</p></div>
+        <div class="plus-faq-item"><strong>Will the free extension change?</strong><p>No. Nothing that works today moves behind an account.</p></div>
+        <div class="plus-faq-item"><strong>Is the price final?</strong><p>US$1.50/month with a 30-day trial is the current plan. It can still change before release.</p></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="plus-legal">
+    <p>Everything on this page describes work in progress. Features, pricing and timing may change before release.</p>
+    <div><a href="terms.html">Terms</a><a href="refund.html">Refund policy</a><a href="privacy.html#plus">Privacy</a></div>
+  </div>
+</main>
+
+<footer class="footer"><div class="footer-inner"><span class="brand" style="font-weight:700;"><svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>Comix Downloader</span><span class="sep">&middot;</span><span>MIT &copy; N3uralCreativity</span><div class="right"><a class="changelog-btn" href="changelog.html"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>Changelog</a><a href="terms.html">Terms</a><a href="refund.html">Refunds</a><a href="privacy.html">Privacy</a><a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a></div></div></footer>
+<script src="site.js" defer></script>
+</body>
+</html>

@@ -425,3 +425,54 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .cdl-mark .glow, .cdl-mark:hover .glow { animation: none; }
 }
+
+/* ── Plus sign-in — nav, present on every page ──────── */
+.nav-links .nav-signin {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}
+.nav-links .nav-signin::before {
+  content: "";
+  position: absolute;
+  left: -9px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+}
+.nav-links .nav-signin:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+  color: var(--accent-deep);
+}
+/* Pre-release: the control announces Plus rather than opening a session.
+   At launch, relabel it "Sign in" and point it at the auth route. */
+.nav-links .nav-signin svg { width: 15px; height: 15px; flex: none; }
+.nav-links .nav-signin-soon {
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-line);
+  color: var(--accent-deep);
+  font: 600 10px/1 var(--mono);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+  .nav-links .nav-signin { width: 100%; justify-content: center; margin: 8px 0 0; }
+  .nav-links .nav-signin::before { left: 0; right: 0; top: -4px; width: auto; height: 1px; transform: none; }
+}
