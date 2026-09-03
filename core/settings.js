@@ -43,6 +43,7 @@
 
     // Output format & library
     'output.format': 'zip',                // 'zip' | 'cbz' | 'pdf'
+    'output.directCbz': false,             // save each CBZ directly instead of wrapping them in ZIP parts
     'output.downloadSubfolder': '',        // relative to the browser Downloads directory
     'output.includeComicInfo': true,       // write ComicInfo.xml per chapter
     'output.includeSeriesMeta': false,     // save cover.jpg + series.json for the series
@@ -185,8 +186,10 @@
       label: 'Skip already-downloaded', help: 'In "Download All", default to only the chapters you have not downloaded yet. You can still choose "All" in the panel to re-download everything.' },
 
     'output.format': { type: 'enum', enum: OUTPUT_FORMATS, risk: 'none',
-      label: 'Download format', help: 'ZIP keeps chapter folders of images. CBZ creates one comic archive per chapter; Download All then delivers those CBZ files inside one or more ZIP parts.',
+      label: 'Download format', help: 'ZIP keeps chapter folders of images. CBZ creates one comic archive per chapter; Download All can save them directly or place them inside ZIP parts.',
       options: OUTPUT_FORMAT_OPTIONS },
+    'output.directCbz': { type: 'bool', risk: 'none',
+      label: 'Download CBZ files directly', help: 'For CBZ Download All runs, save one .cbz file per chapter without wrapping those files in another ZIP. Each chapter appears as a separate browser download.' },
     'output.downloadSubfolder': { type: 'downloadPath', maxLen: 180, risk: 'none',
       label: 'Download folder', help: 'Optional folder inside your browser\'s Downloads directory. Example: Comix Downloader/Manga. Absolute paths are not allowed by browsers.' },
     'output.includeComicInfo': { type: 'bool', risk: 'none',
@@ -363,7 +366,7 @@
       keys: ['download.concurrentChapters', 'download.splitMode', 'download.chaptersPerPart', 'download.cbzChaptersPerPart']
         .concat(PDF_OUTPUT_VISIBLE ? ['download.pdfChaptersPerPart'] : [], ['download.mbPerPart']) },
     { id: 'output', label: 'Output & Library', icon: 'box',
-      keys: ['output.format', 'output.downloadSubfolder', 'output.includeComicInfo', 'output.includeSeriesMeta', 'output.folderLayout', 'download.skipDownloaded'] },
+      keys: ['output.format', 'output.directCbz', 'output.downloadSubfolder', 'output.includeComicInfo', 'output.includeSeriesMeta', 'output.folderLayout', 'download.skipDownloaded'] },
     { id: 'perf', label: 'Performance', icon: 'gauge',
       keys: ['perf.batchSize', 'perf.rateLimitMode', 'perf.rateBaseMs', 'perf.rateMinMs', 'perf.rateMaxMs', 'perf.imageTimeoutMs', 'perf.tabLoadTimeoutMs', 'perf.pagePollMs', 'perf.pageSettleMs', 'perf.scrollSettleMs'] },
     { id: 'retry', label: 'Retries', icon: 'repeat',

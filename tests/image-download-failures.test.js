@@ -113,7 +113,7 @@ check('single-chapter download rejects incomplete image sets before ZIP generati
 const allEvents = {
   progress: [], errors: [], done: [], saves: [], recorded: [], logs: [],
   checkpoints: [], sessions: [], extracted: [], reviews: [], pdfBuilds: [], packed: [],
-  cancelled: [],
+  cancelled: [], directCbzBuilds: [], saveRequests: [],
 };
 let fetchMode = 'fail';
 let extractMode = 'pass';
@@ -198,9 +198,10 @@ const allContext = {
   },
   getZipPartName: (name, part) => `${name}.part${part}`,
   _doZipAndSave: async ({
-    zipName, chapterRecords = [], onZipProgress, onSaveProgress,
+    zipName, targetFilename, outputExtension, chapterRecords = [], onZipProgress, onSaveProgress,
   }) => {
     allEvents.saves.push(zipName);
+    allEvents.saveRequests.push({ zipName, targetFilename, outputExtension, chapterRecords });
     if (onZipProgress) {
       onZipProgress({ percent: 0, currentFile: '', reset: true });
       // Let the next concurrent chapter emit progress while this ZIP owns the UI.
@@ -225,7 +226,7 @@ const allContext = {
     const accepted = confirmed || archiveDeliveryMode === 'mobile';
     if (accepted) chapterRecords.forEach((record) => allEvents.recorded.push(record.chapterLabel));
     return {
-      filename: zipName,
+      filename: targetFilename || zipName,
       confirmed,
       accepted,
       mobileHandoff: archiveDeliveryMode === 'mobile',
@@ -299,6 +300,18 @@ const allContext = {
     allEvents.packed.push({ chapterLabel: result.chapterLabel, hasPdf: !!result.pdfBytes });
     return result.pdfBytes ? result.pdfBytes.byteLength : result.bytes;
   },
+  buildChapterCbzBytes: async (result, _opts, _mangaName, onProgress) => {
+    allEvents.directCbzBuilds.push(result.chapterLabel);
+    if (onProgress) onProgress({ percent: 50 });
+    return new Uint8Array([1, 2, 3]);
+  },
+  buildCbzEntryName: (_opts, result) => result.chapterLabel,
+  uniqueDirectCbzEntryName: (used, entry) => {
+    used.add(`${entry}.cbz`.toLowerCase());
+    return entry;
+  },
+  directCbzTargetFilename: (entry, folder) => `${folder ? `${folder}/` : ''}${entry}.cbz`,
+  _bytesToDownloadUrl: async () => ({ url: 'blob:direct-cbz', revoke() {} }),
   withExtensionKeepAlive: (task) => task(),
   tagDiagnosticError: (error, kind, phase) => Object.assign(error, { cdlKind: kind, cdlPhase: phase }),
   createErrorDiagnostic: (error, options = {}) => ({
@@ -556,6 +569,33 @@ async function run() {
   check('the Download All pipeline respects the CBZ-specific files-per-part setting',
     firstCbzPart && firstCbzPart.partChapters === 3 && firstCbzPart.maxPartChapters === 3 &&
     firstCbzPart.outputFormat === 'cbz');
+
+  resetAllEvents();
+  fetchMode = 'pass';
+  outputFormat = 'cbz';
+  await allContext.handleDownloadAllRequest([
+    { chapterUrl: 'https://comix.to/title/series/good/1', chapterLabel: 'Ch1' },
+    { chapterUrl: 'https://comix.to/title/series/good/2', chapterLabel: 'Ch2' },
+    { chapterUrl: 'https://comix.to/title/series/good/3', chapterLabel: 'Ch3' },
+  ], 'Series', 'series.zip', 7, { directCbz: true });
+  check('direct CBZ mode saves one browser file per completed chapter',
+    JSON.stringify(allEvents.saves) === JSON.stringify(['Ch1.cbz', 'Ch2.cbz', 'Ch3.cbz']) &&
+    allEvents.saveRequests.every((request) => request.outputExtension === 'cbz' &&
+      request.targetFilename === request.zipName));
+  check('direct CBZ mode never adds chapter files to an outer ZIP',
+    allEvents.packed.length === 0 &&
+    allEvents.directCbzBuilds.join(',') === 'Ch1,Ch2,Ch3');
+  check('each confirmed direct CBZ advances the resume checkpoint and downloaded manifest',
+    allEvents.checkpoints.map((checkpoint) => checkpoint.checkpointIndex).join(',') === '1,2,3' &&
+    allEvents.recorded.join(',') === 'Ch1,Ch2,Ch3');
+  check('direct CBZ completion reports separate files and remains review eligible',
+    allEvents.done.length === 1 && allEvents.done[0].zipName === '3 CBZ files' &&
+    allEvents.done[0].warning === '' && allEvents.reviews.length === 1);
+  check('direct CBZ progress identifies both build and save stages without ZIP parts',
+    allEvents.progress.some((event) => event.phase === 'zipping' && event.directCbz === true &&
+      event.cbzFileIndex === 1 && event.cbzFileTotal === 3) &&
+    allEvents.progress.some((event) => event.phase === 'saving' && event.directCbz === true &&
+      event.chapterLabel === 'Ch1'));
 
   resetAllEvents();
   fetchMode = 'pass';

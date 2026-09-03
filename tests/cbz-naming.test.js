@@ -56,7 +56,19 @@ vm.runInContext(`
   ${extractFunction('buildCbzFileBase')}
   ${extractFunction('buildCbzEntryName')}
   ${extractFunction('uniqueChapterEntryName')}
-  globalThis.api = { buildCbzFileBase, buildCbzEntryName, uniqueChapterEntryName };
+  ${extractFunction('sanitizeFilename')}
+  ${extractFunction('downloadTargetFilename')}
+  ${extractFunction('uniqueDirectCbzEntryName')}
+  ${extractFunction('directCbzTargetFilename')}
+  ${extractFunction('resolveOutputOptions')}
+  globalThis.api = {
+    buildCbzFileBase,
+    buildCbzEntryName,
+    uniqueChapterEntryName,
+    uniqueDirectCbzEntryName,
+    directCbzTargetFilename,
+    resolveOutputOptions,
+  };
 `, context);
 
 const baseOptions = {
@@ -105,6 +117,27 @@ const zip = {
 };
 check('duplicate custom CBZ names gain a chapter suffix instead of overwriting',
   context.api.uniqueChapterEntryName(zip, 'Same', 'cbz', 'Ch12') === 'Same-Ch12');
+
+const directNames = new Set();
+check('direct CBZ names use the same deterministic collision suffixes',
+  context.api.uniqueDirectCbzEntryName(directNames, 'Same', 'Ch12') === 'Same' &&
+  context.api.uniqueDirectCbzEntryName(directNames, 'Same', 'Ch13') === 'Same-Ch13');
+check('direct CBZ files respect the configured browser download folder',
+  context.api.directCbzTargetFilename('Ch0012', 'Comix Downloader/Manga') ===
+    'Comix Downloader/Manga/Ch0012.cbz');
+check('direct CBZ files preserve the Kavita series subfolder',
+  context.api.directCbzTargetFilename('Solo Leveling/Ch0012', 'Comix Downloader') ===
+    'Comix Downloader/Solo Leveling/Ch0012.cbz');
+check('direct delivery only applies to CBZ and stays disabled by default',
+  context.api.resolveOutputOptions({}, {}).directCbz === false &&
+  context.api.resolveOutputOptions({ 'output.directCbz': true }, { format: 'zip' }).directCbz === false &&
+  context.api.resolveOutputOptions({ 'output.directCbz': true }, { format: 'cbz' }).directCbz === true);
+check('direct CBZ delivery omits series-level files that require an outer ZIP',
+  context.api.resolveOutputOptions({
+    'output.format': 'cbz',
+    'output.directCbz': true,
+    'output.includeSeriesMeta': true,
+  }, {}).includeSeriesMeta === false);
 
 console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

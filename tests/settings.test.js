@@ -62,6 +62,7 @@ check('concurrentChapters clamp high', S.validate({ 'download.concurrentChapters
 check('concurrentChapters clamp low', S.validate({ 'download.concurrentChapters': 0 })['download.concurrentChapters'] === 1);
 check('imageRetries default 1', S.validate({})['retry.imageRetries'] === 1);
 check('chapterRetries default 1', S.validate({})['retry.chapterRetries'] === 1);
+check('direct CBZ delivery is opt-in by default', S.validate({})['output.directCbz'] === false);
 
 // 3. Enums / bools / colors
 check('enum bad -> default', S.validate({ 'perf.rateLimitMode': 'nope' })['perf.rateLimitMode'] === 'dynamic');
@@ -72,6 +73,10 @@ check('a previously saved PDF preference falls back to ZIP while PDF is hidden',
 check('hidden PDF partition controls are absent from settings tabs',
   !S.TABS.some((tab) => tab.keys.includes('download.pdfChaptersPerPart')));
 check('bool cast', S.validate({ 'appearance.disableAnim': 1 })['appearance.disableAnim'] === true);
+check('direct CBZ delivery validates as a boolean',
+  S.validate({ 'output.directCbz': 1 })['output.directCbz'] === true);
+check('direct CBZ delivery appears with the output controls',
+  S.TABS.find((tab) => tab.id === 'output').keys.includes('output.directCbz'));
 check('color bad -> default', S.validate({ 'appearance.accentColor': 'red' })['appearance.accentColor'] === '#60a5fa');
 check('color good', S.validate({ 'appearance.accentColor': '#abc' })['appearance.accentColor'] === '#abc');
 

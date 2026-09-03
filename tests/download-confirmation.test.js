@@ -141,7 +141,10 @@ const zipContext = {
     zipGenerationCalls++;
     return { url: 'blob:test', revoke() {}, base64: null };
   },
-  sanitizeFilename: (name) => name.endsWith('.zip') ? name : `${name}.zip`,
+  sanitizeFilename: (name, extension = 'zip') => {
+    const base = String(name).replace(/\.(?:zip|cbz)$/i, '');
+    return `${base}.${extension}`;
+  },
   downloadTargetFilename: (name, folder) => folder ? `${folder}/${name}` : name,
   saveGeneratedArchive: async (options) => {
     zipSaveOptions.push(options);
@@ -406,6 +409,26 @@ async function run() {
     zipSaveOptions.length === 1 && zipSaveOptions[0].zip === null);
   check('Download All sends nested relative destinations to the browser',
     zipSaveOptions.length === 1 && zipSaveOptions[0].filename === 'Comix/Manga/series.zip');
+
+  resetZipEvents();
+  zipDelivery = { confirmed: true, fallback: false, downloadId: 18 };
+  const directCbz = await zipContext.doZipAndSave({
+    zip: null,
+    zipName: 'Ch12.cbz',
+    targetFilename: 'Comix/Manga/Ch12.cbz',
+    outputExtension: 'cbz',
+    generatedArchive: { url: 'blob:cbz', revoke() {}, base64: null },
+    originTabId: 4,
+    notifyDone: false,
+    chapterRecords: [{ chapterLabel: 'Ch12' }],
+    slug: 'series',
+    mangaName: 'Series',
+  });
+  check('prepared direct CBZ bytes skip outer ZIP generation and keep their extension',
+    directCbz.confirmed === true && directCbz.filename === 'Comix/Manga/Ch12.cbz' &&
+    zipGenerationCalls === 0 && zipSaveOptions[0].filename === 'Comix/Manga/Ch12.cbz');
+  check('a confirmed direct CBZ marks only its own chapter',
+    zipEvents.records.join(',') === 'Ch12');
 
   resetZipEvents();
   zipDelivery = { confirmed: false, fallback: true, downloadId: null };

@@ -2885,6 +2885,7 @@ function injectOptsStyles() {
     .cdl-op-check input { margin-top:2px; accent-color:var(--cdl-accent); width:15px; height:15px; flex-shrink:0; }
     .cdl-op-check .t { color:var(--cdl-text); font-size:12.5px; }
     .cdl-op-check .d { color:var(--cdl-faint); font-size:11px; }
+    .cdl-op-direct-cbz[hidden] { display:none; }
     .cdl-op-field { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .cdl-op-field label { color:var(--cdl-text); font-size:12.5px; }
     .cdl-op-field select { min-width:0; max-width:68%; }
@@ -2962,6 +2963,7 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
   // Defaults: settings, overlaid with this series' remembered choices.
   const def = {
     format: prefs.format || CFG['output.format'] || 'zip',
+    directCbz: prefs.directCbz != null ? prefs.directCbz : !!CFG['output.directCbz'],
     includeComicInfo: prefs.includeComicInfo != null ? prefs.includeComicInfo : (CFG['output.includeComicInfo'] !== false),
     includeSeriesMeta: prefs.includeSeriesMeta != null ? prefs.includeSeriesMeta : !!CFG['output.includeSeriesMeta'],
     folderLayout: prefs.folderLayout || CFG['output.folderLayout'] || 'default',
@@ -3015,8 +3017,9 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
           ${PDF_OUTPUT_VISIBLE ? '<div class="cdl-op-card" data-fmt="pdf"><div class="t">PDF</div><div class="d">One ordered document per chapter.</div></div>' : ''}
         </div>
       </div>
+      <label class="cdl-op-check cdl-op-direct-cbz" id="cdl-op-direct-cbz-row"><input type="checkbox" id="cdl-op-direct-cbz"><span><span class="t">Download each CBZ directly</span><br><span class="d">Save one .cbz per chapter without wrapping them in another ZIP.</span></span></label>
       <label class="cdl-op-check"><input type="checkbox" id="cdl-op-comicinfo"><span><span class="t">Include ComicInfo.xml</span><br><span class="d">Series, number, tags — so library servers index each chapter.</span></span></label>
-      <label class="cdl-op-check"><input type="checkbox" id="cdl-op-meta"><span><span class="t">Include series info</span><br><span class="d">Save the cover image and series details (cover.jpg + series.json).</span></span></label>
+      <label class="cdl-op-check"><input type="checkbox" id="cdl-op-meta"><span><span class="t">Include series info</span><br><span class="d" id="cdl-op-meta-description">Save the cover image and series details (cover.jpg + series.json).</span></span></label>
       <div class="cdl-op-field">
         <label for="cdl-op-layout">Folder layout</label>
         <select id="cdl-op-layout">
@@ -3066,12 +3069,30 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
   let format = visibleFormats.includes(def.format) ? def.format : 'zip';
   const q = (id) => panel.querySelector(id);
   const cards = [...panel.querySelectorAll('.cdl-op-card')];
+  const directCbzInput = q('#cdl-op-direct-cbz');
+  const directCbzRow = q('#cdl-op-direct-cbz-row');
   const comicInfoInput = q('#cdl-op-comicinfo');
+  const seriesMetaInput = q('#cdl-op-meta');
+  const seriesMetaDescription = q('#cdl-op-meta-description');
   const syncFormatControls = () => {
-    const unavailable = format === 'pdf';
-    comicInfoInput.disabled = unavailable;
-    const row = comicInfoInput.closest('.cdl-op-check');
-    if (row) row.style.opacity = unavailable ? '.5' : '';
+    const pdf = format === 'pdf';
+    const direct = format === 'cbz' && directCbzInput.checked;
+    directCbzRow.hidden = format !== 'cbz';
+    directCbzInput.disabled = format !== 'cbz';
+    comicInfoInput.disabled = pdf;
+    const comicInfoRow = comicInfoInput.closest('.cdl-op-check');
+    if (comicInfoRow) comicInfoRow.style.opacity = pdf ? '.5' : '';
+    seriesMetaInput.disabled = direct;
+    const seriesMetaRow = seriesMetaInput.closest('.cdl-op-check');
+    if (seriesMetaRow) {
+      seriesMetaRow.style.opacity = direct ? '.5' : '';
+      seriesMetaRow.title = direct ? 'Series cover and JSON require an outer ZIP.' : '';
+    }
+    if (seriesMetaDescription) {
+      seriesMetaDescription.textContent = direct
+        ? 'Unavailable because cover.jpg and series.json require an outer ZIP.'
+        : 'Save the cover image and series details (cover.jpg + series.json).';
+    }
   };
   const selectFormat = (f) => {
     format = f;
@@ -3079,9 +3100,9 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
     syncFormatControls();
   };
   cards.forEach((c) => c.addEventListener('click', () => { selectFormat(c.dataset.fmt); updateEstimate(); }));
-  selectFormat(format);
+  directCbzInput.checked = def.directCbz;
   comicInfoInput.checked = def.includeComicInfo;
-  q('#cdl-op-meta').checked = def.includeSeriesMeta;
+  seriesMetaInput.checked = def.includeSeriesMeta;
   q('#cdl-op-layout').value = def.folderLayout;
   const scopeRadio = (v) => panel.querySelector(`input[name="cdl-op-scope"][value="${v}"]`);
   scopeRadio(defaultScope).checked = true;
@@ -3125,7 +3146,9 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
     const pdf = format === 'pdf' ? ' · WebP/AVIF pages are converted losslessly for PDF compatibility' : '';
     const splitMode = CFG['download.splitMode'] || 'multipart';
     let packaging;
-    if (splitMode === 'single') {
+    if (format === 'cbz' && directCbzInput.checked) {
+      packaging = `${n} separate CBZ download${n === 1 ? '' : 's'} (no outer ZIP)`;
+    } else if (splitMode === 'single') {
       packaging = 'one ZIP for all selected chapters';
     } else {
       const countKey = format === 'cbz'
@@ -3142,6 +3165,12 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
     q('#cdl-op-estimate').textContent = `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title) · ${packaging}${lib}${pdf}`;
     q('#cdl-op-start').disabled = n === 0;
   };
+
+  directCbzInput.addEventListener('change', () => {
+    syncFormatControls();
+    updateEstimate();
+  });
+  selectFormat(format);
 
   const renderSpecificSelection = (result = {}) => {
     const count = specificSelections.size;
@@ -3231,8 +3260,9 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
 
   const buildOptions = () => ({
     format,
+    directCbz: format === 'cbz' && directCbzInput.checked,
     includeComicInfo: q('#cdl-op-comicinfo').checked,
-    includeSeriesMeta: q('#cdl-op-meta').checked,
+    includeSeriesMeta: !(format === 'cbz' && directCbzInput.checked) && seriesMetaInput.checked,
     folderLayout: q('#cdl-op-layout').value,
     slug: meta.slug || '',
     seriesMeta: meta,
@@ -3244,8 +3274,9 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
     if (!subset.length) return;
     const options = buildOptions();
     if (q('#cdl-op-remember').checked) {
-      saveSeriesPrefs({ format: options.format, includeComicInfo: options.includeComicInfo,
-        includeSeriesMeta: options.includeSeriesMeta, folderLayout: options.folderLayout });
+      saveSeriesPrefs({ format: options.format, directCbz: options.directCbz,
+        includeComicInfo: options.includeComicInfo,
+        includeSeriesMeta: seriesMetaInput.checked, folderLayout: options.folderLayout });
     }
     const zipName = buildAllZipName(mangaName);
     _lastDlAllParams = { chapters: subset, mangaName, zipName, options };
@@ -3563,7 +3594,7 @@ function _dlAllSetFooterClose(popup) {
   });
 }
 
-function _dlAllSetFooterSaveAgain(popup, zipPart = 1, finalPart = true) {
+function _dlAllSetFooterSaveAgain(popup, zipPart = 1, finalPart = true, directCbz = false) {
   clearTimeout(popup._cdlRetryTimer);
   const footer = popup.querySelector('.cdl-ap-footer');
   if (!footer) return;
@@ -3583,14 +3614,16 @@ function _dlAllSetFooterSaveAgain(popup, zipPart = 1, finalPart = true) {
     saveBtn.disabled = true;
     closeBtn.disabled = true;
     _dlAllSetStage(popup, 'save');
-    _dlAllSetArchiveProgress({ stage: 'save', percent: null, zipPart, finalPart, indeterminate: true });
+    _dlAllSetArchiveProgress({
+      stage: 'save', percent: null, zipPart, finalPart, indeterminate: true, directCbz,
+    });
     const status = document.getElementById('cdl-ap-chapter-status');
     if (status) {
       status.textContent = 'Opening the save dialog…';
       status.classList.remove('error', 'warning');
     }
     const detail = document.getElementById('cdl-ap-img-status');
-    if (detail) detail.textContent = 'Choose where to save the prepared ZIP.';
+    if (detail) detail.textContent = `Choose where to save the prepared ${directCbz ? 'CBZ' : 'ZIP'}.`;
 
     try {
       startDownloadAllSessionSync(250);
@@ -3762,7 +3795,8 @@ function _dlAllSetChapterProgress(completed, totalChapters) {
 
 function _dlAllSetArchiveProgress({
   stage, percent, zipPart, finalPart, indeterminate = false,
-  customLabel = '', ariaLabel = '',
+  customLabel = '', ariaLabel = '', directCbz = false,
+  cbzFileIndex = 0, cbzFileTotal = 0,
 }) {
   const panel = document.getElementById('cdl-ap-archive');
   if (!panel) return;
@@ -3776,14 +3810,19 @@ function _dlAllSetArchiveProgress({
   panel.classList.toggle('is-indeterminate', indeterminate || !hasPercent);
   panel.setAttribute('aria-hidden', 'false');
   const label = document.getElementById('cdl-ap-archive-label');
-  if (label) label.textContent = customLabel || `${isSaving ? 'Saving ZIP' : 'Building ZIP'}${partText}`;
+  const cbzCount = cbzFileIndex && cbzFileTotal ? ` ${cbzFileIndex} of ${cbzFileTotal}` : '';
+  if (label) label.textContent = customLabel || (directCbz
+    ? `${isSaving ? 'Saving' : 'Building'} CBZ${cbzCount}`
+    : `${isSaving ? 'Saving ZIP' : 'Building ZIP'}${partText}`);
   const percentNode = document.getElementById('cdl-ap-archive-percent');
   if (percentNode) percentNode.textContent = hasPercent ? `${safePercent}%` : 'Waiting…';
   const fill = document.getElementById('cdl-ap-zip-fill');
   if (fill && !panel.classList.contains('is-indeterminate')) fill.style.width = `${safePercent}%`;
   const progress = document.getElementById('cdl-ap-zip-progress');
   if (progress) {
-    progress.setAttribute('aria-label', ariaLabel || (isSaving ? 'Browser save progress' : 'ZIP creation progress'));
+    progress.setAttribute('aria-label', ariaLabel || (isSaving
+      ? 'Browser save progress'
+      : directCbz ? 'CBZ creation progress' : 'ZIP creation progress'));
     if (hasPercent) progress.setAttribute('aria-valuenow', String(safePercent));
     else progress.removeAttribute('aria-valuenow');
   }
@@ -3886,11 +3925,14 @@ function updateDownloadAllPopupSaveCancelled(filename, zipPart = 1, finalPart = 
   if (!popup) return;
   popup.dataset.awaitingSave = 'true';
   _dlAllSetStage(popup, 'save', 'paused');
-  _dlAllSetArchiveProgress({ stage: 'save', percent: 100, zipPart, finalPart });
+  const directCbz = /\.cbz$/i.test(filename || '');
+  _dlAllSetArchiveProgress({ stage: 'save', percent: 100, zipPart, finalPart, directCbz });
   const archive = document.getElementById('cdl-ap-archive');
   if (archive) archive.classList.remove('is-active', 'is-indeterminate');
   const label = document.getElementById('cdl-ap-archive-label');
-  if (label) label.textContent = `ZIP ready${zipPart > 1 || !finalPart ? ` - part ${zipPart || 1}` : ''}`;
+  if (label) label.textContent = directCbz
+    ? 'CBZ ready'
+    : `ZIP ready${zipPart > 1 || !finalPart ? ` - part ${zipPart || 1}` : ''}`;
   const percent = document.getElementById('cdl-ap-archive-percent');
   if (percent) percent.textContent = 'Ready';
 
@@ -3902,7 +3944,7 @@ function updateDownloadAllPopupSaveCancelled(filename, zipPart = 1, finalPart = 
   }
   const detail = document.getElementById('cdl-ap-img-status');
   if (detail) detail.textContent = `${filename || 'manga.zip'} is still prepared and ready to save.`;
-  _dlAllSetFooterSaveAgain(popup, zipPart, finalPart);
+  _dlAllSetFooterSaveAgain(popup, zipPart, finalPart, directCbz);
 }
 
 function updateDownloadAllPopupInterrupted(message = {}) {
@@ -3925,7 +3967,7 @@ function updateDownloadAllPopupInterrupted(message = {}) {
   if (detail) {
     const checkpoint = Number(message.completed) > 0
       ? ` Resume continues with ${next}.`
-      : ` Resume restarts with ${next} because no ZIP part was confirmed.`;
+      : ` Resume restarts with ${next} because no output file was confirmed.`;
     detail.textContent = `${message.error || 'The browser or extension stopped the active run.'}${checkpoint}`;
   }
   _cdlAddPopupDiagnostic(popup, message.diagnostic, message.error, {
@@ -4099,21 +4141,28 @@ function updateDownloadAllPopup(msg) {
     clearTimeout(popup._cdlRetryTimer);
 
   } else if (phase === 'zipping') {
+    const directCbz = msg.directCbz === true;
     const percent = Number.isFinite(Number(msg.zipPercent)) ? Number(msg.zipPercent) : 0;
     const partText = msg.zipPart > 1 || !msg.finalPart ? ` part ${msg.zipPart || 1}` : '';
     const boundary = _dlAllPartBoundaryText(msg);
     _dlAllSetStage(popup, 'zip');
     const packageStage = popup.querySelector('.cdl-ap-stage[data-stage="zip"] span:last-child');
-    if (packageStage) packageStage.textContent = 'ZIP';
+    if (packageStage) packageStage.textContent = directCbz ? 'CBZ' : 'ZIP';
     _dlAllSetChapterProgress(completed, totalChapters);
     _dlAllSetArchiveProgress({
       stage: 'zip', percent, zipPart: msg.zipPart, finalPart: msg.finalPart,
+      directCbz, cbzFileIndex: msg.cbzFileIndex, cbzFileTotal: msg.cbzFileTotal,
     });
-    status.textContent = `Building ZIP${partText}…`;
-    el('cdl-ap-img-status').textContent = `${boundary ? `${boundary} · ` : ''}Packing archive: ${Math.round(percent)}%`;
+    status.textContent = directCbz
+      ? `Building ${msg.chapterLabel || 'chapter'} CBZ…`
+      : `Building ZIP${partText}…`;
+    el('cdl-ap-img-status').textContent = directCbz
+      ? `Creating chapter file: ${Math.round(percent)}%`
+      : `${boundary ? `${boundary} · ` : ''}Packing archive: ${Math.round(percent)}%`;
     clearTimeout(popup._cdlRetryTimer);
 
   } else if (phase === 'saving' || phase === 'savingPart') {
+    const directCbz = msg.directCbz === true;
     const hasPercent = msg.savePercent !== null && msg.savePercent !== undefined &&
       msg.savePercent !== '' && Number.isFinite(Number(msg.savePercent));
     const percent = hasPercent ? Number(msg.savePercent) : null;
@@ -4122,21 +4171,24 @@ function updateDownloadAllPopup(msg) {
     _dlAllSetChapterProgress(completed, totalChapters);
     _dlAllSetArchiveProgress({
       stage: 'save', percent, zipPart: msg.zipPart, finalPart: msg.finalPart,
-      indeterminate: !hasPercent,
+      indeterminate: !hasPercent, directCbz,
+      cbzFileIndex: msg.cbzFileIndex, cbzFileTotal: msg.cbzFileTotal,
     });
-    status.textContent = `Saving ZIP${partText}…`;
+    status.textContent = directCbz
+      ? `Saving ${msg.chapterLabel || 'chapter'} CBZ…`
+      : `Saving ZIP${partText}…`;
     const received = _dlAllFormatBytes(msg.bytesReceived);
     const total = _dlAllFormatBytes(msg.totalBytes);
     if (msg.saveState === 'retrying') {
       status.textContent = 'Save dialog closed - reopening once…';
-      el('cdl-ap-img-status').textContent = 'The prepared ZIP is unchanged.';
+      el('cdl-ap-img-status').textContent = `The prepared ${directCbz ? 'CBZ' : 'ZIP'} is unchanged.`;
     } else if (msg.saveState === 'path_fallback') {
       status.textContent = 'Configured folder unavailable';
       el('cdl-ap-img-status').textContent = 'Retrying in the browser Downloads folder…';
     } else if (msg.saveState === 'starting' || phase === 'savingPart') {
       el('cdl-ap-img-status').textContent = 'Waiting for the browser save location…';
     } else if (msg.saveState === 'mobile_handoff') {
-      el('cdl-ap-img-status').textContent = 'ZIP sent to Firefox downloads.';
+      el('cdl-ap-img-status').textContent = `${directCbz ? 'CBZ' : 'ZIP'} sent to Firefox downloads.`;
     } else if (msg.saveState === 'fallback') {
       el('cdl-ap-img-status').textContent = 'File handed to the browser; completion cannot be verified.';
     } else if (hasPercent) {

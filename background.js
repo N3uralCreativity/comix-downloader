@@ -3720,21 +3720,22 @@ function tagDownloadError(error, phase) {
 
 function describeArchiveFailure(error, failurePhase, context = {}) {
   const raw = downloadErrorText(error) || 'Unexpected archive error';
+  const outputLabel = context.outputLabel === 'CBZ' ? 'CBZ' : 'ZIP';
   if (failurePhase === 'archive_save') {
     const code = (raw.match(/\b(?:FILE|NETWORK|SERVER|USER)_[A-Z_]+\b/) || [])[0] || '';
     const known = {
-      FILE_NO_SPACE: 'The device does not have enough free space for this ZIP.',
+      FILE_NO_SPACE: `The device does not have enough free space for this ${outputLabel}.`,
       FILE_ACCESS_DENIED: 'The browser cannot write to the selected folder.',
-      FILE_NAME_TOO_LONG: 'The generated ZIP filename is too long for the selected folder.',
-      FILE_TOO_LARGE: 'The generated ZIP is too large for the selected destination.',
-      FILE_BLOCKED: 'The browser blocked the generated ZIP.',
-      FILE_SECURITY_CHECK_FAILED: 'The browser could not complete its security check for the ZIP.',
-      NETWORK_TIMEOUT: 'The browser timed out while saving the ZIP.',
-      NETWORK_DISCONNECTED: 'The network or download manager disconnected while saving the ZIP.',
-      USER_SHUTDOWN: 'The browser shut down before the ZIP could be saved.',
+      FILE_NAME_TOO_LONG: `The generated ${outputLabel} filename is too long for the selected folder.`,
+      FILE_TOO_LARGE: `The generated ${outputLabel} is too large for the selected destination.`,
+      FILE_BLOCKED: `The browser blocked the generated ${outputLabel}.`,
+      FILE_SECURITY_CHECK_FAILED: `The browser could not complete its security check for the ${outputLabel}.`,
+      NETWORK_TIMEOUT: `The browser timed out while saving the ${outputLabel}.`,
+      NETWORK_DISCONNECTED: `The network or download manager disconnected while saving the ${outputLabel}.`,
+      USER_SHUTDOWN: `The browser shut down before the ${outputLabel} could be saved.`,
     };
     const result = {
-      errorTitle: 'Browser could not save the ZIP.',
+      errorTitle: `Browser could not save the ${outputLabel}.`,
       errorKind: 'archive_save',
       failurePhase,
       message: known[code] || raw.replace(/^Download interrupted:\s*/i, ''),
@@ -3755,10 +3756,12 @@ function describeArchiveFailure(error, failurePhase, context = {}) {
   }
 
   const result = {
-    errorTitle: 'ZIP creation failed.',
+    errorTitle: `${outputLabel} creation failed.`,
     errorKind: 'archive_build',
     failurePhase: 'archive_build',
-    message: `${raw} Lower the ZIP part size if this happens again, then resume from the last confirmed part.`,
+    message: outputLabel === 'CBZ'
+      ? `${raw} Resume to retry from the last confirmed chapter.`
+      : `${raw} Lower the ZIP part size if this happens again, then resume from the last confirmed part.`,
   };
   result.diagnostic = createErrorDiagnostic(error, { ...result, context });
   return result;
@@ -4017,10 +4020,13 @@ function resolveOutputOptions(cfg, options) {
   cfg = cfg || {};
   options = options || {};
   const pick = (o, c, d) => (o != null ? o : (c != null ? c : d));
+  const format = options.format || cfg['output.format'] || 'zip';
+  const directCbz = format === 'cbz' && !!pick(options.directCbz, cfg['output.directCbz'], false);
   return {
-    format: options.format || cfg['output.format'] || 'zip',
+    format,
+    directCbz,
     includeComicInfo: !!pick(options.includeComicInfo, cfg['output.includeComicInfo'], true),
-    includeSeriesMeta: !!pick(options.includeSeriesMeta, cfg['output.includeSeriesMeta'], false),
+    includeSeriesMeta: !directCbz && !!pick(options.includeSeriesMeta, cfg['output.includeSeriesMeta'], false),
     folderLayout: options.folderLayout || cfg['output.folderLayout'] || 'default',
     folderFmt: cfg['naming.chapterFolderFmt'] || 'Ch{num4}{rest}',
     cbzFileTpl: cfg['naming.cbzFileTpl'] || '{entry}',
@@ -4159,6 +4165,43 @@ function uniqueChapterEntryName(zip, entryBase, extension, chapterLabel) {
   return candidate;
 }
 
+function uniqueDirectCbzEntryName(usedNames, entryBase, chapterLabel) {
+  const registry = usedNames && typeof usedNames.has === 'function' && typeof usedNames.add === 'function'
+    ? usedNames
+    : new Set();
+  const normalized = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
+  const splitAt = String(entryBase || '').lastIndexOf('/');
+  const parent = splitAt >= 0 ? String(entryBase).slice(0, splitAt + 1) : '';
+  const basename = splitAt >= 0 ? String(entryBase).slice(splitAt + 1) : String(entryBase || 'Chapter');
+  const chapterSuffix = typeof CDLSettings !== 'undefined'
+    ? CDLSettings.sanitizeFilename(chapterLabel || 'Chapter', 40)
+    : String(chapterLabel || 'Chapter').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+  let candidate = `${parent}${basename || 'Chapter'}`;
+  let suffix = 2;
+  while (registry.has(normalized(`${candidate}.cbz`))) {
+    candidate = `${parent}${basename || 'Chapter'}-${chapterSuffix}${suffix > 2 ? `-${suffix}` : ''}`;
+    suffix++;
+  }
+  registry.add(normalized(`${candidate}.cbz`));
+  return candidate;
+}
+
+function directCbzTargetFilename(entryBase, downloadSubfolder) {
+  const normalized = String(entryBase || 'Chapter').replace(/\\/g, '/');
+  const splitAt = normalized.lastIndexOf('/');
+  const parent = splitAt >= 0 ? normalized.slice(0, splitAt) : '';
+  const basename = splitAt >= 0 ? normalized.slice(splitAt + 1) : normalized;
+  const filename = sanitizeFilename(`${basename}.cbz`, 'cbz');
+  if (typeof CDLSettings === 'undefined') {
+    return downloadTargetFilename(filename, downloadSubfolder);
+  }
+  const folder = CDLSettings.sanitizeDownloadSubfolder(
+    [downloadSubfolder, parent].filter(Boolean).join('/'),
+    180
+  );
+  return CDLSettings.withDownloadSubfolder(filename, folder);
+}
+
 // Build a ComicInfo.xml string for one chapter (best-effort fields from the scrape).
 function buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, pageCount, mangaName) {
   if (typeof CDLComicInfo === 'undefined') return null;
@@ -4188,6 +4231,22 @@ function buildChapterComicInfoXml(opts, chapterLabel, chapterUrl, pageCount, man
   });
 }
 
+async function buildChapterCbzBytes(r, opts, mangaName, onUpdate) {
+  const inner = new JSZip();
+  for (const f of r.files) inner.file(f.name, f.buffer);
+  if (opts.includeComicInfo) {
+    const comicInfo = buildChapterComicInfoXml(
+      opts,
+      r.chapterLabel,
+      r.chapterUrl,
+      r.imagesTotal || r.files.length,
+      mangaName
+    );
+    if (comicInfo) inner.file('ComicInfo.xml', comicInfo);
+  }
+  return inner.generateAsync({ type: 'uint8array', compression: 'STORE' }, onUpdate);
+}
+
 // Add one finished chapter to the outer ZIP, honoring format/ComicInfo/layout.
 // Returns the byte size added (for multipart accounting).
 async function addChapterToOuter(zip, r, opts, mangaName) {
@@ -4205,10 +4264,7 @@ async function addChapterToOuter(zip, r, opts, mangaName) {
   }
 
   if (opts.format === 'cbz') {
-    const inner = new JSZip();
-    for (const f of r.files) inner.file(f.name, f.buffer);
-    if (comicInfo) inner.file('ComicInfo.xml', comicInfo);
-    const bytes = await inner.generateAsync({ type: 'uint8array', compression: 'STORE' });
+    const bytes = await buildChapterCbzBytes(r, opts, mangaName);
     const cbzEntry = uniqueChapterEntryName(
       zip,
       buildCbzEntryName(opts, r, mangaName),
@@ -4759,6 +4815,7 @@ async function handleDownloadAllRequest(
 
   const cfg = await loadCfg();
   const opts = resolveOutputOptions(cfg, options);
+  const directCbz = opts.format === 'cbz' && opts.directCbz === true;
   const expectedSeriesSlug = downloadAllResumeSlug(resumeData);
   if (!opts.totalCount) opts.totalCount = totalChapters;
   // Push finished .cbz files to the library server, only when enabled + CBZ format.
@@ -4776,11 +4833,14 @@ async function handleDownloadAllRequest(
 
   cdlLog('info', `${chapterOffset ? 'Download All resumed' : 'Download All started'}: "${mangaName}" - ${chapters.length} remaining of ${totalChapters} chapters${concurrency > 1 ? ` (${concurrency} at a time)` : ''}`);
 
-  let zip = new JSZip();
+  let zip = directCbz ? null : new JSZip();
   let zipPart = resumeData.nextZipPart;
   let zipPartChapters = 0;
   let zipPartBytes = 0;
   const savedZipNames = resumeData.savedZipNames.slice();
+  const usedDirectCbzNames = new Set(
+    savedZipNames.map((name) => String(name || '').replace(/\\/g, '/').split('/').pop().toLowerCase())
+  );
   let zipPartChapterRecords = [];
   let unconfirmedZipParts = 0;
   let confirmedZipParts = 0;
@@ -5023,18 +5083,193 @@ async function handleDownloadAllRequest(
     return true;
   };
 
+  const saveDirectCbz = async (chapter, checkpointIndex, updateCheckpoint = true) => {
+    archiveAdmissionPaused = true;
+    archivePresentationActive = true;
+    archiveCompletedSnapshot = checkpointIndex;
+    const fileIndex = checkpointIndex;
+    const archiveContext = {
+      directCbz: true,
+      cbzFileIndex: fileIndex,
+      cbzFileTotal: totalChapters,
+      outputFormat: 'cbz',
+      chapterLabel: chapter.chapterLabel,
+      finalPart: checkpointIndex >= totalChapters,
+    };
+
+    let lastCbzPercent = -1;
+    const onCbzProgress = (metadata = {}) => {
+      const raw = Number(metadata.percent);
+      const percent = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0;
+      const wholePercent = Math.floor(percent);
+      if (wholePercent <= lastCbzPercent) return;
+      if (wholePercent < 100 && lastCbzPercent >= 0 && wholePercent - lastCbzPercent < 2) return;
+      lastCbzPercent = Math.max(lastCbzPercent, wholePercent);
+      notify({
+        phase: 'zipping',
+        chapterIndex: checkpointIndex,
+        totalChapters,
+        imagesDone: chapter.imagesSaved || chapter.imagesTotal || 0,
+        imagesTotal: chapter.imagesTotal || 0,
+        ...archiveContext,
+        zipPercent: Math.max(lastCbzPercent, Math.round(percent)),
+      });
+    };
+
+    let bytes;
+    let entryBase;
+    let targetFilename;
+    let generated;
+    try {
+      onCbzProgress({ percent: 0 });
+      bytes = await withExtensionKeepAlive(
+        () => buildChapterCbzBytes(chapter, opts, mangaName, onCbzProgress)
+      );
+      onCbzProgress({ percent: 100 });
+      entryBase = uniqueDirectCbzEntryName(
+        usedDirectCbzNames,
+        buildCbzEntryName(opts, chapter, mangaName),
+        chapter.chapterLabel
+      );
+      targetFilename = directCbzTargetFilename(
+        entryBase,
+        cfg['output.downloadSubfolder'] || ''
+      );
+      generated = await _bytesToDownloadUrl(bytes, 'application/vnd.comicbook+zip');
+    } catch (error) {
+      const failure = describeArchiveFailure(error, 'archive_build', {
+        operation: 'download_all', chapterLabel: chapter.chapterLabel,
+        format: 'cbz', outputLabel: 'CBZ',
+      });
+      cdlLog('error', `${chapter.chapterLabel} CBZ creation failed: ${failure.message}`);
+      notifyDownloadAllError(originTabId, failure.message, failure);
+      archivePresentationActive = false;
+      deferredChapterProgress.clear();
+      resumeArchiveAdmission();
+      return false;
+    }
+
+    let lastSavePercent = -1;
+    let lastSaveState = '';
+    let lastSaveReportAt = 0;
+    const onSaveProgress = (item = {}) => {
+      const savePercent = downloadItemProgressPercent(item);
+      const state = item.state || 'starting';
+      const wholePercent = savePercent == null ? null : Math.round(savePercent);
+      if (state === lastSaveState && wholePercent != null && wholePercent === lastSavePercent) return;
+      const now = Date.now();
+      if (state === lastSaveState && wholePercent == null && now - lastSaveReportAt < 750) return;
+      lastSaveState = state;
+      if (wholePercent != null) lastSavePercent = wholePercent;
+      lastSaveReportAt = now;
+      notify({
+        phase: 'saving',
+        chapterIndex: checkpointIndex,
+        totalChapters,
+        imagesDone: chapter.imagesSaved || chapter.imagesTotal || 0,
+        imagesTotal: chapter.imagesTotal || 0,
+        ...archiveContext,
+        zipPercent: 100,
+        savePercent: wholePercent,
+        saveState: state,
+        bytesReceived: Number.isFinite(Number(item.bytesReceived)) ? Number(item.bytesReceived) : 0,
+        totalBytes: Number.isFinite(Number(item.totalBytes)) ? Number(item.totalBytes) : -1,
+      });
+    };
+
+    const pending = {
+      zip: null,
+      zipName: `${entryBase}.cbz`,
+      targetFilename,
+      outputExtension: 'cbz',
+      generatedArchive: generated,
+      originTabId,
+      chapterRecords: [{ chapterLabel: chapter.chapterLabel }],
+      slug: opts.slug,
+      mangaName,
+      zipPart: fileIndex,
+      finalPart: checkpointIndex >= totalChapters,
+      outputFormat: 'cbz',
+      directCbz: true,
+      onSaveProgress,
+      notifyDone: false,
+      cancelDetails: {
+        zipName: savedZipNames.length
+          ? `${savedZipNames.length} CBZ file${savedZipNames.length === 1 ? '' : 's'}`
+          : '',
+        savedChapters: acceptedChapterCount,
+      },
+    };
+    _pendingZip = pending;
+    const saved = await _doZipAndSave(pending);
+    if (!saved) {
+      archivePresentationActive = false;
+      deferredChapterProgress.clear();
+      resumeArchiveAdmission();
+      return false;
+    }
+
+    savedZipNames.push(saved.filename);
+    const accepted = isArchiveDeliveryAccepted(saved);
+    if (saved.confirmed) confirmedZipParts++;
+    else if (!accepted) unconfirmedZipParts++;
+    if (saved.pathFallback) destinationFallbacks++;
+    if (accepted) {
+      acceptedChapterCount++;
+      if (opts.pushLib) {
+        const fileBase = String(entryBase).split('/').pop();
+        queueLibraryPush(opts.pushLib, seriesFolderName(mangaName), `${fileBase}.cbz`, bytes);
+      }
+    }
+    cdlLog(accepted ? 'ok' : 'warn',
+      `Direct CBZ ${saved.confirmed ? 'saved' : accepted ? 'sent to mobile downloads' : 'handed to browser'}: ${saved.filename}`);
+    if (accepted && updateCheckpoint && !resumeData.checkpointBlocked) {
+      updateDownloadAllResumeCheckpoint({
+        checkpointIndex,
+        nextZipPart: resumeData.nextZipPart,
+        savedZipNames,
+        terminalCounts,
+        firstChapterError,
+      });
+    } else if (!accepted) {
+      resumeData.checkpointBlocked = true;
+      resumeData.updatedAt = Date.now();
+      persistDownloadAllSession(true, true);
+    }
+    archivePresentationActive = false;
+    resumeArchiveAdmission();
+    if (checkpointIndex < totalChapters) {
+      notify({
+        phase: 'resuming',
+        chapterIndex: checkpointIndex,
+        totalChapters,
+        chapterLabel: '',
+        imagesDone: 0,
+        imagesTotal: 0,
+      });
+    }
+    flushDeferredChapterProgress();
+    return true;
+  };
+
   const finishGracefulCancellation = () => {
-    const savedName = savedZipNames.length === 1
-      ? savedZipNames[0]
-      : savedZipNames.length > 1
-        ? `${savedZipNames.length} ZIP parts`
-        : '';
+    const savedName = directCbz
+      ? (savedZipNames.length
+          ? `${savedZipNames.length} CBZ file${savedZipNames.length === 1 ? '' : 's'}`
+          : '')
+      : savedZipNames.length === 1
+        ? savedZipNames[0]
+        : savedZipNames.length > 1
+          ? `${savedZipNames.length} ZIP parts`
+          : '';
     const warnings = [];
     if (unconfirmedZipParts) {
-      warnings.push(`${unconfirmedZipParts} ZIP part${unconfirmedZipParts === 1 ? '' : 's'} could not be verified.`);
+      const unit = directCbz ? 'CBZ file' : 'ZIP part';
+      warnings.push(`${unconfirmedZipParts} ${unit}${unconfirmedZipParts === 1 ? '' : 's'} could not be verified.`);
     }
     if (destinationFallbacks) {
-      warnings.push(`${destinationFallbacks} ZIP part${destinationFallbacks === 1 ? '' : 's'} was saved without the configured subfolder.`);
+      const unit = directCbz ? 'CBZ file' : 'ZIP part';
+      warnings.push(`${destinationFallbacks} ${unit}${destinationFallbacks === 1 ? '' : 's'} was saved without the configured subfolder.`);
     }
     notifyDownloadAllCancelled(originTabId, {
       zipName: savedName,
@@ -5417,7 +5652,7 @@ async function handleDownloadAllRequest(
 
       const packageable = r && r.status === 'done' &&
         (r.files.length || (r.pdfBytes && r.pdfBytes.byteLength));
-      if (packageable) {
+      if (packageable && !directCbz) {
         const estimatedBytes = r.pdfBytes && r.pdfBytes.byteLength
           ? r.pdfBytes.byteLength
           : Math.max(0, Number(r.bytes) || 0);
@@ -5440,6 +5675,13 @@ async function handleDownloadAllRequest(
       }
 
       if (packageable) {
+        if (directCbz) {
+          const ok = await saveDirectCbz(r, chapterOffset + i + 1);
+          if (!ok) { packFailed = true; _signalDownloadAllAbort(); return; }
+          packedCount = i + 1;
+          wakeWindow();
+          continue;
+        }
         let added;
         try {
           added = await withExtensionKeepAlive(() => addChapterToOuter(zip, r, opts, mangaName));
@@ -5474,7 +5716,7 @@ async function handleDownloadAllRequest(
   };
 
   // Series cover + series.json go in first (so they land in ZIP part 1).
-  if (zipPart === 1) {
+  if (!directCbz && zipPart === 1) {
     const metadataBytes = await withExtensionKeepAlive(
       () => addSeriesMetaToOuter(zip, opts, mangaName, cfg)
     );
@@ -5495,6 +5737,13 @@ async function handleDownloadAllRequest(
       results[i] = null;
       if (!result || result.status !== 'done' ||
           (!result.files.length && !(result.pdfBytes && result.pdfBytes.byteLength))) {
+        continue;
+      }
+
+      if (directCbz) {
+        const saved = await saveDirectCbz(result, chapterOffset + i + 1, false);
+        if (!saved) return;
+        terminalCounts.done++;
         continue;
       }
 
@@ -5537,7 +5786,7 @@ async function handleDownloadAllRequest(
       }
     }
 
-    if (zipPartChapters > 0) {
+    if (!directCbz && zipPartChapters > 0) {
       const saved = await saveCurrentZipPart(
         true,
         chapterOffset + packedCount,
@@ -5554,7 +5803,8 @@ async function handleDownloadAllRequest(
 
   if (zipPartChapters === 0 && savedZipNames.length === 0) {
     const detail = firstChapterError ? ` ${firstChapterError}` : '';
-    const error = `No ZIP files were created because no complete chapters could be downloaded.${detail}`;
+    const output = directCbz ? 'CBZ files' : 'ZIP files';
+    const error = `No ${output} were created because no complete chapters could be downloaded.${detail}`;
     cdlLog('error', `Download All failed: ${error}`);
     notifyDownloadAllError(originTabId, error, {
       errorTitle: 'No complete chapters were available.',
@@ -5566,9 +5816,11 @@ async function handleDownloadAllRequest(
     return;
   }
 
-  // Final ZIP part.
-  const saved = await saveCurrentZipPart(true, totalChapters, 'final');
-  if (!saved) return;
+  // Final ZIP part. Direct CBZ mode saves each file as soon as its chapter is ready.
+  if (!directCbz) {
+    const saved = await saveCurrentZipPart(true, totalChapters, 'final');
+    if (!saved) return;
+  }
   if (downloadAllStopFlag) {
     finishGracefulCancellation();
     return;
@@ -5578,17 +5830,21 @@ async function handleDownloadAllRequest(
   // service worker alive until the last upload finishes).
   if (opts.pushLib) { try { await _libPushChain; } catch (_) {} }
 
-  const doneName = savedZipNames.length === 1 ? savedZipNames[0] : `${savedZipNames.length} ZIP parts`;
+  const doneName = directCbz
+    ? `${savedZipNames.length} CBZ file${savedZipNames.length === 1 ? '' : 's'}`
+    : savedZipNames.length === 1 ? savedZipNames[0] : `${savedZipNames.length} ZIP parts`;
   const incompleteCount = terminalCounts.error + terminalCounts.skipped;
   const warnings = [];
   if (incompleteCount) {
     warnings.push(`${incompleteCount} of ${totalChapters} chapters could not be included. Retry the failed or skipped chapters.`);
   }
   if (unconfirmedZipParts) {
-    warnings.push(`${unconfirmedZipParts} ZIP part${unconfirmedZipParts === 1 ? '' : 's'} could not be verified and its chapters were not marked as downloaded.`);
+    const unit = directCbz ? 'CBZ file' : 'ZIP part';
+    warnings.push(`${unconfirmedZipParts} ${unit}${unconfirmedZipParts === 1 ? '' : 's'} could not be verified and its chapters were not marked as downloaded.`);
   }
   if (destinationFallbacks) {
-    warnings.push(`${destinationFallbacks} ZIP part${destinationFallbacks === 1 ? '' : 's'} was saved without the configured subfolder.`);
+    const unit = directCbz ? 'CBZ file' : 'ZIP part';
+    warnings.push(`${destinationFallbacks} ${unit}${destinationFallbacks === 1 ? '' : 's'} was saved without the configured subfolder.`);
   }
   const warning = warnings.join(' ');
   cdlLog(warning ? 'warn' : 'ok', `Download All complete: ${doneName}${warning ? ` (${warning})` : ''}`);
@@ -5607,8 +5863,10 @@ async function _doZipAndSave(pending) {
   } = pending;
   let zip = pending.zip;
   const notifyDone = pending.notifyDone !== false;
-  const filename = downloadTargetFilename(
-    sanitizeFilename(zipName),
+  const outputExtension = pending.outputExtension === 'cbz' ? 'cbz' : 'zip';
+  const outputLabel = outputExtension === 'cbz' ? 'CBZ' : 'ZIP';
+  const filename = pending.targetFilename || downloadTargetFilename(
+    sanitizeFilename(zipName, outputExtension),
     pending.downloadSubfolder
   );
   let failurePhase = 'archive_build';
@@ -5657,7 +5915,7 @@ async function _doZipAndSave(pending) {
       } catch (error) {
         if (!isDownloadCancelledError(error)) throw error;
 
-        cdlLog('info', `Download All save dialog cancelled: ${filename}`);
+        cdlLog('info', `Download All ${outputLabel} save dialog cancelled: ${filename}`);
         const decision = waitForPendingArchiveSaveDecision(pending);
         notifyDownloadAllSaveCancelled(originTabId, filename, pending.zipPart, pending.finalPart);
         const shouldRetry = await decision;
@@ -5685,7 +5943,7 @@ async function _doZipAndSave(pending) {
       const warning = accepted
         ? ''
         : 'The browser received the file, but completion could not be verified; chapters were not marked as downloaded.';
-      cdlLog(accepted ? 'ok' : 'warn', `Download All complete: ${deliveredFilename}${warning ? ` (${warning})` : ''}`);
+      cdlLog(accepted ? 'ok' : 'warn', `Download All ${outputLabel} complete: ${deliveredFilename}${warning ? ` (${warning})` : ''}`);
       notifyDownloadAllDone(originTabId, deliveredFilename, warning);
     }
     return {
@@ -5699,13 +5957,14 @@ async function _doZipAndSave(pending) {
     releasePendingGeneratedArchive(pending);
     if (_pendingZip === pending) _pendingZip = null;
     if (isDownloadCancelledError(err)) {
-      cdlLog('info', `Download All save cancelled: ${sanitizeFilename(zipName)}`);
+      cdlLog('info', `Download All ${outputLabel} save cancelled: ${sanitizeFilename(zipName, outputExtension)}`);
       notifyDownloadAllCancelled(originTabId, pending.cancelDetails);
       return null;
     }
     const failure = describeArchiveFailure(err, failurePhase, {
       operation: 'download_all', zipName: filename,
-      zipPart: pending.zipPart, format: pending.format,
+      zipPart: pending.zipPart, format: pending.outputFormat || pending.format,
+      outputLabel,
     });
     cdlLog('error', `Download All ${failure.errorKind}: ${failure.message}`);
     notifyDownloadAllError(originTabId, failure.message, failure);
@@ -6029,6 +6288,7 @@ async function autoDownloadNew(slug, mangaName, newOnes, cfg, seriesTotal) {
   const prefs = await getSeriesPrefsBg(slug);
   const options = {
     format: prefs.format || cfg['output.format'] || 'zip',
+    directCbz: prefs.directCbz != null ? prefs.directCbz : !!cfg['output.directCbz'],
     includeComicInfo: prefs.includeComicInfo != null ? prefs.includeComicInfo : (cfg['output.includeComicInfo'] !== false),
     includeSeriesMeta: false,
     folderLayout: prefs.folderLayout || cfg['output.folderLayout'] || 'default',

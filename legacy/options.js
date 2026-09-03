@@ -92,9 +92,19 @@
   // Rows that are only meaningful when another setting has a certain value.
   var DEPENDS = {
     'download.chaptersPerPart': function () { return draft['download.splitMode'] === 'multipart'; },
-    'download.cbzChaptersPerPart': function () { return draft['download.splitMode'] === 'multipart'; },
+    'download.cbzChaptersPerPart': function () {
+      return draft['download.splitMode'] === 'multipart' &&
+        !(draft['output.format'] === 'cbz' && draft['output.directCbz']);
+    },
     'download.pdfChaptersPerPart': function () { return draft['download.splitMode'] === 'multipart'; },
-    'download.mbPerPart':       function () { return draft['download.splitMode'] === 'multipart'; },
+    'download.mbPerPart':       function () {
+      return draft['download.splitMode'] === 'multipart' &&
+        !(draft['output.format'] === 'cbz' && draft['output.directCbz']);
+    },
+    'output.directCbz':         function () { return draft['output.format'] === 'cbz'; },
+    'output.includeSeriesMeta': function () {
+      return !(draft['output.format'] === 'cbz' && draft['output.directCbz']);
+    },
     'perf.rateBaseMs':          function () { return draft['perf.rateLimitMode'] !== 'off'; },
     'perf.rateMinMs':           function () { return draft['perf.rateLimitMode'] === 'dynamic'; },
     'perf.rateMaxMs':           function () { return draft['perf.rateLimitMode'] === 'dynamic'; },

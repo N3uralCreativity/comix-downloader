@@ -50,7 +50,10 @@ check('Download All persists a lightweight accepted ZIP checkpoint',
 check('Download All exposes a checkpoint resume message without persisting archive bytes',
   backgroundSource.includes("message.action === 'resumeDownloadAll'") &&
   backgroundSource.includes('remainingChapters = resumeData.chapters.slice(checkpointIndex)') &&
-  !backgroundSource.includes('generatedArchive: generated'));
+  !backgroundSource.slice(
+    backgroundSource.indexOf('function _serializeSession('),
+    backgroundSource.indexOf('function persistDownloadAllSession(')
+  ).includes('generatedArchive'));
 check('the configured Downloads subfolder reaches every archive workflow',
   backgroundSource.includes("downloadTargetFilename(outName, cfg['output.downloadSubfolder'])") &&
   backgroundSource.includes("downloadSubfolder: cfg['output.downloadSubfolder'] || ''") &&
@@ -108,6 +111,14 @@ check('PDF output remains dormant at every user-facing settings boundary',
   contentTitleSource.includes('const visibleFormats = PDF_OUTPUT_VISIBLE'));
 check('visible format cards always divide the available width evenly',
   contentTitleSource.includes('grid-template-columns:repeat(${PDF_OUTPUT_VISIBLE ? 3 : 2},minmax(0,1fr))'));
+check('Download All exposes direct CBZ delivery without changing the default',
+  S.DEFAULTS['output.directCbz'] === false &&
+  contentTitleSource.includes('id="cdl-op-direct-cbz"') &&
+  contentTitleSource.includes("directCbz: format === 'cbz' && directCbzInput.checked"));
+check('direct CBZ delivery bypasses outer ZIP packing and uses confirmed browser saves',
+  backgroundSource.includes('const saveDirectCbz = async') &&
+  backgroundSource.includes('buildChapterCbzBytes(chapter, opts, mangaName, onCbzProgress)') &&
+  backgroundSource.includes('const saved = await _doZipAndSave(pending)'));
 check('PDF work overlaps chapter fetching without concurrent PDF builds',
   backgroundSource.includes('let pdfBuildChain = Promise.resolve()') &&
   backgroundSource.includes('enqueuePdfBuild(async () =>') &&
