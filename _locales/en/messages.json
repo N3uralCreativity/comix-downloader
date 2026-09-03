@@ -4,7 +4,7 @@
     "description": "Extension name."
   },
   "extensionDescription": {
-    "message": "Save comix.to chapters as ZIP or CBZ with Download All, progress tracking, recovery, and intrusive popup blocking.",
+    "message": "Save chapters from comix.to and comix.ws as ZIP or CBZ with Download All, progress tracking, recovery, and popup blocking.",
     "description": "Short extension description shown by the browser and stores."
   },
   "reviewPromptTitle": {

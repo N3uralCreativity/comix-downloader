@@ -1,8 +1,8 @@
 RESUMEN
-Guarda capítulos de comix.to en ZIP o CBZ con descarga total, seguimiento, recuperación y bloqueo de ventanas emergentes.
+Guarda capítulos de comix.to y comix.ws en ZIP o CBZ con descarga total, seguimiento, recuperación y bloqueo de ventanas emergentes.
 
 DESCRIPCIÓN DETALLADA
-Comix Downloader es una extensión de navegador no oficial y de código abierto para comix.to.
+Comix Downloader es una extensión de navegador no oficial y de código abierto para comix.to y comix.ws.
 
 Añade controles de descarga directamente a las páginas de títulos y a las listas de capítulos para guardar un capítulo o una serie completa como ZIP o CBZ.
 
@@ -12,14 +12,14 @@ Funciones principales:
 - Etapas separadas para descarga, creación del ZIP y confirmación de guardado
 - Puntos de recuperación y gestión clara de guardados cancelados
 - Nombres, carpetas, división de archivos y metadatos ComicInfo configurables
-- Bloqueo de anuncios al hacer clic, ventanas pop-under y capas transparentes intrusivas de comix.to, activado por defecto y configurable
+- Bloqueo de anuncios al hacer clic, ventanas pop-under y capas transparentes intrusivas de Comix, activado por defecto y configurable
 - Estadísticas de lectura, reanudación, suscripciones y envío a una biblioteca como funciones opcionales
 
 Las descargas principales, los ajustes, el historial y las estadísticas de lectura se procesan localmente en tu navegador. Las insignias de perfil, los avisos comunitarios sobre capítulos y los anuncios de la extensión contactan con el servicio Cloudflare del proyecto mediante identificadores hash o la versión de la extensión. El envío a una biblioteca solo transmite archivos al servidor que configures. Consulta la política de privacidad para obtener todos los detalles.
 
-Comix Downloader no está afiliado a comix.to. Guarda únicamente contenido que estés autorizado a descargar.
+Comix Downloader no está afiliado a comix.to ni a comix.ws. Guarda únicamente contenido que estés autorizado a descargar.
 
 DESCRIPCIONES DE CAPTURAS
-1. Descargar todo se añade directamente a cada página de título de comix.to.
+1. Descargar todo se añade directamente a las páginas de título de comix.to y comix.ws.
 2. Descarga capítulos desde la lista, con varias descargas simultáneas.
 3. El progreso separa claramente la descarga, la creación del ZIP y la confirmación de guardado.

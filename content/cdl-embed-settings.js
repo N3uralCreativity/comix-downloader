@@ -230,9 +230,10 @@
       ])
     ]);
     var heading = el('h2', { text: 'Settings page unavailable' });
+    var siteHost = location.hostname || 'the Comix site';
     var detail = reason === 'redirected'
-      ? 'comix.to redirected this tab before its settings page could open.'
-      : 'comix.to did not finish loading the page needed for the integrated settings.';
+      ? siteHost + ' redirected this tab before its settings page could open.'
+      : siteHost + ' did not finish loading the page needed for the integrated settings.';
     var message = el('p', { text: detail + ' Your Comix Downloader settings are still available in a separate extension tab.' });
     var status = el('div', { class: 'status', role: 'status', 'aria-live': 'polite' });
     var dismissBtn = el('button', { type: 'button', class: 'action', text: 'Dismiss' });
@@ -642,7 +643,7 @@
     checkBtn.addEventListener('click', function () {
       st.textContent = 'Checking…';
       send({ action: 'checkSubscriptionsNow' }).then(function (r) {
-        st.textContent = (r && r.ok) ? 'Done.' : 'Check failed (open comix.to once, then retry).';
+        st.textContent = (r && r.ok) ? 'Done.' : 'Check failed (open this Comix site once, then retry).';
         setTimeout(rerender, 300);
       });
     });
@@ -1068,7 +1069,7 @@
       el('div', { class: 'uview__head cdl-settings-head' }, [
         el('div', { class: 'cdl-settings-head-copy' }, [
           el('h2', { class: 'uview__title', text: 'Comix Downloader' }),
-          el('p', { class: 'uview__sub', text: 'Settings for the browser extension — separate from comix.to, saved instantly on your device.' }),
+          el('p', { class: 'uview__sub', text: 'Settings for the browser extension — separate from the Comix site, saved instantly on your device.' }),
         ]),
         updateControls.head,
       ]),
@@ -1197,7 +1198,7 @@
     var go = function () {
       if (navigated) return;
       navigated = true;
-      location.href = 'https://comix.to/user?tab=settings';
+      location.href = location.origin + '/user?tab=settings';
     };
     setLocal('cdlOpenExtSettings', Date.now());
     send({ action: 'cdlTrackSettingsNavigation' }).then(go);

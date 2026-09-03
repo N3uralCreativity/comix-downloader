@@ -71,7 +71,10 @@ const declaredResources = manifest.web_accessible_resources
   .map((resource) => path.basename(resource))
   .sort();
 assert.deepStrictEqual(declaredResources, expectedFiles.slice().sort());
-assert.deepStrictEqual(manifest.web_accessible_resources[0].matches, ['*://comix.to/*']);
+assert.deepStrictEqual(
+  manifest.web_accessible_resources[0].matches,
+  ['*://comix.to/*', '*://comix.ws/*']
+);
 
 for (const file of expectedFiles) {
   const assetPath = path.join(root, 'assets', 'settings-outro', file);

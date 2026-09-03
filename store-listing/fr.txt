@@ -1,8 +1,8 @@
 RÉSUMÉ
-Enregistrez les chapitres comix.to en ZIP ou CBZ avec téléchargement global, suivi, reprise et blocage des fenêtres intrusives.
+Enregistrez les chapitres de comix.to et comix.ws en ZIP ou CBZ avec téléchargement global, suivi, reprise et blocage des pop-ups.
 
 DESCRIPTION DÉTAILLÉE
-Comix Downloader est une extension de navigateur open source et non officielle pour comix.to.
+Comix Downloader est une extension de navigateur open source et non officielle pour comix.to et comix.ws.
 
 Elle ajoute des commandes de téléchargement directement aux pages de titres et aux listes de chapitres afin d'enregistrer un chapitre ou une série complète au format ZIP ou CBZ.
 
@@ -12,14 +12,14 @@ Fonctions principales :
 - Étapes distinctes pour le téléchargement, la création du ZIP et la confirmation de l'enregistrement
 - Points de reprise et gestion claire des enregistrements annulés
 - Noms de fichiers, dossiers, découpage des archives et métadonnées ComicInfo configurables
-- Blocage des publicités au clic, pop-under et calques transparents intrusifs de comix.to, activé par défaut et réglable dans les paramètres
+- Blocage des publicités au clic, pop-under et calques transparents intrusifs de Comix, activé par défaut et réglable dans les paramètres
 - Statistiques de lecture, reprise, abonnements et envoi vers une bibliothèque disponibles en option
 
 Les téléchargements principaux, réglages, historiques et statistiques de lecture sont traités localement dans votre navigateur. Les badges de profil, signalements communautaires de chapitres et annonces de l'extension contactent le service Cloudflare du projet avec des identifiants hachés ou la version de l'extension. L'envoi vers une bibliothèque transmet les fichiers uniquement au serveur que vous configurez. Consultez la politique de confidentialité pour tous les détails.
 
-Comix Downloader n'est pas affilié à comix.to. Enregistrez uniquement du contenu que vous êtes autorisé à télécharger.
+Comix Downloader n'est affilié ni à comix.to ni à comix.ws. Enregistrez uniquement du contenu que vous êtes autorisé à télécharger.
 
 DESCRIPTIONS DES CAPTURES D'ÉCRAN
-1. Le bouton Tout télécharger est ajouté directement à chaque page de titre comix.to.
+1. Le bouton Tout télécharger est ajouté directement aux pages de titre de comix.to et comix.ws.
 2. Téléchargez des chapitres depuis la liste, avec plusieurs téléchargements simultanés.
 3. La progression distingue clairement le téléchargement, la création du ZIP et la confirmation d'enregistrement.

@@ -4,7 +4,7 @@
     "description": "Nome da extensão."
   },
   "extensionDescription": {
-    "message": "Salve capítulos do comix.to em ZIP ou CBZ com download completo, progresso, recuperação e bloqueio de pop-ups invasivos.",
+    "message": "Salve capítulos do comix.to e comix.ws em ZIP ou CBZ com download completo, progresso, recuperação e bloqueio de pop-ups invasivos.",
     "description": "Descrição curta exibida pelo navegador e pelas lojas."
   },
   "reviewPromptTitle": {

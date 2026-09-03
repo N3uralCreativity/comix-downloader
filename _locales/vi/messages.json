@@ -4,7 +4,7 @@
     "description": "Tên tiện ích."
   },
   "extensionDescription": {
-    "message": "Lưu chương comix.to dưới dạng ZIP hoặc CBZ, tải tất cả, theo dõi tiến trình, khôi phục và chặn cửa sổ bật lên.",
+    "message": "Lưu chương từ comix.to và comix.ws dưới dạng ZIP hoặc CBZ, tải tất cả, theo dõi tiến trình, khôi phục và chặn cửa sổ bật lên.",
     "description": "Mô tả ngắn hiển thị trong trình duyệt và cửa hàng."
   },
   "reviewPromptTitle": {

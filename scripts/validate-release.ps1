@@ -102,7 +102,8 @@ function Assert-ChromiumManifest($Manifest, [string]$Target, [string]$ExpectedVe
   $accessible = @($Manifest.web_accessible_resources | ForEach-Object { $_.resources })
   Assert-Release ((($accessible | Sort-Object) -join "`n") -eq (($outroResources | Sort-Object) -join "`n")) "$target has the wrong settings-outro resources."
   $outroMatches = @($Manifest.web_accessible_resources | ForEach-Object { $_.matches })
-  Assert-Release (($outroMatches -join ',') -eq '*://comix.to/*') "$target exposes settings-outro resources beyond comix.to."
+  $expectedOutroMatches = @('*://comix.to/*', '*://comix.ws/*')
+  Assert-Release ((($outroMatches | Sort-Object) -join ',') -eq (($expectedOutroMatches | Sort-Object) -join ',')) "$target exposes settings-outro resources beyond supported Comix sites."
 }
 
 $rootManifest = Get-Content -LiteralPath (Join-Path $Root 'manifest.json') -Raw | ConvertFrom-Json

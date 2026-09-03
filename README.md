@@ -2,7 +2,7 @@
 
 # Comix Downloader
 
-### Download your mangas from [comix.to](https://comix.to) 
+### Download your manga from [comix.to](https://comix.to) and [comix.ws](https://comix.ws)
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-4285F4?logo=googlechrome\&logoColor=white)](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp)
 [![Firefox Add-on](https://img.shields.io/badge/Firefox-Add--on-FF7139?logo=firefox-browser\&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
@@ -31,9 +31,9 @@ _and don't hesitate to open an issue if the problem persist._
 
 ## What it does
 
-Adds download buttons directly to every comix.to title page. Grab a single chapter or the entire series as organized ZIP or CBZ output.
+Adds download buttons directly to title pages on comix.to and comix.ws. Grab a single chapter or the entire series as organized ZIP or CBZ output.
 
-It also blocks comix.to's intermittent click-anywhere ads, popunders, and transparent ad overlays. Ad blocking is enabled by default and can be turned off under **Settings -> Additional Features**. Normal links and the site's share popup remain available.
+It also blocks Comix's intermittent click-anywhere ads, popunders, and transparent ad overlays. Ad blocking is enabled by default and can be turned off under **Settings -> Additional Features**. Normal links and the site's share popup remain available.
 
 ---
 
@@ -121,7 +121,7 @@ Or load it unpacked:
 3. Open Kiwi → go to `chrome://extensions`.
 4. Toggle **Developer mode** on.
 5. Tap **Load unpacked (zip or folder)** → select the extracted folder.
-6. Head to any [comix.to](https://comix.to) title page - buttons appear automatically.
+6. Head to any [comix.to](https://comix.to) or [comix.ws](https://comix.ws) title page - buttons appear automatically.
 
 ### Option C - Firefox Android add-on
 [![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
@@ -134,7 +134,7 @@ Comix Downloader does not currently ship a Safari build. Safari Web Extensions r
 2. In Orion: **•••** menu → **Settings** → the **Extensions** group → turn on **Chrome extensions** (and/or Firefox extensions).
 3. Open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp) (or the [Firefox add-on](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)) in Orion and tap **Add to Chrome** / **Add to Firefox**.
 4. **•••** menu → **Extensions** → toggle **Comix Downloader** on.
-5. Open any [comix.to](https://comix.to) title page - buttons appear automatically.
+5. Open any [comix.to](https://comix.to) or [comix.ws](https://comix.ws) title page - buttons appear automatically.
 
 For fully offline reading on mobile, Mihon (Option A) is still the most reliable.
 
@@ -155,7 +155,7 @@ The extension is on the **Chrome Web Store** - one click to install.
 
 1. Open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp).
 2. Click **Add to Chrome** and confirm the permissions prompt.
-3. Head to any [comix.to](https://comix.to) title page - buttons appear automatically.
+3. Head to any [comix.to](https://comix.to) or [comix.ws](https://comix.ws) title page - buttons appear automatically.
 
 ### Opera and Opera GX
 
@@ -172,7 +172,7 @@ Use the Chrome Web Store listing, or the `comix-downloader-chromium-vX.Y.Z.zip` 
 2. Open Chrome → go to `chrome://extensions`
 3. Toggle **Developer mode** on (top-right)
 4. Click **Load unpacked** → select the unzipped folder
-5. Head to any [comix.to](https://comix.to) title page - buttons appear automatically
+5. Head to any [comix.to](https://comix.to) or [comix.ws](https://comix.ws) title page - buttons appear automatically
 
 </details>
 

@@ -60,6 +60,14 @@
       } catch (_) { resolve(null); }
     });
   }
+  function subscriptionOrigin(value) {
+    try {
+      var url = new URL(String(value || ''));
+      var host = url.hostname.toLowerCase();
+      if (host === 'comix.to' || host === 'comix.ws') return 'https://' + host;
+    } catch (_) {}
+    return 'https://comix.to';
+  }
 
   var ICONS = {
     box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/>',
@@ -79,12 +87,12 @@
   var TAB_INTRO = {
     download: 'How "Download All" packages a full series. In multi-part mode, the format-specific chapter count and the shared MB limit both apply; the first limit reached starts the next ZIP part.',
     output: 'Output format and metadata — make downloads drop-in ready for Komga, Kavita, Mihon, YACReader. You can also pick these per-download from the on-page panel.',
-    perf: 'Network pacing and timeouts. The defaults are tuned for comix.to — change them only if you have a reason to.',
+    perf: 'Network pacing and timeouts. The defaults are tuned for the supported Comix sites — change them only if you have a reason to.',
     retry: 'What happens when an image or chapter fails to download.',
     naming: 'File and folder names inside the ZIPs.',
     appearance: 'Customize the on-page download buttons and the progress panel.',
     advanced: 'Powerful options that can break downloads or hurt quality. Read each warning.',
-    features: 'Extra tweaks that make comix.to nicer to use — not about downloading. Ad blocking is on by default; the other features remain opt-in.',
+    features: 'Extra tweaks that make Comix nicer to use — not about downloading. Ad blocking is on by default; the other features remain opt-in.',
     sync: 'Watch subscribed series for new chapters, and optionally push finished CBZ files to your own media server (Komga / Kavita via a watched folder).',
     about: 'Back up your configuration, and information about the extension.'
   };
@@ -431,7 +439,7 @@
           return String((subs[a] || {}).mangaName || a).localeCompare(String((subs[b] || {}).mangaName || b));
         });
         if (!slugs.length) {
-          listEl.appendChild(el('p', { class: 'row-help', text: 'No subscriptions yet. Open a series on comix.to and click "☆ Subscribe" next to the Download All button.' }));
+          listEl.appendChild(el('p', { class: 'row-help', text: 'No subscriptions yet. Open a series on a supported Comix site and click "☆ Subscribe" next to the Download All button.' }));
           return;
         }
         slugs.forEach(function (slug) {
@@ -439,10 +447,10 @@
           var bits = [];
           bits.push(s.lastSeen && s.lastSeen.length ? s.lastSeen.length + ' chapters tracked' : 'no chapters tracked yet');
           bits.push(timeAgo(s.lastCheck));
-          if (s.lastStatus === 'blocked') bits.push('⚠ last check was blocked — open comix.to once, then retry');
+          if (s.lastStatus === 'blocked') bits.push('⚠ last check was blocked — open the Comix site once, then retry');
           var row = el('div', { class: 'sub-row' }, [
             el('div', { class: 'sub-info' }, [
-              el('a', { class: 'sub-name', href: 'https://comix.to/title/' + encodeURIComponent(slug), target: '_blank', rel: 'noopener', text: s.mangaName || slug }),
+              el('a', { class: 'sub-name', href: subscriptionOrigin(s.sourceOrigin) + '/title/' + encodeURIComponent(slug), target: '_blank', rel: 'noopener', text: s.mangaName || slug }),
               el('span', { class: 'sub-meta', text: bits.join(' · ') })
             ]),
             el('button', { class: 'btn danger', type: 'button', text: 'Unsubscribe', onclick: function () {
@@ -464,7 +472,7 @@
         var s = res.summary || {};
         var parts = ['Checked ' + (s.checked || 0) + ' series'];
         parts.push((s.newChapters || 0) + ' new chapter' + (s.newChapters === 1 ? '' : 's'));
-        if (s.blocked) parts.push(s.blocked + ' blocked by the site (open comix.to once, then retry)');
+        if (s.blocked) parts.push(s.blocked + ' blocked by the site (open the Comix site once, then retry)');
         subStatus.textContent = parts.join(' · ') + '.';
       });
     });
@@ -771,7 +779,7 @@
     var panel = document.querySelector('.panel[data-tab="features"]');
     if (panel && !panel.querySelector('.features-banner')) {
       var banner = el('div', { class: 'features-banner', html: icon('sparkles') +
-        '<span><strong>New page.</strong> These comix.to enhancements were just added — all off by default. Turn on what you like.</span>' });
+        '<span><strong>New page.</strong> These Comix enhancements were just added — all off by default. Turn on what you like.</span>' });
       var head = panel.querySelector('.panel-head');
       if (head) head.insertAdjacentElement('afterend', banner);
       else panel.insertBefore(banner, panel.firstChild);
@@ -816,7 +824,7 @@
     if (panel && !panel.querySelector('.features-banner')) {
       var banner = el('div', { class: 'features-banner', html: icon('sparkles') +
         '<span><strong>New:</strong> “Download All” can now fetch several chapters at the same time — see <strong>Chapters at once</strong> below. ' +
-        'Heads-up: 2 at once is already risky, and 3–4 will most likely get your IP temporarily blocked by comix.to.</span>' });
+        'Heads-up: 2 at once is already risky, and 3–4 will most likely get your IP temporarily blocked by the Comix site.</span>' });
       var head = panel.querySelector('.panel-head');
       if (head) head.insertAdjacentElement('afterend', banner);
       else panel.insertBefore(banner, panel.firstChild);

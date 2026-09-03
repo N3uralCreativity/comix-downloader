@@ -539,7 +539,7 @@
     separator.textContent = '|';
     const site = document.createElement('span');
     site.className = 'cdl-source-site';
-    site.textContent = 'Not a comix.to site message';
+    site.textContent = 'Not a Comix site message';
     note.append(origin, separator, site);
     return note;
   }

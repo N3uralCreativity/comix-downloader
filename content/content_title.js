@@ -836,7 +836,7 @@ function normalizeMangaName(value) {
   return String(value || '')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/\s+/g, ' ')
-    .replace(/\s*[-|]\s*comix(?:\.to)?(?:\s*[-|].*)?$/i, '')
+    .replace(/\s*[-|]\s*comix(?:\.(?:to|ws))?(?:\s*[-|].*)?$/i, '')
     .trim();
 }
 
@@ -844,7 +844,7 @@ function usableMangaName(value) {
   const name = normalizeMangaName(value);
   const comparable = name.toLowerCase().replace(/[.!\u2026]+$/g, '').trim();
   if (!comparable) return '';
-  if (/^(?:untitled(?: (?:page|document))?|loading|just a moment|please wait|checking (?:your )?browser|comix(?:\.to)?|manga)$/.test(comparable)) {
+  if (/^(?:untitled(?: (?:page|document))?|loading|just a moment|please wait|checking (?:your )?browser|comix(?:\.(?:to|ws))?|manga)$/.test(comparable)) {
     return '';
   }
   return name;
@@ -4515,7 +4515,9 @@ function injectSubscribeButton() {
     render(!subscribed); // optimistic
     try {
       chrome.runtime.sendMessage(
-        subscribed ? { action: 'unsubscribe', slug } : { action: 'subscribe', slug, mangaName: getMangaName() },
+        subscribed
+          ? { action: 'unsubscribe', slug }
+          : { action: 'subscribe', slug, mangaName: getMangaName(), sourceUrl: location.href },
         () => {
           if (chrome.runtime.lastError) { render(subscribed); cdlToast('Could not update the subscription — try again'); return; }
           if (subscribed) { cdlToast('Unsubscribed — no more checks for this series'); return; }

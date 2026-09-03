@@ -89,6 +89,15 @@ check('missing or placeholder page metadata cannot degrade to download.zip',
   recovered.zipName === 'Way-To-Heaven-Ch101.zip' &&
   recovered.options.mangaName === 'Way To Heaven');
 
+const wsNormalized = context.normalizeRequest(
+  'https://comix.ws/title/m7j0-way-to-heaven/5663065-chapter-101',
+  cfg,
+  { mangaName: 'Way To Heaven | Comix.ws' }
+);
+check('comix.ws page-title suffix does not leak into archive names',
+  wsNormalized.zipName === 'Way-To-Heaven-Ch101.zip' &&
+  wsNormalized.options.mangaName === 'Way To Heaven');
+
 const custom = context.normalizeRequest(chapterUrl, {
   ...cfg,
   'naming.singleZipTpl': '{manga}-Ch{num4}-{scanlator}',

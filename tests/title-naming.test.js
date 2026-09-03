@@ -83,6 +83,11 @@ check('page title suffix is removed', resolveName({
   pathname: '/title/k7yg7-the-spark-in-your-eyes',
 }) === 'The Spark in Your Eyes');
 
+check('comix.ws page title suffix is removed', resolveName({
+  title: 'The Spark in Your Eyes | Comix.ws',
+  pathname: '/title/k7yg7-the-spark-in-your-eyes',
+}) === 'The Spark in Your Eyes');
+
 check('title URL is a stable last resort for a placeholder page', resolveName({
   title: 'Just a moment...',
   pathname: '/title/qqwrm-full-time-awakening',

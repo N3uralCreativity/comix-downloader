@@ -54,6 +54,10 @@ check('matching deliberate anchor click is allowed', anchor({
   clickHref: 'https://discord.gg/example'
 }) === false);
 check('same-origin scripted anchor is allowed', anchor({ href: 'https://comix.to/browse' }) === false);
+check('same-origin scripted anchor is allowed on comix.ws', anchor({
+  pageUrl: 'https://comix.ws/title/example',
+  href: 'https://comix.ws/browse'
+}) === false);
 check('same-tab anchor is left to normal navigation', anchor({ targetName: '_self' }) === false);
 check('download anchor is allowed', anchor({ download: true }) === false);
 
@@ -80,6 +84,10 @@ check('small external link is not treated as an overlay', overlay({
   rect: { width: 100, height: 40 }
 }) === false);
 check('same-origin overlay is not treated as an ad', overlay({ href: 'https://comix.to/browse' }) === false);
+check('same-origin overlay is not treated as an ad on comix.ws', overlay({
+  pageUrl: 'https://comix.ws/title/example',
+  href: 'https://comix.ws/browse'
+}) === false);
 
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

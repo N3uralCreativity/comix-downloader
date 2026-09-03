@@ -54,10 +54,37 @@ async function loadCfg() {
   return {};
 }
 
-// The in-site settings page is preferred, but comix.to may redirect it to the
-// homepage even for an apparently signed-in user. Track only the exact tab that
-// the extension opened so unrelated comix.to tabs never receive the fallback.
-const CDL_COMIX_SETTINGS_URL = 'https://comix.to/user?tab=settings';
+const CDL_COMIX_ORIGINS = Object.freeze(['https://comix.to', 'https://comix.ws']);
+const CDL_DEFAULT_COMIX_ORIGIN = CDL_COMIX_ORIGINS[0];
+
+function supportedComixOrigin(value) {
+  try {
+    const url = new URL(String(value || ''));
+    const origin = `https://${url.hostname.toLowerCase()}`;
+    return (url.protocol === 'https:' || url.protocol === 'http:') && CDL_COMIX_ORIGINS.includes(origin)
+      ? origin
+      : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function preferredComixOrigin(value) {
+  return supportedComixOrigin(value) || CDL_DEFAULT_COMIX_ORIGIN;
+}
+
+function comixOriginCandidates(value) {
+  const preferred = preferredComixOrigin(value);
+  return [preferred, ...CDL_COMIX_ORIGINS.filter((origin) => origin !== preferred)];
+}
+
+function comixSettingsUrl(value) {
+  return `${preferredComixOrigin(value)}/user?tab=settings`;
+}
+
+// The in-site settings page is preferred, but a Comix domain may redirect it to
+// the homepage even for an apparently signed-in user. Track only the exact tab
+// the extension opened so unrelated Comix tabs never receive the fallback.
 const CDL_SETTINGS_NAVIGATION_KEY = 'cdlSettingsNavigationAttempt';
 const CDL_SETTINGS_NAVIGATION_TTL_MS = 90 * 1000;
 let _settingsNavigationTabId = null;
@@ -110,8 +137,8 @@ async function settingsNavigationAttemptForTab(tabId) {
   return null;
 }
 
-async function openTrackedComixSettingsTab() {
-  const tab = await chrome.tabs.create({ url: CDL_COMIX_SETTINGS_URL });
+async function openTrackedComixSettingsTab(preferredUrl) {
+  const tab = await chrome.tabs.create({ url: comixSettingsUrl(preferredUrl) });
   if (!tab || !Number.isInteger(Number(tab.id))) throw new Error('Settings tab was not created');
   let tracked = false;
   try {
@@ -684,11 +711,13 @@ function setupContextMenus() {
       try {
         chrome.contextMenus.create({
           id: 'cdl-dl-chapter', title: 'Download this chapter',
-          contexts: ['link'], targetUrlPatterns: ['*://comix.to/title/*']
+          contexts: ['link'],
+          targetUrlPatterns: ['*://comix.to/title/*', '*://comix.ws/title/*']
         }, swallow);
         chrome.contextMenus.create({
           id: 'cdl-dl-series', title: 'Download whole series (open options)',
-          contexts: ['page'], documentUrlPatterns: ['*://comix.to/title/*']
+          contexts: ['page'],
+          documentUrlPatterns: ['*://comix.to/title/*', '*://comix.ws/title/*']
         }, swallow);
       } catch (_) {}
     });
@@ -1484,9 +1513,9 @@ function chapterFailurePresentation(error, options = {}) {
             ? 'The chapter filename or download path is too long.'
             : 'The browser could not save the chapter archive.';
     } else if (diagnostic.kind === 'image_download') {
-      message = 'Some chapter images could not be downloaded. Reload comix.to and try again.';
+      message = 'Some chapter images could not be downloaded. Reload the Comix page and try again.';
     } else if (diagnostic.kind === 'chapter_extraction') {
-      message = 'The extension could not read this chapter. Reload comix.to, complete any verification, and try again.';
+      message = 'The extension could not read this chapter. Reload the Comix page, complete any verification, and try again.';
     } else if (diagnostic.kind === 'tab_open') {
       message = 'The background chapter page could not be opened.';
     } else if (diagnostic.kind === 'archive_build' || diagnostic.kind === 'chapter_packaging') {
@@ -1868,7 +1897,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // ── Phase 2: subscriptions + library ──
   if (message.action === 'subscribe') {
-    subscribeSeries(message.slug, message.mangaName).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+    const sourceUrl = sender.tab?.url || message.sourceUrl || '';
+    subscribeSeries(message.slug, message.mangaName, sourceUrl).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
     return true;
   }
   if (message.action === 'unsubscribe') {
@@ -1918,7 +1948,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message.action === 'cdlOpenComixSettings') {
-    openTrackedComixSettingsTab()
+    openTrackedComixSettingsTab(sender.tab?.url || message.pageUrl || '')
       .then((result) => sendResponse({ ok: true, tabId: result.tab.id, tracked: result.tracked }))
       .catch((error) => sendResponse({ ok: false, error: error && error.message }));
     return true;
@@ -2011,10 +2041,10 @@ function usableSingleDownloadMangaName(value) {
   const name = String(value || '')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/\s+/g, ' ')
-    .replace(/\s*[-|]\s*comix(?:\.to)?(?:\s*[-|].*)?$/i, '')
+    .replace(/\s*[-|]\s*comix(?:\.(?:to|ws))?(?:\s*[-|].*)?$/i, '')
     .trim();
   const comparable = name.toLowerCase().replace(/[.!\u2026]+$/g, '').trim();
-  if (!comparable || /^(?:untitled(?: (?:page|document))?|loading|just a moment|please wait|checking (?:your )?browser|comix(?:\.to)?|manga)$/.test(comparable)) {
+  if (!comparable || /^(?:untitled(?: (?:page|document))?|loading|just a moment|please wait|checking (?:your )?browser|comix(?:\.(?:to|ws))?|manga)$/.test(comparable)) {
     return '';
   }
   return name;
@@ -2206,7 +2236,7 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
       }
       throw new Error('Aucune image trouvée dans ce chapitre');
     }
-    images = await verifyEnumeratedImages(images, zipName);
+    images = await verifyEnumeratedImages(images, zipName, chapterUrl);
 
     pendingDownloads.delete(tabId);
     chrome.tabs.remove(tabId).catch(() => {});
@@ -2718,7 +2748,7 @@ function analyzeImageSequence(images) {
 
 // true = la page existe, false = absente (HTTP non-2xx ou contenu non-image),
 // null = indéterminé (erreur réseau / timeout) → l'appelant doit abandonner.
-async function probeImageUrl(url) {
+async function probeImageUrl(url, sourceUrl) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
@@ -2728,7 +2758,7 @@ async function probeImageUrl(url) {
       headers: {
         Range: 'bytes=0-0',
         Accept: 'image/webp,image/avif,image/*,*/*;q=0.8',
-        Referer: 'https://comix.to/',
+        Referer: `${preferredComixOrigin(sourceUrl)}/`,
       },
     });
     try { if (res.body) await res.body.cancel(); } catch (_) {}
@@ -2745,14 +2775,14 @@ async function probeImageUrl(url) {
 
 const PROBE_PAGE_CAP = 2000; // garde-fou absolu sur le nombre de pages d'un chapitre
 
-async function verifyEnumeratedImages(images, label) {
+async function verifyEnumeratedImages(images, label, sourceUrl) {
   const seq = analyzeImageSequence(images);
   if (!seq) return images;
   const urlAt = (n) => `${seq.base}${String(n).padStart(seq.digits, '0')}${seq.ext}`;
 
   // Bornes de la dichotomie : lo = dernière page confirmée, hi = première absente.
   let lo, hi;
-  const lastOk = await probeImageUrl(urlAt(seq.count));
+  const lastOk = await probeImageUrl(urlAt(seq.count), sourceUrl);
   if (lastOk === null) return images;
   if (lastOk) {
     // La dernière page énumérée existe — vérifier s'il y en a d'autres au-delà
@@ -2761,20 +2791,20 @@ async function verifyEnumeratedImages(images, label) {
     for (let step = 1; !hi; step *= 2) {
       const n = lo + step;
       if (n > PROBE_PAGE_CAP) { hi = PROBE_PAGE_CAP + 1; break; }
-      const ok = await probeImageUrl(urlAt(n));
+      const ok = await probeImageUrl(urlAt(n), sourceUrl);
       if (ok === null) return images;
       if (ok) lo = n; else hi = n;
     }
   } else {
     // Total surestimé — la page 1 doit exister (le pattern vient d'une vraie image).
-    const firstOk = await probeImageUrl(urlAt(1));
+    const firstOk = await probeImageUrl(urlAt(1), sourceUrl);
     if (!firstOk) return images; // sonde non fiable sur ce CDN → on n'y touche pas
     lo = 1; hi = seq.count;
   }
 
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
-    const ok = await probeImageUrl(urlAt(mid));
+    const ok = await probeImageUrl(urlAt(mid), sourceUrl);
     if (ok === null) return images;
     if (ok) lo = mid; else hi = mid;
   }
@@ -2854,7 +2884,9 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
       batch.map(async (img, k) => {
         const page = i + k + 1;
         const paddedIndex = String(page).padStart(padDigits, '0');
-        const fetched = await fetchImageToFile(paddedIndex, img.src, cfg, imageRetries);
+        const fetched = await fetchImageToFile(
+          paddedIndex, img.src, cfg, imageRetries, null, null, chapterUrl
+        );
         if (fetched.file) {
           fetched.file.page = page;
           files.push(fetched.file);
@@ -3061,13 +3093,13 @@ async function waitForChapterRecovery(retryNumber, errors = []) {
   await new Promise((resolve) => setTimeout(resolve, chapterRecoveryDelayMs(retryNumber, errors)));
 }
 
-async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal) {
+async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal, sourceUrl) {
   let retryLimit = Math.max(0, Math.floor(Number(configuredRetries) || 0));
   let lastError = null;
   for (let attempt = 0; attempt <= retryLimit; attempt++) {
     await waitForImageHostCooldown(src, signal);
     try {
-      return await fetchImageForZip(src, cfg, signal);
+      return await fetchImageForZip(src, cfg, signal, sourceUrl);
     } catch (error) {
       if (signal && signal.aborted) throw makeDownloadAllStoppedError();
       lastError = error;
@@ -3096,9 +3128,9 @@ async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal)
 
 // Fetch one image (with optional retries) and add it to the given JSZip
 // container (the zip root or a chapter folder). Returns bytes written, 0 on fail.
-async function fetchImageIntoZip(container, paddedIndex, src, cfg, retries) {
+async function fetchImageIntoZip(container, paddedIndex, src, cfg, retries, sourceUrl) {
   try {
-    const image = await fetchImageWithRetry(src, cfg, retries);
+    const image = await fetchImageWithRetry(src, cfg, retries, null, null, sourceUrl);
     container.file(`${paddedIndex}.${image.ext}`, image.buffer);
     return image.buffer.byteLength || 0;
   } catch (error) {
@@ -3113,9 +3145,9 @@ async function fetchImageIntoZip(container, paddedIndex, src, cfg, retries) {
 // packer — so two chapters downloading at once never race on the ZIP object.
 // Returns a discriminated { file, error } result so callers cannot accidentally
 // count a failed request as a downloaded image.
-async function fetchImageToFile(paddedIndex, src, cfg, retries, onRetry, signal) {
+async function fetchImageToFile(paddedIndex, src, cfg, retries, onRetry, signal, sourceUrl) {
   try {
-    const image = await fetchImageWithRetry(src, cfg, retries, onRetry, signal);
+    const image = await fetchImageWithRetry(src, cfg, retries, onRetry, signal, sourceUrl);
     return {
       file: { name: `${paddedIndex}.${image.ext}`, ext: image.ext, buffer: image.buffer, bytes: image.buffer.byteLength || 0 },
       error: null,
@@ -3132,13 +3164,13 @@ function formatImageDownloadFailure(total, saved, error) {
   const count = saved === 0
     ? `No images could be downloaded (0/${total}${reason})`
     : `Only ${saved} of ${total} images could be downloaded${reason}`;
-  return `${count}. Reload comix.to and try again.`;
+  return `${count}. Reload the Comix page and try again.`;
 }
 
 // Fetch an image and, when comix.to marks it as scrambled, redraw the CDN
 // tile mosaic back into normal page order before it goes into the ZIP.
 // Honors user settings: fetch timeout, disable-scramble, and image re-encoding.
-async function fetchImageForZip(src, cfg, externalSignal) {
+async function fetchImageForZip(src, cfg, externalSignal, sourceUrl) {
   cfg = cfg || {};
   const timeoutMs = cfg['perf.imageTimeoutMs'] || 30000;
   const disableScramble = !!cfg['advanced.disableScramble'];
@@ -3159,7 +3191,7 @@ async function fetchImageForZip(src, cfg, externalSignal) {
       credentials: 'include',   // new reader serves images from *.comix.to — may be cookie-gated
       headers: {
         Accept: 'image/webp,image/avif,image/*,*/*;q=0.8',
-        Referer: 'https://comix.to/',
+        Referer: `${preferredComixOrigin(sourceUrl)}/`,
       },
     });
 
@@ -4306,7 +4338,7 @@ async function addSeriesMetaToOuter(zip, opts, mangaName, cfg) {
       const resp = await fetch(meta.coverUrl, {
         signal: controller.signal,
         credentials: 'include',
-        headers: { Referer: 'https://comix.to/' },
+        headers: { Referer: `${preferredComixOrigin(meta.sourceUrl)}/` },
       });
       if (resp.ok) {
         const ct = resp.headers.get('content-type') || '';
@@ -4425,7 +4457,7 @@ function showCloudflareChallengeNotification() {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon128.png'),
       title: 'Comix Downloader needs verification',
-      message: 'Complete the Cloudflare check in the opened comix.to tab. The download will resume automatically.',
+      message: 'Complete the Cloudflare check in the opened Comix tab. The download will resume automatically.',
     });
     if (created && typeof created.catch === 'function') created.catch(() => {});
   } catch (_) {}
@@ -5388,7 +5420,7 @@ async function handleDownloadAllRequest(
         }),
       };
     }
-    images = await verifyEnumeratedImages(images, chapterLabel);
+    images = await verifyEnumeratedImages(images, chapterLabel, chapterUrl);
     cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
 
     // Re-sequence to clean 1..N page numbers (sorted by the extractor's index) so
@@ -5412,7 +5444,7 @@ async function handleDownloadAllRequest(
             chapterLabel, imagesDone: filesByPage.size, imagesTotal: ordered.length,
             imagePage: page, retryAttempt: retry.retryAttempt, retryLimit: retry.retryLimit,
           });
-        }, networkSignal);
+        }, networkSignal, chapterUrl);
         if (fetched.file) {
           fetched.file.page = page;
           filesByPage.set(page, fetched.file);
@@ -5475,7 +5507,8 @@ async function handleDownloadAllRequest(
                 recoveryAttempt: retryAttempt,
               });
             },
-            networkSignal
+            networkSignal,
+            chapterUrl
           );
           if (fetched.file) {
             fetched.file.page = failure.page;
@@ -6001,13 +6034,30 @@ async function getSeriesPrefsBg(slug) {
 //      refreshes cf_clearance, which usually re-unblocks the direct path for
 //      the remaining series of the same run.
 // Returns sorted [{chapterUrl, chapterLabel, key}] or null when blocked/empty.
-async function fetchSeriesChapters(slug) {
+async function fetchSeriesChapters(slug, preferredOrigin) {
   if (!slug) return null;
-  const toUrl = (p) => { try { return new URL(p, 'https://comix.to').href; } catch (_) { return ''; } };
-
-  let paths = await fetchSeriesChapterPathsDirect(slug);
-  if (!paths || !paths.length) paths = await fetchSeriesChapterPathsViaTab(slug);
+  const origins = comixOriginCandidates(preferredOrigin);
+  let paths = null;
+  let sourceOrigin = origins[0];
+  for (const origin of origins) {
+    paths = await fetchSeriesChapterPathsDirect(slug, origin);
+    if (paths && paths.length) { sourceOrigin = origin; break; }
+  }
+  if (!paths || !paths.length) {
+    for (const origin of origins) {
+      paths = await fetchSeriesChapterPathsViaTab(slug, origin);
+      if (paths && paths.length) { sourceOrigin = origin; break; }
+    }
+  }
   if (!paths || !paths.length) return null;
+  const toUrl = (path) => {
+    try {
+      const url = new URL(path, sourceOrigin);
+      return supportedComixOrigin(url.href) ? url.href : '';
+    } catch (_) {
+      return '';
+    }
+  };
 
   const urlSet = new Set();
   paths.forEach((p) => { const u = toUrl(p); if (u) urlSet.add(u); });
@@ -6025,14 +6075,15 @@ async function fetchSeriesChapters(slug) {
 }
 
 // Stage 1 — plain SW fetch (+ buildId pagination). Returns chapter paths or null.
-async function fetchSeriesChapterPathsDirect(slug) {
+async function fetchSeriesChapterPathsDirect(slug, sourceOrigin) {
+  const origin = preferredComixOrigin(sourceOrigin);
   const extract = (text) => (typeof CDLFeaturesCore !== 'undefined')
     ? CDLFeaturesCore.extractChapterPaths(text)
     : (String(text).match(/\/title\/[a-z0-9-]+\/\d+-chapter-[\w.-]+/gi) || []);
 
   let html = '';
   try {
-    const r = await fetch(`https://comix.to/title/${slug}`, { credentials: 'include', headers: { Accept: 'text/html' } });
+    const r = await fetch(`${origin}/title/${slug}`, { credentials: 'include', headers: { Accept: 'text/html' } });
     if (!r.ok) return null;
     html = await r.text();
   } catch (_) { return null; }
@@ -6045,7 +6096,7 @@ async function fetchSeriesChapterPathsDirect(slug) {
     for (let page = 1; page <= 100; page++) {
       let text = '';
       try {
-        const rr = await fetch(`https://comix.to/_next/data/${buildId}/title/${slug}.json?page=${page}`,
+        const rr = await fetch(`${origin}/_next/data/${buildId}/title/${slug}.json?page=${page}`,
           { credentials: 'include', headers: { Accept: 'application/json' } });
         if (!rr.ok) break;
         text = await rr.text();
@@ -6061,10 +6112,11 @@ async function fetchSeriesChapterPathsDirect(slug) {
 // Stage 2 — background tab on the series page. The Cloudflare managed challenge
 // runs and solves itself in a real tab; we poll the page until the chapter list
 // is readable (or give up after the deadline and report "blocked" as before).
-async function fetchSeriesChapterPathsViaTab(slug) {
+async function fetchSeriesChapterPathsViaTab(slug, sourceOrigin) {
   if (!chrome.scripting || !chrome.tabs) return null;
+  const origin = preferredComixOrigin(sourceOrigin);
   let tab = null;
-  try { tab = await chrome.tabs.create({ url: withExtractMarker(`https://comix.to/title/${slug}`), active: false }); }
+  try { tab = await chrome.tabs.create({ url: withExtractMarker(`${origin}/title/${slug}`), active: false }); }
   catch (_) { return null; }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try {
@@ -6151,12 +6203,22 @@ async function setupSubscribeAlarm() {
   try { chrome.alarms.create(SUBSCRIBE_ALARM, { periodInMinutes: mins, delayInMinutes: 1 }); } catch (_) {}
 }
 
-async function subscribeSeries(slug, mangaName) {
+async function subscribeSeries(slug, mangaName, sourceUrl) {
   if (!slug) return;
   const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
   const isNew = !cdlSubscriptions[slug];
-  if (isNew) cdlSubscriptions[slug] = { mangaName: mangaName || slug, lastSeen: [], lastCheck: 0 };
-  else if (mangaName) cdlSubscriptions[slug].mangaName = mangaName;
+  const sourceOrigin = supportedComixOrigin(sourceUrl);
+  if (isNew) {
+    cdlSubscriptions[slug] = {
+      mangaName: mangaName || slug,
+      sourceOrigin: sourceOrigin || CDL_DEFAULT_COMIX_ORIGIN,
+      lastSeen: [],
+      lastCheck: 0,
+    };
+  } else {
+    if (mangaName) cdlSubscriptions[slug].mangaName = mangaName;
+    if (sourceOrigin) cdlSubscriptions[slug].sourceOrigin = sourceOrigin;
+  }
   await chrome.storage.local.set({ cdlSubscriptions });
   // Subscribing implies wanting background checks — enable the master toggle once.
   let cfg = {};
@@ -6198,7 +6260,7 @@ async function checkAllSubscriptions(force) {
 }
 
 async function checkOneSubscription(slug, sub, cfg) {
-  const chapters = await fetchSeriesChapters(slug);
+  const chapters = await fetchSeriesChapters(slug, sub && sub.sourceOrigin);
   if (!chapters || !chapters.length) {
     // Blocked (Cloudflare) or empty — record the failed attempt so the options
     // page can tell the user instead of silently looking idle.
@@ -6220,6 +6282,8 @@ async function checkOneSubscription(slug, sub, cfg) {
   const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
   const entry = cdlSubscriptions[slug] || sub || {};
   entry.mangaName = entry.mangaName || sub.mangaName || slug;
+  const resolvedOrigin = supportedComixOrigin(chapters[0] && chapters[0].chapterUrl);
+  entry.sourceOrigin = resolvedOrigin || preferredComixOrigin(entry.sourceOrigin);
   entry.lastSeen = chapters.map((c) => c.key);
   entry.lastCheck = Date.now();
   entry.lastStatus = 'ok';
@@ -6251,8 +6315,15 @@ if (chrome.notifications && chrome.notifications.onClicked) {
   chrome.notifications.onClicked.addListener((id) => {
     if (id && id.indexOf('cdlsub:') === 0) {
       const slug = id.slice('cdlsub:'.length);
-      try { chrome.tabs.create({ url: `https://comix.to/title/${slug}` }); } catch (_) {}
-      try { chrome.notifications.clear(id); } catch (_) {}
+      void (async () => {
+        let origin = CDL_DEFAULT_COMIX_ORIGIN;
+        try {
+          const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
+          origin = preferredComixOrigin(cdlSubscriptions[slug] && cdlSubscriptions[slug].sourceOrigin);
+        } catch (_) {}
+        try { await chrome.tabs.create({ url: `${origin}/title/${encodeURIComponent(slug)}` }); } catch (_) {}
+        try { await chrome.notifications.clear(id); } catch (_) {}
+      })();
     }
   });
 }

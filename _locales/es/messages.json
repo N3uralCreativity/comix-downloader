@@ -4,7 +4,7 @@
     "description": "Nombre de la extensión."
   },
   "extensionDescription": {
-    "message": "Guarda capítulos de comix.to en ZIP o CBZ con descarga total, seguimiento, recuperación y bloqueo de ventanas emergentes.",
+    "message": "Guarda capítulos de comix.to y comix.ws en ZIP o CBZ con descarga total, seguimiento, recuperación y bloqueo de ventanas emergentes.",
     "description": "Descripción breve que muestran el navegador y las tiendas."
   },
   "reviewPromptTitle": {

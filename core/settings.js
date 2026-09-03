@@ -181,7 +181,7 @@
       warn: 'Parts larger than ~800 MB may strain memory while the ZIP is being built.' },
     'download.concurrentChapters': { type: 'int', min: 1, max: 10, risk: 'risky',
       label: 'Chapters at once', help: 'How many chapters can download at the same time. This applies to "Download All" and to separate chapter buttons. The default is 2; raise it to download faster, or use 1 to process chapters one at a time. Up to 10.',
-      warn: 'This multiplies how hard the extension hits comix.to by opening more background tabs and making more image requests at once. Higher values are faster but more aggressive and can get your IP temporarily blocked by the site. While blocked, pages or whole chapters can fail. If you raise this value, keep "Parallel image downloads" low and leave rate limiting on.' },
+      warn: 'This multiplies how hard the extension hits the Comix site by opening more background tabs and making more image requests at once. Higher values are faster but more aggressive and can get your IP temporarily blocked by the site. While blocked, pages or whole chapters can fail. If you raise this value, keep "Parallel image downloads" low and leave rate limiting on.' },
     'download.skipDownloaded': { type: 'bool', risk: 'none',
       label: 'Skip already-downloaded', help: 'In "Download All", default to only the chapters you have not downloaded yet. You can still choose "All" in the panel to re-download everything.' },
 
@@ -265,7 +265,7 @@
       label: 'Download button style', help: 'Per-chapter button appearance.',
       options: { icon: 'Icon only', 'icon+text': 'Icon + text' } },
     'appearance.accentMode': { type: 'enum', enum: ['auto', 'custom'], risk: 'none',
-      label: 'Accent color', help: 'Match comix.to’s own accent (cyan / purple), or pick your own.',
+      label: 'Accent color', help: 'Match the Comix site’s own accent (cyan / purple), or pick your own.',
       options: { auto: 'Match comix theme', custom: 'Custom color' } },
     'appearance.accentColor': { type: 'color', risk: 'none',
       label: 'Custom accent', help: 'Used when "Accent color" is set to Custom.' },
@@ -288,7 +288,7 @@
 
     'advanced.disableScramble': { type: 'bool', risk: 'risky',
       label: 'Disable de-scramble', help: 'Skip un-scrambling protected images.',
-      warn: 'comix.to scrambles some pages. With this on, those pages are saved as unreadable mosaics.' },
+      warn: 'Comix scrambles some pages. With this on, those pages are saved as unreadable mosaics.' },
     'advanced.imageFormat': { type: 'enum', enum: ['preserve', 'png', 'jpg'], risk: 'risky',
       label: 'Image format', help: 'Keep original images, or re-encode them all.',
       options: { preserve: 'Preserve original (recommended)', png: 'Convert to PNG', jpg: 'Convert to JPG' },
@@ -304,7 +304,7 @@
       label: 'Activity log size', help: 'How many log entries to keep.' },
 
     'features.blockAds': { type: 'bool', risk: 'none',
-      label: 'Block comix.to ads and popups', help: 'Stops the site\'s intermittent click-anywhere ads, popunders, scripted external tabs, and transparent ad overlays. Enabled by default; turn it off to restore the site\'s native ad behavior.' },
+      label: 'Block Comix ads and popups', help: 'Stops the site\'s intermittent click-anywhere ads, popunders, scripted external tabs, and transparent ad overlays. Enabled by default; turn it off to restore the site\'s native ad behavior.' },
     'features.dedupeChapters': { type: 'bool', risk: 'none',
       label: 'Hide duplicate chapters', help: 'On a title page, show only one row per chapter number (the same chapter from other sources is hidden). Affects only what you see — your downloads are unchanged.' },
     'features.enforceChapterOrder': { type: 'bool', risk: 'none',
@@ -328,7 +328,7 @@
       label: 'Catch-up time estimate', help: 'On a series page, shows how many chapters you have left and roughly how long they’ll take at your measured reading pace (falls back to ~4 min per chapter until it has learned your speed). All measured and stored on this device only.' },
 
     'home.customLayout': { type: 'bool', risk: 'glitchy',
-      label: 'Custom Home page', help: 'Replace comix.to’s Home with a focused, larger layout built from the sections you choose below. Everything else (announcements, banners, sidebar) is hidden.',
+      label: 'Custom Home page', help: 'Replace the Comix Home page with a focused, larger layout built from the sections you choose below. Everything else (announcements, banners, sidebar) is hidden.',
       warn: 'Restyles and hides parts of comix’s Home page. Turn it off to restore the native Home exactly as it was.' },
     'home.sections': { type: 'sectionList', risk: 'none', sections: HOME_SECTION_LABELS,
       label: 'Home sections', help: 'Pick which sections appear and drag them into the order you want. Continue Reading, New Chapters and Recently Followed are your own data; the rest are comix’s global carousels, re-styled to match.' },

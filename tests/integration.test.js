@@ -238,10 +238,12 @@ check('manifest metadata uses WebExtension localization',
   mf.description === '__MSG_extensionDescription__');
 const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/content_title.js'));
 check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['core/settings.js', 'content/content_notices.js', 'core/cdl-features-core.js', 'core/cdl-home-core.js', 'core/cdl-badge-core.js', 'content/content_title.js', 'content/content_features.js', 'content/content_home.js', 'content/content_profile.js']));
-// The title/features bundle must match ALL of comix.to (not just /title/*) so it
+// The title/features bundle must match ALL of both Comix domains (not just
+// /title/*) so it
 // is present when a Next.js soft-navigation lands on a title page — otherwise the
 // download buttons only appear after a hard refresh (SPA injection fix).
-check('title content scripts match all of comix.to (SPA soft-nav)', !!mainCs && mainCs.matches.indexOf('*://comix.to/*') !== -1);
+check('title content scripts match both Comix domains (SPA soft-nav)', !!mainCs &&
+  ['*://comix.to/*', '*://comix.ws/*'].every((pattern) => mainCs.matches.includes(pattern)));
 check('remote notices content script is registered', !!mainCs && mainCs.js.indexOf('content/content_notices.js') !== -1);
 const bridgeCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/extract-bridge.js'));
 check('extract-bridge runs at document_start in the MAIN world', !!bridgeCs && bridgeCs.run_at === 'document_start' && bridgeCs.world === 'MAIN');
@@ -249,8 +251,15 @@ check('ad blocker loads before the bridge in MAIN world', !!bridgeCs && JSON.str
 const adControlCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/adblock-control.js'));
 check('ad blocker control runs at document_start in isolated world', !!adControlCs && adControlCs.run_at === 'document_start' && !adControlCs.world);
 const embedCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/cdl-embed-settings.js'));
-check('settings-embed content script is registered on comix.to', !!embedCs && embedCs.matches.indexOf('*://comix.to/*') !== -1);
+check('settings-embed content script is registered on both Comix domains', !!embedCs &&
+  ['*://comix.to/*', '*://comix.ws/*'].every((pattern) => embedCs.matches.includes(pattern)));
 check('settings-embed loads the settings module (CDLSettings)', !!embedCs && embedCs.js.indexOf('core/settings.js') !== -1);
+check('every Comix content-script group runs on both supported domains',
+  mf.content_scripts.every((script) =>
+    ['*://comix.to/*', '*://comix.ws/*'].every((pattern) => script.matches.includes(pattern))));
+check('manifest grants first-party access to both Comix domains',
+  ['*://comix.to/*', '*://*.comix.to/*', '*://comix.ws/*', '*://*.comix.ws/*']
+    .every((pattern) => mf.host_permissions.includes(pattern)));
 check('options_ui points at the archived legacy page', mf.options_ui && mf.options_ui.page === 'legacy/options.html' && mf.options_ui.open_in_tab === true);
 check('image CDN request rule has host-access-only permission',
   mf.permissions.includes('declarativeNetRequestWithHostAccess') && !mf.permissions.includes('declarativeNetRequest'));

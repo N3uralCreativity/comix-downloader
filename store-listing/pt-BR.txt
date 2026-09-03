@@ -1,8 +1,8 @@
 RESUMO
-Salve capítulos do comix.to em ZIP ou CBZ com download completo, progresso, recuperação e bloqueio de pop-ups invasivos.
+Salve capítulos do comix.to e comix.ws em ZIP ou CBZ com download completo, progresso, recuperação e bloqueio de pop-ups invasivos.
 
 DESCRIÇÃO DETALHADA
-Comix Downloader é uma extensão de navegador não oficial e de código aberto para o comix.to.
+Comix Downloader é uma extensão de navegador não oficial e de código aberto para comix.to e comix.ws.
 
 Ela adiciona controles de download diretamente às páginas de títulos e listas de capítulos para salvar um capítulo ou uma série completa em ZIP ou CBZ.
 
@@ -12,14 +12,14 @@ Principais recursos:
 - Etapas separadas para download, criação do ZIP e confirmação do salvamento
 - Pontos de recuperação e tratamento claro de salvamentos cancelados
 - Nomes, pastas, divisão de arquivos e metadados ComicInfo configuráveis
-- Bloqueio de anúncios por clique, pop-unders e sobreposições transparentes invasivas do comix.to, ativado por padrão e configurável
+- Bloqueio de anúncios por clique, pop-unders e sobreposições transparentes do Comix, ativado por padrão e configurável
 - Estatísticas de leitura, retomada, assinaturas e envio para biblioteca opcionais
 
 Os downloads principais, as configurações, o histórico e as estatísticas de leitura são processados localmente no navegador. Os selos de perfil, alertas comunitários de capítulos e avisos da extensão acessam o serviço Cloudflare do projeto usando identificadores com hash ou a versão da extensão. O envio para biblioteca transmite arquivos somente ao servidor configurado por você. Consulte a política de privacidade para obter todos os detalhes.
 
-Comix Downloader não é afiliado ao comix.to. Salve apenas conteúdo que você tem autorização para baixar.
+Comix Downloader não é afiliado ao comix.to nem ao comix.ws. Salve apenas conteúdo que você tem autorização para baixar.
 
 DESCRIÇÕES DAS CAPTURAS DE TELA
-1. O botão Baixar tudo é adicionado diretamente a cada página de título do comix.to.
+1. O botão Baixar tudo é adicionado diretamente às páginas de título do comix.to e comix.ws.
 2. Baixe capítulos pela lista, com suporte a vários downloads simultâneos.
 3. O progresso separa claramente o download, a criação do ZIP e a confirmação do salvamento.

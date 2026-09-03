@@ -53,7 +53,7 @@ check('zero-image chapters get an explicit error',
   helperContext.formatFailure(0, 0, null) === 'No images were found for this chapter.');
 check('complete CDN rejection reports saved/total and HTTP status', (() => {
   const message = helperContext.formatFailure(79, 0, new Error('HTTP 403'));
-  return message.includes('0/79') && message.includes('HTTP 403') && message.includes('Reload comix.to');
+  return message.includes('0/79') && message.includes('HTTP 403') && message.includes('Reload the Comix page');
 })());
 check('partial image failure reports the incomplete count',
   helperContext.formatFailure(89, 88, new Error('HTTP 503')).includes('Only 88 of 89 images'));

@@ -703,7 +703,7 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
         g.classList.remove('cdl-greet-guest');
       } else {
         titleEl.textContent = 'Login required';
-        subEl.textContent = 'Log in to comix.to to see your followed comics, new chapters and reading history here.';
+        subEl.textContent = 'Log in to Comix to see your followed comics, new chapters and reading history here.';
         g.classList.add('cdl-greet-guest');
       }
     });

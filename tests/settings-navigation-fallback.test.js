@@ -52,10 +52,12 @@ assert.equal(context.isFresh({ tabId: 42, startedAt: 12_000 }, 42, 11_000), fals
 assert.equal(context.isFresh(null, 42, 11_000), false,
   'malformed navigation state is rejected');
 
-assert.match(popup, /sendRuntimeMessage\(\{ action: 'cdlOpenComixSettings' \}\)/,
-  'the popup must use the tracked settings-tab flow');
-assert.match(background, /chrome\.tabs\.create\(\{ url: CDL_COMIX_SETTINGS_URL \}\)/,
-  'the preferred destination must remain the native comix.to settings page');
+assert.match(popup, /action: 'cdlOpenComixSettings',[\s\S]*pageUrl:/,
+  'the popup must pass the active Comix domain into the tracked settings-tab flow');
+assert.match(background, /chrome\.tabs\.create\(\{ url: comixSettingsUrl\(preferredUrl\) \}\)/,
+  'the preferred destination must remain the current domain\'s native Comix settings page');
+assert.match(content, /location\.href = location\.origin \+ '\/user\?tab=settings'/,
+  'the in-page quick link must stay on the current Comix domain');
 assert.match(background, /\[CDL_SETTINGS_NAVIGATION_KEY\]: \{ tabId: id, startedAt \}/,
   'the attempt must be bound to the exact created tab');
 assert.match(content, /send\(\{ action: 'cdlProbeSettingsNavigation' \}\)/,

@@ -21,6 +21,8 @@
   "host_permissions": [
     "*://comix.to/*",
     "*://*.comix.to/*",
+    "*://comix.ws/*",
+    "*://*.comix.ws/*",
     "https://*.workers.dev/*",
     "*://*.wowpic1.store/*",
     "*://*.wowpic2.store/*",
@@ -46,23 +48,23 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://comix.to/*"],
+      "matches": ["*://comix.to/*", "*://comix.ws/*"],
       "js": ["content/adblock-main.js", "content/extract-bridge.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["*://comix.to/*"],
+      "matches": ["*://comix.to/*", "*://comix.ws/*"],
       "js": ["content/adblock-control.js"],
       "run_at": "document_start"
     },
     {
-      "matches": ["*://comix.to/*"],
+      "matches": ["*://comix.to/*", "*://comix.ws/*"],
       "js": ["core/settings.js", "content/content_notices.js", "core/cdl-features-core.js", "core/cdl-home-core.js", "core/cdl-badge-core.js", "content/content_title.js", "content/content_features.js", "content/content_home.js", "content/content_profile.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://comix.to/*"],
+      "matches": ["*://comix.to/*", "*://comix.ws/*"],
       "js": ["core/settings.js", "content/cdl-embed-settings.js"],
       "run_at": "document_idle"
     }
@@ -88,7 +90,7 @@
         "assets/settings-outro/dance-flamingo.gif",
         "assets/settings-outro/outro.mp3"
       ],
-      "matches": ["*://comix.to/*"]
+      "matches": ["*://comix.to/*", "*://comix.ws/*"]
     }
   ],
   "action": {

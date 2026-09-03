@@ -11,15 +11,32 @@ const background = fs.readFileSync(path.join(root, 'background.js'), 'utf8');
 
 assert.equal(popup.isSupportedTabUrl('https://comix.to/title/example'), true);
 assert.equal(popup.isSupportedTabUrl('http://comix.to/'), true);
+assert.equal(popup.isSupportedTabUrl('https://comix.ws/title/example'), true);
+assert.equal(popup.isSupportedTabUrl('http://comix.ws/'), true);
 assert.equal(popup.isSupportedTabUrl('https://cdn.comix.to/image.jpg'), false,
   'CDN subdomains do not run the extension content scripts');
+assert.equal(popup.isSupportedTabUrl('https://cdn.comix.ws/image.jpg'), false,
+  'new-domain CDN subdomains do not run the extension content scripts');
 assert.equal(popup.isSupportedTabUrl('https://comix.to.example/title/example'), false);
+assert.equal(popup.isSupportedTabUrl('https://comix.ws.example/title/example'), false);
 assert.equal(popup.isSupportedTabUrl('about:addons'), false);
 assert.equal(popup.isSupportedTabUrl(''), false);
 
 assert.equal(
   popup.derivePopupActivityState('https://comix.to/title/example', { downloading: false }).key,
   'active'
+);
+assert.equal(
+  popup.derivePopupActivityState('https://comix.ws/title/example', { downloading: false }).key,
+  'active'
+);
+assert.equal(
+  popup.comixSettingsUrlForTab('https://comix.ws/title/example'),
+  'https://comix.ws/user?tab=settings'
+);
+assert.equal(
+  popup.comixSettingsUrlForTab('https://example.com/'),
+  'https://comix.to/user?tab=settings'
 );
 assert.equal(
   popup.derivePopupActivityState('https://example.com/', { downloading: false }).key,

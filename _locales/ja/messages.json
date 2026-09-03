@@ -4,7 +4,7 @@
     "description": "拡張機能の名前です。"
   },
   "extensionDescription": {
-    "message": "comix.toのチャプターをZIP/CBZで保存。全話ダウンロード、進行表示、再開、迷惑ポップアップのブロックに対応。",
+    "message": "comix.toとcomix.wsのチャプターをZIP/CBZで保存。全話ダウンロード、進行表示、再開、迷惑ポップアップのブロックに対応。",
     "description": "ブラウザーとストアに表示される短い説明です。"
   },
   "reviewPromptTitle": {

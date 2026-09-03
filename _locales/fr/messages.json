@@ -4,7 +4,7 @@
     "description": "Nom de l'extension."
   },
   "extensionDescription": {
-    "message": "Enregistrez les chapitres comix.to en ZIP ou CBZ avec téléchargement global, suivi, reprise et blocage des fenêtres intrusives.",
+    "message": "Enregistrez les chapitres de comix.to et comix.ws en ZIP ou CBZ avec téléchargement global, suivi, reprise et blocage des pop-ups.",
     "description": "Description courte affichée par le navigateur et les boutiques."
   },
   "reviewPromptTitle": {

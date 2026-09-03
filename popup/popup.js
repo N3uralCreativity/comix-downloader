@@ -5,6 +5,7 @@ const GITHUB_URL = 'https://github.com/N3uralCreativity/comix-downloader';
 const CHROME_REVIEW_URL = 'https://chrome.google.com/webstore/detail/nojjjpmicodkodnnllbdolpglhlclpdp/reviews';
 const FIREFOX_REVIEW_URL = 'https://addons.mozilla.org/firefox/addon/comix-chapter-downloader/reviews/';
 const OPERA_REVIEW_URL = 'https://addons.opera.com/extensions/details/comix-downloader/';
+const COMIX_HOSTS = new Set(['comix.to', 'comix.ws']);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -17,10 +18,20 @@ function isSupportedTabUrl(value) {
   try {
     const url = new URL(String(value || ''));
     return (url.protocol === 'https:' || url.protocol === 'http:') &&
-      url.hostname === 'comix.to';
+      COMIX_HOSTS.has(url.hostname.toLowerCase());
   } catch (_) {
     return false;
   }
+}
+
+function comixSettingsUrlForTab(value) {
+  try {
+    const url = new URL(String(value || ''));
+    if (COMIX_HOSTS.has(url.hostname.toLowerCase())) {
+      return `https://${url.hostname.toLowerCase()}/user?tab=settings`;
+    }
+  } catch (_) {}
+  return 'https://comix.to/user?tab=settings';
 }
 
 function derivePopupActivityState(tabUrl, activity) {
@@ -212,10 +223,10 @@ function showUpdateCheckFeedback(message) {
   const subtitle = document.getElementById('header-sub');
   if (!subtitle) return;
   window.clearTimeout(updateCheckFeedbackTimer);
-  subtitle.textContent = message || 'comix.to chapter downloader';
+  subtitle.textContent = message || 'Comix chapter downloader';
   if (!message) return;
   updateCheckFeedbackTimer = window.setTimeout(() => {
-    subtitle.textContent = 'comix.to chapter downloader';
+    subtitle.textContent = 'Comix chapter downloader';
   }, 3200);
 }
 
@@ -293,10 +304,9 @@ function renderLogs(logs) {
   wrap.appendChild(frag);
 }
 
-// Settings opens comix.to's own settings page, where the extension injects its
-// settings natively. The background tracks that exact tab so a redirect can
+// Settings opens the active Comix domain's own settings page, where the extension
+// injects its settings natively. The background tracks that exact tab so a redirect can
 // offer the standalone extension settings page without affecting other tabs.
-var COMIX_SETTINGS_URL = 'https://comix.to/user?tab=settings';
 async function openSettings() {
   // Dismiss the "NEW" indicator the instant Settings is opened: hide the pill
   // now, and let the background clear the notices + toolbar badge (it persists
@@ -304,14 +314,18 @@ async function openSettings() {
   var pill = document.getElementById('settings-new');
   if (pill) pill.hidden = true;
   try { chrome.runtime.sendMessage({ action: 'dismissNew' }); } catch (e) {}
-  const result = await sendRuntimeMessage({ action: 'cdlOpenComixSettings' });
+  const tab = await queryActiveTab();
+  const result = await sendRuntimeMessage({
+    action: 'cdlOpenComixSettings',
+    pageUrl: tab && tab.url || '',
+  });
   if (!result || !result.ok) {
-    try { chrome.tabs.create({ url: COMIX_SETTINGS_URL }); } catch (_) {}
+    try { chrome.tabs.create({ url: comixSettingsUrlForTab(tab && tab.url) }); } catch (_) {}
   }
   window.close();
 }
 
-// Apply comix.to's theme to the popup so it matches the site. We try three
+// Apply the active Comix site's theme to the popup. We try three
 // sources, best-effort: (1) the last snapshot in storage (instant), (2) a live
 // query to any open comix tab (most current), and (3) storage changes while the
 // popup is open. Falls back to the CSS defaults when none are available.
@@ -330,7 +344,7 @@ function applyThemeObj(t) {
 function applySiteTheme() {
   try { chrome.storage.local.get('cdlSiteTheme', (r) => applyThemeObj(r && r.cdlSiteTheme)); } catch (e) {}
   try {
-    chrome.tabs.query({ url: '*://comix.to/*' }, (tabs) => {
+    chrome.tabs.query({ url: ['*://comix.to/*', '*://comix.ws/*'] }, (tabs) => {
       if (chrome.runtime.lastError || !tabs || !tabs.length) return;
       const tab = tabs.find((t) => t.active) || tabs[0];
       chrome.tabs.sendMessage(tab.id, { action: 'cdlGetSiteTheme' }, (resp) => {
@@ -402,7 +416,12 @@ async function init() {
 }
 
 if (typeof module === 'object' && module.exports) {
-  module.exports = { isFirefoxAndroid, isSupportedTabUrl, derivePopupActivityState };
+  module.exports = {
+    isFirefoxAndroid,
+    isSupportedTabUrl,
+    comixSettingsUrlForTab,
+    derivePopupActivityState,
+  };
 } else {
   applyPlatformLayout(navigator.userAgent);
   init();
