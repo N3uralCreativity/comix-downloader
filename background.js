@@ -73,9 +73,10 @@ function preferredComixOrigin(value) {
   return supportedComixOrigin(value) || CDL_DEFAULT_COMIX_ORIGIN;
 }
 
-function comixOriginCandidates(value) {
-  const preferred = preferredComixOrigin(value);
-  return [preferred, ...CDL_COMIX_ORIGINS.filter((origin) => origin !== preferred)];
+function comixOriginCandidates() {
+  // comix.to is canonical. comix.ws is contacted only after the primary
+  // origin cannot provide the requested page.
+  return [...CDL_COMIX_ORIGINS];
 }
 
 function comixSettingsUrl(value) {
@@ -6034,20 +6035,17 @@ async function getSeriesPrefsBg(slug) {
 //      refreshes cf_clearance, which usually re-unblocks the direct path for
 //      the remaining series of the same run.
 // Returns sorted [{chapterUrl, chapterLabel, key}] or null when blocked/empty.
-async function fetchSeriesChapters(slug, preferredOrigin) {
+async function fetchSeriesChapters(slug) {
   if (!slug) return null;
-  const origins = comixOriginCandidates(preferredOrigin);
+  const origins = comixOriginCandidates();
   let paths = null;
   let sourceOrigin = origins[0];
   for (const origin of origins) {
     paths = await fetchSeriesChapterPathsDirect(slug, origin);
-    if (paths && paths.length) { sourceOrigin = origin; break; }
-  }
-  if (!paths || !paths.length) {
-    for (const origin of origins) {
+    if (!paths || !paths.length) {
       paths = await fetchSeriesChapterPathsViaTab(slug, origin);
-      if (paths && paths.length) { sourceOrigin = origin; break; }
     }
+    if (paths && paths.length) { sourceOrigin = origin; break; }
   }
   if (!paths || !paths.length) return null;
   const toUrl = (path) => {
@@ -6260,7 +6258,7 @@ async function checkAllSubscriptions(force) {
 }
 
 async function checkOneSubscription(slug, sub, cfg) {
-  const chapters = await fetchSeriesChapters(slug, sub && sub.sourceOrigin);
+  const chapters = await fetchSeriesChapters(slug);
   if (!chapters || !chapters.length) {
     // Blocked (Cloudflare) or empty — record the failed attempt so the options
     // page can tell the user instead of silently looking idle.

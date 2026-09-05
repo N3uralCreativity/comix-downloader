@@ -33,7 +33,8 @@ assert.equal(api.supportedComixOrigin('https://cdn.comix.ws/image.jpg'), '');
 assert.equal(api.supportedComixOrigin('https://comix.ws.example/title/example'), '');
 assert.deepStrictEqual(
   Array.from(api.comixOriginCandidates('https://comix.ws/title/example')),
-  ['https://comix.ws', 'https://comix.to']
+  ['https://comix.to', 'https://comix.ws'],
+  'comix.to must remain primary even when the current or stored page uses the fallback domain'
 );
 assert.equal(
   api.comixSettingsUrl('https://comix.ws/title/example'),
@@ -48,6 +49,10 @@ assert.match(background, /fetchSeriesChapterPathsDirect\(slug, origin\)/,
   'subscription checks must try each supported origin');
 assert.match(background, /fetchSeriesChapterPathsViaTab\(slug, origin\)/,
   'subscription tab fallback must retain the selected origin');
+assert.match(background, /async function fetchSeriesChapters\(slug\)/,
+  'subscription checks must not promote a stored fallback origin to primary');
+assert.match(background, /const chapters = await fetchSeriesChapters\(slug\);/,
+  'subscription refreshes must always start with the canonical origin order');
 assert.match(background, /sourceOrigin: sourceOrigin \|\| CDL_DEFAULT_COMIX_ORIGIN/,
   'new subscriptions must remember their source domain');
 assert.match(background, /preferredComixOrigin\(cdlSubscriptions\[slug\][\s\S]*sourceOrigin\)/,

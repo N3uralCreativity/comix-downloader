@@ -223,10 +223,10 @@ function showUpdateCheckFeedback(message) {
   const subtitle = document.getElementById('header-sub');
   if (!subtitle) return;
   window.clearTimeout(updateCheckFeedbackTimer);
-  subtitle.textContent = message || 'Comix chapter downloader';
+  subtitle.textContent = message || 'comix.to chapter downloader';
   if (!message) return;
   updateCheckFeedbackTimer = window.setTimeout(() => {
-    subtitle.textContent = 'Comix chapter downloader';
+    subtitle.textContent = 'comix.to chapter downloader';
   }, 3200);
 }
 
