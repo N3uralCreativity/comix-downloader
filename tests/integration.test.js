@@ -57,7 +57,7 @@ check('Download All exposes a checkpoint resume message without persisting archi
 check('the configured Downloads subfolder reaches every archive workflow',
   backgroundSource.includes("downloadTargetFilename(outName, cfg['output.downloadSubfolder'])") &&
   backgroundSource.includes("downloadSubfolder: cfg['output.downloadSubfolder'] || ''") &&
-  backgroundSource.includes('await handleDownloadAllRequest(chapters, mangaName, zipName, null, options)'));
+  backgroundSource.includes('runDownloadAllRequest(chapters, mangaName, zipName, null, options)'));
 check('a new Download All request reattaches to an existing durable operation',
   backgroundSource.includes('existing.status === \'awaiting_save\'') &&
   backgroundSource.includes('existing: true, session: _serializeSession(existing)'));

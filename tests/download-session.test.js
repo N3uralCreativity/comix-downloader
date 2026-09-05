@@ -179,7 +179,7 @@ vm.runInContext(`
   let downloadAllSession = { phase: 'zipping', resumeData };
   function recordDownloadAllTerminal(status, patch) { terminal = { status, ...patch }; }
   function restoreIdleBadge() { restoredBadge = true; }
-  function notifyTab(_tabId, message) { sent = message; }
+  function notifyDownloadAllMessage(_tabId, message) { sent = message; }
   function extensionVersion() { return '4.2.test'; }
   ${extractFunction('downloadErrorText')}
   ${extractFunction('sanitizeDiagnosticText')}
@@ -257,8 +257,13 @@ async function runAsyncSessionChecks() {
   };
   const asyncContext = {
     Date, JSON, Math, Number, String, Array, Set,
+    crypto: require('crypto').webcrypto,
     storageData,
     chrome: {
+      tabs: { async get(id) {
+        if (id === 20) return { id, url: 'https://comix.to/title/series' };
+        throw new Error('Tab closed');
+      } },
       storage: {
         local: {
           async get(names) {
@@ -286,6 +291,10 @@ async function runAsyncSessionChecks() {
     const DL_SESSION_PREFIX = 'cdlDownloadAllSession:';
     const DL_RESUME_PREFIX = 'cdlDownloadAllResume:';
     let downloadAllSession = null;
+    let _downloadAllRun = null;
+    let _pendingZip = null;
+    let _downloadAllSessionLock = Promise.resolve();
+    let _dlStorageQueue = Promise.resolve();
     let persistCount = 0;
     function persistDownloadAllSession(_force, includeResumeData) {
       persistCount++;
@@ -323,8 +332,11 @@ async function runAsyncSessionChecks() {
     ${extractFunction('downloadAllSessionMatchesUrl')}
     ${extractFunction('prepareInterruptedDownloadAllSession')}
     ${extractFunction('clearLegacyPersistedDownloadAllSession')}
+    ${extractFunction('queueDownloadAllStorage')}
+    ${extractFunction('withDownloadAllSessionLock')}
     ${extractFunction('loadPersistedSession')}
     ${extractFunction('getDownloadAllSessionForTab')}
+    ${extractFunction('loadDownloadAllSessionForTab')}
     ${extractFunction('getDownloadAllSessionForTabAsync')}
     globalThis.api = {
       getDownloadAllSessionForTabAsync,

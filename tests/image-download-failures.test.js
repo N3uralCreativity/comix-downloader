@@ -186,7 +186,12 @@ const allContext = {
     };
   },
   updateDownloadAllResumeCheckpoint(checkpoint) { allEvents.checkpoints.push(checkpoint); },
-  startDownloadAllSession(session) { allEvents.sessions.push(session); },
+  crypto: require('crypto').webcrypto,
+  downloadAllSession: null,
+  startDownloadAllSession(session) {
+    allContext.downloadAllSession = { ...session, active: true };
+    allEvents.sessions.push(session);
+  },
   persistDownloadAllSession() {},
   cdlLog(level, message) { allEvents.logs.push({ level, message }); },
   notifyDownloadAllProgress(_tabId, message) {

@@ -21,6 +21,7 @@ let _dlAllSessionSyncTimer = null;
 let _dlAllSessionSyncInFlight = false;
 let _dlAllSessionSyncEnabled = false;
 let _dlAllSessionSyncRequest = 0;
+let _dlAllViewGeneration = 0;
 
 // Retry timer for Download All button injection (React renders Follow btn late on mobile)
 let _dlAllInjRetryTimer = null;
@@ -172,7 +173,12 @@ function onSettingsChanged() {
 // Auto-hide the progress frame N seconds after it reaches a terminal state.
 function maybeAutoHideFrame(popup) {
   const sec = _clampInt(CFG['frame.autoHideSec'], 0, 60, 0);
-  if (sec > 0) setTimeout(() => { dismissDownloadAllSession(); popup.remove(); }, sec * 1000);
+  clearTimeout(popup._cdlAutoHideTimer);
+  if (sec > 0) popup._cdlAutoHideTimer = setTimeout(() => {
+    if (document.getElementById('cdl-all-popup') !== popup) return;
+    dismissDownloadAllSession();
+    popup.remove();
+  }, sec * 1000);
 }
 
 // ── Styles injectés ───────────────────────────────────────────────────────────
@@ -1337,6 +1343,7 @@ function getSpinnerSVG() {
 // ── Réception des messages du background (progression, fin, erreur) ───────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (String(message.action || '').startsWith('downloadAll') && !acceptDownloadAllUpdate(message)) return;
   if (message.action === 'downloadProgress') {
     const btn = findButtonByChapterUrl(message.chapterUrl);
     if (btn && btn.getAttribute('data-state') === 'loading') {
@@ -2102,20 +2109,36 @@ async function getAllChapters(collection) {
 /** Lance (ou relance) la session Download All avec les params en cache. */
 function _launchDownloadAll(attempt) {
   attempt = attempt || 0;
-  if (!_lastDlAllParams) return;
+  const popup = document.getElementById('cdl-all-popup');
+  if (!_lastDlAllParams || !popup || popup.dataset.sessionAccepted === 'true') return;
+  const generation = _dlAllViewGeneration;
   const { chapters, mangaName, zipName, options } = _lastDlAllParams;
   // The MV3 service worker sleeps when idle; the first message after a crash/idle can come back
   // with a transient lastError ("message port closed" / "Receiving end does not exist") while it
   // spins back up. The background checks for an existing durable session before starting, so a
   // transient error is safe to retry a few times before surfacing a failure to the user.
-  const retry = () => { if (attempt < 3) { setTimeout(() => _launchDownloadAll(attempt + 1), 500); return true; } return false; };
+  const retry = () => {
+    if (attempt >= 3) return false;
+    setTimeout(() => {
+      if (generation === _dlAllViewGeneration && document.getElementById('cdl-all-popup') === popup) {
+        _launchDownloadAll(attempt + 1);
+      }
+    }, 500);
+    return true;
+  };
   try {
     chrome.runtime.sendMessage(
-      { action: 'downloadAllChapters', chapters, mangaName, zipName, options },
+      { action: 'downloadAllChapters', chapters, mangaName, zipName, options, sessionId: popup.dataset.sessionId },
       (response) => {
         const err = chrome.runtime.lastError;
+        if (generation !== _dlAllViewGeneration || document.getElementById('cdl-all-popup') !== popup) return;
         if (!err && response?.ok) {
-          startDownloadAllSessionSync();
+          popup.dataset.startPending = 'false';
+          popup.dataset.sessionAccepted = 'true';
+          if (response.sessionId) popup.dataset.sessionId = response.sessionId;
+          if (!['done', 'cancelled', 'error', 'interrupted', 'awaiting_save'].includes(popup.dataset.sessionStatus)) {
+            startDownloadAllSessionSync();
+          }
           return; // acked - the download is starting
         }
         if (!err && response?.session) {
@@ -3497,10 +3520,15 @@ function showChapterListLoadingError(popup, error, onRetry) {
 }
 
 function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
+  resetDownloadAllView();
   document.getElementById('cdl-all-popup')?.remove();
 
   const popup = document.createElement('div');
   popup.id = 'cdl-all-popup';
+  popup.dataset.seriesSlug = _cdlSlug();
+  popup.dataset.sessionId = options.sessionId || crypto.randomUUID();
+  popup.dataset.startPending = options.sessionRestore ? 'false' : 'true';
+  popup.dataset.sessionAccepted = options.sessionRestore ? 'true' : 'false';
   popup.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
   popup.dataset.sessionFloor = String(options.sessionRestore ? 0 : Date.now());
   popup.dataset.sessionUpdatedAt = '0';
@@ -3560,9 +3588,11 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
 }
 
 function dismissDownloadAllSession() {
+  const sessionId = document.getElementById('cdl-all-popup')?.dataset.sessionId || '';
+  resetDownloadAllView();
   if (!chrome?.runtime?.id) return;
   try {
-    chrome.runtime.sendMessage({ action: 'dismissDownloadAllSession' });
+    chrome.runtime.sendMessage({ action: 'dismissDownloadAllSession', sessionId }, () => { void chrome.runtime.lastError; });
   } catch (_) {}
 }
 
@@ -3573,12 +3603,27 @@ function _dlAllSetFooterCancel(popup) {
   const cancelBtn = document.getElementById('cdl-ap-cancel-btn');
   cancelBtn?.addEventListener('click', () => {
     if (!chrome?.runtime?.id) return;
+    cancelBtn.disabled = true;
     try {
-      chrome.runtime.sendMessage({ action: 'cancelDownloadAll' });
-      const status = document.getElementById('cdl-ap-chapter-status');
-      if (status) status.textContent = 'Cancelling…';
-      cancelBtn.disabled = true;
-    } catch (_) {}
+      chrome.runtime.sendMessage({ action: 'cancelDownloadAll', sessionId: popup.dataset.sessionId }, (response) => {
+        const error = chrome.runtime.lastError;
+        if (document.getElementById('cdl-all-popup') !== popup) return;
+        if (error || !response?.ok) {
+          cancelBtn.disabled = false;
+          cdlToast(response?.error || 'Cancellation could not be confirmed. Please try again.');
+          startDownloadAllSessionSync(250);
+        } else if (!response.session) {
+          resetDownloadAllView();
+          popup.remove();
+        } else {
+          restoreDownloadAllPopupFromSession(response.session);
+          startDownloadAllSessionSync(250);
+        }
+      });
+    } catch (_) {
+      cancelBtn.disabled = false;
+      cdlToast('The extension connection was lost. Refresh this page.');
+    }
   });
 }
 
@@ -3627,8 +3672,9 @@ function _dlAllSetFooterSaveAgain(popup, zipPart = 1, finalPart = true, directCb
 
     try {
       startDownloadAllSessionSync(250);
-      chrome.runtime.sendMessage({ action: 'retryArchiveSave' }, (response) => {
+      chrome.runtime.sendMessage({ action: 'retryArchiveSave', sessionId: popup.dataset.sessionId }, (response) => {
         const runtimeError = chrome.runtime.lastError;
+        if (document.getElementById('cdl-all-popup') !== popup) return;
         if (runtimeError || !response?.ok) {
           const technical = runtimeError || new Error(
             response?.error || 'The prepared archive is no longer available.'
@@ -3659,9 +3705,20 @@ function _dlAllSetFooterSaveAgain(popup, zipPart = 1, finalPart = true, directCb
   closeBtn.addEventListener('click', () => {
     saveBtn.disabled = true;
     closeBtn.disabled = true;
-    try { chrome.runtime.sendMessage({ action: 'abandonArchiveSave' }); } catch (_) {}
-    stopDownloadAllSessionSync();
-    popup.remove();
+    try {
+      chrome.runtime.sendMessage({ action: 'abandonArchiveSave', sessionId: popup.dataset.sessionId }, (response) => {
+        const error = chrome.runtime.lastError;
+        if (document.getElementById('cdl-all-popup') !== popup) return;
+        if (error || !response?.ok) {
+          saveBtn.disabled = false;
+          closeBtn.disabled = false;
+          startDownloadAllSessionSync(0);
+          return;
+        }
+        resetDownloadAllView();
+        popup.remove();
+      });
+    } catch (_) { saveBtn.disabled = false; closeBtn.disabled = false; }
   });
 
   footer.append(saveBtn, closeBtn);
@@ -3687,6 +3744,7 @@ function _dlAllSetFooterResume(popup, interrupted) {
   resumeBtn.addEventListener('click', () => {
     resumeBtn.disabled = true;
     discardBtn.disabled = true;
+    popup.dataset.sessionStatus = 'running';
     _dlAllSetStage(popup, 'download');
     _dlAllHideArchiveProgress();
     const status = document.getElementById('cdl-ap-chapter-status');
@@ -3701,8 +3759,9 @@ function _dlAllSetFooterResume(popup, interrupted) {
 
     try {
       startDownloadAllSessionSync(250);
-      chrome.runtime.sendMessage({ action: 'resumeDownloadAll' }, (response) => {
+      chrome.runtime.sendMessage({ action: 'resumeDownloadAll', sessionId: popup.dataset.sessionId }, (response) => {
         const runtimeError = chrome.runtime.lastError;
+        if (document.getElementById('cdl-all-popup') !== popup) return;
         if (runtimeError || !response?.ok) {
           const technical = runtimeError || new Error(
             response?.error || 'The extension could not reopen the download checkpoint.'
@@ -3720,6 +3779,7 @@ function _dlAllSetFooterResume(popup, interrupted) {
           });
           return;
         }
+        if (['done', 'cancelled', 'error', 'interrupted', 'awaiting_save'].includes(popup.dataset.sessionStatus)) return;
         _dlAllSetFooterCancel(popup);
         updateDownloadAllPopup({
           phase: 'resuming',
@@ -3879,6 +3939,7 @@ function updateDownloadAllPopupDone(zipName, warning = '') {
   stopDownloadAllSessionSync();
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
+  popup.dataset.sessionStatus = 'done';
   _dlAllSetStage(popup, 'save', 'done');
   _dlAllHideArchiveProgress();
   const bar = document.getElementById('cdl-ap-bar');
@@ -3899,6 +3960,7 @@ function updateDownloadAllPopupCancelled(details = {}) {
   stopDownloadAllSessionSync();
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
+  popup.dataset.sessionStatus = 'cancelled';
   _dlAllSetStage(popup, popup.dataset.stage || 'download', 'cancelled');
   _dlAllHideArchiveProgress();
   const s = document.getElementById('cdl-ap-chapter-status');
@@ -3923,6 +3985,7 @@ function updateDownloadAllPopupSaveCancelled(filename, zipPart = 1, finalPart = 
   stopDownloadAllSessionSync();
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
+  popup.dataset.sessionStatus = 'awaiting_save';
   popup.dataset.awaitingSave = 'true';
   _dlAllSetStage(popup, 'save', 'paused');
   const directCbz = /\.cbz$/i.test(filename || '');
@@ -3951,6 +4014,7 @@ function updateDownloadAllPopupInterrupted(message = {}) {
   stopDownloadAllSessionSync();
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
+  popup.dataset.sessionStatus = 'interrupted';
   delete popup.dataset.awaitingSave;
   _dlAllSetStage(popup, 'download', 'paused');
   _dlAllHideArchiveProgress();
@@ -4252,6 +4316,7 @@ function updateDownloadAllPopupError(errMsg, options = {}) {
   stopDownloadAllSessionSync();
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
+  popup.dataset.sessionStatus = 'error';
   clearTimeout(popup._cdlRetryTimer);
   _dlAllSetStage(popup, popup.dataset.stage || 'download', 'error');
   _dlAllHideArchiveProgress();
@@ -4307,25 +4372,61 @@ function restoreDownloadAllLogItems(items) {
   log.scrollTop = log.scrollHeight;
 }
 
+function acceptDownloadAllUpdate(message) {
+  const popup = document.getElementById('cdl-all-popup');
+  if (!popup || popup.dataset.view === 'chapter-list' || !isTitleOverviewPage()) return false;
+  const slug = String(message.seriesSlug || popup.dataset.seriesSlug || '').toLowerCase();
+  if (slug !== _cdlSlug().toLowerCase()) return false;
+  if (message.sessionId && popup.dataset.sessionId && message.sessionId !== popup.dataset.sessionId) return false;
+  const revision = Number(message.revision) || 0;
+  if (revision && revision <= (Number(popup.dataset.sessionRevision) || 0)) return false;
+  const terminal = ['done', 'cancelled', 'error', 'interrupted'].includes(popup.dataset.sessionStatus);
+  if (terminal && (message.action === 'downloadAllProgress' || message.active)) return false;
+  if (revision) popup.dataset.sessionRevision = String(revision);
+  const statuses = {
+    downloadAllDone: 'done', downloadAllCancelled: 'cancelled', downloadAllError: 'error',
+    downloadAllSaveCancelled: 'awaiting_save', downloadAllInterrupted: 'interrupted',
+  };
+  const status = message.status || statuses[message.action];
+  if (status) popup.dataset.sessionStatus = status;
+  popup.dataset.startPending = 'false';
+  popup.dataset.sessionAccepted = 'true';
+  return true;
+}
+
+function resetDownloadAllView() {
+  _dlAllViewGeneration++;
+  stopDownloadAllSessionSync();
+  clearTimeout(_dlAllSessionRestoreTimer);
+  _dlAllSessionRestoreTimer = null;
+  _dlAllSessionRestoreInFlight = false;
+  const popup = document.getElementById('cdl-all-popup');
+  clearTimeout(popup?._cdlAutoHideTimer);
+  clearTimeout(popup?._cdlRetryTimer);
+}
+
 function restoreDownloadAllPopupFromSession(session) {
   if (!session) return false;
+  if (!isTitleOverviewPage()) return false;
   if (session.seriesSlug && session.seriesSlug.toLowerCase() !== _cdlSlug().toLowerCase()) return false;
 
   let popup = document.getElementById('cdl-all-popup');
   if (!popup) {
+    if (['done', 'cancelled'].includes(session.status)) return false;
     showDownloadAllPopup(
       session.mangaName || getMangaName(),
       session.totalChapters || 0,
-      { allowFullRetry: false, sessionRestore: true }
+      { allowFullRetry: false, sessionRestore: true, sessionId: session.sessionId }
     );
     popup = document.getElementById('cdl-all-popup');
   }
   if (!popup) return false;
+  if (!acceptDownloadAllUpdate(session)) return false;
 
   const revision = Math.max(0, Number(session.updatedAt) || 0);
   const floor = Math.max(0, Number(popup.dataset.sessionFloor) || 0);
   const applied = Math.max(0, Number(popup.dataset.sessionUpdatedAt) || 0);
-  if (revision && ((floor && revision < floor) || revision <= applied)) return false;
+  if (!session.revision && revision && ((floor && revision < floor) || revision <= applied)) return false;
   if (revision) popup.dataset.sessionUpdatedAt = String(revision);
   popup.dataset.sessionStatus = String(session.status || '');
   restoreDownloadAllLogItems(session.logItems);
@@ -4403,6 +4504,12 @@ function syncDownloadAllSessionNow() {
 
     const session = !failed && res?.session ? res.session : null;
     if (session) restoreDownloadAllPopupFromSession(session);
+    const popup = document.getElementById('cdl-all-popup');
+    if (!failed && res?.ok && !session && popup && popup.dataset.startPending !== 'true') {
+      resetDownloadAllView();
+      popup.remove();
+      return;
+    }
     if (!_dlAllSessionSyncEnabled || !document.getElementById('cdl-all-popup')) return;
 
     const active = !session || session.active || session.status === 'running' || session.status === 'cancelling';
@@ -4432,8 +4539,10 @@ function restoreDownloadAllPopupFromBackground(attempt = 0) {
   if (!chrome?.runtime?.id || document.getElementById('cdl-all-popup')) return;
   if (_dlAllSessionRestoreInFlight) return;
   _dlAllSessionRestoreInFlight = true;
+  const generation = _dlAllViewGeneration;
 
   const retry = () => {
+    if (generation !== _dlAllViewGeneration) return;
     _dlAllSessionRestoreInFlight = false;
     if (attempt >= 4 || document.getElementById('cdl-all-popup') || !isTitleOverviewPage()) return;
     clearTimeout(_dlAllSessionRestoreTimer);
@@ -4446,11 +4555,13 @@ function restoreDownloadAllPopupFromBackground(attempt = 0) {
 
   try {
     chrome.runtime.sendMessage({ action: 'getDownloadAllSession' }, (res) => {
-      if (chrome.runtime.lastError || !res?.session) { retry(); return; }
+      const error = chrome.runtime.lastError;
+      if (generation !== _dlAllViewGeneration || !isTitleOverviewPage()) return;
+      if (error || !res?.ok) { retry(); return; }
       _dlAllSessionRestoreInFlight = false;
       clearTimeout(_dlAllSessionRestoreTimer);
       _dlAllSessionRestoreTimer = null;
-      restoreDownloadAllPopupFromSession(res.session);
+      if (res.session) restoreDownloadAllPopupFromSession(res.session);
     });
   } catch (_) { retry(); }
 }
@@ -4610,7 +4721,15 @@ function isTitleOverviewPage() {
 // Inject (or tear down) the title-page UI for the current route. Idempotent:
 // the inject* helpers no-op when their target already exists, and observeDOM()
 // keeps a single observer, so this is safe to call repeatedly.
+let _cdlDownloadRoute = location.pathname;
 function cdlSyncRoute() {
+  if (_cdlDownloadRoute !== location.pathname) {
+    _cdlDownloadRoute = location.pathname;
+    resetDownloadAllView();
+    disconnectDOM();
+    document.getElementById('cdl-all-popup')?.remove();
+    _lastDlAllParams = null;
+  }
   if (isTitleOverviewPage()) {
     injectStyles();
     applyDynamicStyles();

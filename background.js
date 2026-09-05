@@ -403,6 +403,39 @@ if (typeof CDLSettings !== 'undefined') {
 }
 
 let downloadAllSession = null;
+let _downloadAllRun = null;
+let _downloadAllSessionLock = Promise.resolve();
+
+function withDownloadAllSessionLock(task) {
+  const result = _downloadAllSessionLock.then(task);
+  _downloadAllSessionLock = result.catch(() => {});
+  return result;
+}
+
+function downloadAllSessionOwnedBy(session, tabId, tabUrl = '', sessionId = '') {
+  return !!session && (session.originTabId == null || session.originTabId === tabId) &&
+    (!sessionId || session.sessionId === sessionId) &&
+    (!downloadAllSessionSlug(session) || downloadAllSessionMatchesUrl(session, tabUrl));
+}
+
+function runDownloadAllRequest(...args) {
+  if (_downloadAllRun) throw new Error('Another Download All operation is still stopping.');
+  const run = {};
+  _downloadAllRun = run;
+  _resetDownloadAllAbort();
+  // Reserve the runner and create its session before yielding to another command.
+  return handleDownloadAllRequest(...args).catch((error) => {
+    _signalDownloadAllAbort();
+    if (downloadAllSession && downloadAllSession.active) {
+      notifyDownloadAllError(downloadAllSession.originTabId, error, {
+        errorTitle: 'Download stopped unexpectedly.', errorKind: 'pipeline', cause: error,
+      });
+    }
+    throw error;
+  }).finally(() => {
+    if (_downloadAllRun === run) _downloadAllRun = null;
+  });
+}
 
 // ── One-time "what's new" notices ─────────────────────────────────────────────
 // On install/update we flag headline additions and badge the toolbar icon so
@@ -668,7 +701,7 @@ function restoreIdleBadge() {
 
 function downloadActivitySnapshot() {
   return {
-    downloadAllActive: !!(downloadAllSession && downloadAllSession.active),
+    downloadAllActive: !!(_downloadAllRun || (downloadAllSession && downloadAllSession.active)),
     activeChapterDownloads,
     queuedChapterDownloads: downloadQueue.length,
     pendingExtractionTabs: pendingDownloads.size,
@@ -805,10 +838,13 @@ function recordSuccessfulDownloadForReview() {
 function startDownloadAllSession({
   originTabId, mangaName, zipName, totalChapters,
   completed = 0, resumeData = null, logItems = [], startedAt = null,
+  sessionId = crypto.randomUUID(), revision = 0,
 }) {
   const now = Date.now();
   const initialPhase = completed > 0 ? 'resuming' : 'preparing';
   downloadAllSession = {
+    sessionId,
+    revision,
     active: true,
     status: 'running',
     originTabId,
@@ -906,7 +942,7 @@ function updateDownloadAllSessionLog(progress) {
 }
 
 function recordDownloadAllProgress(progress) {
-  if (!downloadAllSession) return;
+  if (!downloadAllSession || !downloadAllSession.active) return false;
   const normalized = { action: 'downloadAllProgress', ...progress };
   Object.assign(downloadAllSession, {
     active: true,
@@ -925,13 +961,15 @@ function recordDownloadAllProgress(progress) {
   });
   updateDownloadAllSessionLog(progress);
   persistDownloadAllSession();
+  return true;
 }
 
 function recordDownloadAllCancelling() {
-  if (!downloadAllSession) return;
+  if (!downloadAllSession || !downloadAllSession.active || downloadAllSession.status === 'cancelling') return;
   const progress = {
     action: 'downloadAllProgress',
     phase: 'cancelling',
+    cancelRequested: true,
     chapterIndex: downloadAllSession.chapterIndex || 0,
     totalChapters: downloadAllSession.totalChapters || 0,
     chapterLabel: '',
@@ -941,6 +979,7 @@ function recordDownloadAllCancelling() {
   Object.assign(downloadAllSession, {
     active: true,
     status: 'cancelling',
+    cancelRequested: true,
     phase: 'cancelling',
     lastProgress: progress,
     updatedAt: Date.now(),
@@ -964,7 +1003,12 @@ function recordDownloadAllTerminal(status, patch = {}) {
   Object.assign(downloadAllSession, {
     active: false,
     status,
+    canRetryZip: false,
+    canRetrySave: false,
+    canResumeDownload: false,
+    lastProgress: null,
     ...patch,
+    originTabId: downloadAllSession.originTabId ?? patch.originTabId ?? null,
     updatedAt: Date.now(),
   });
   persistDownloadAllSession(true);
@@ -980,6 +1024,12 @@ const DL_SESSION_PREFIX = 'cdlDownloadAllSession:';
 const DL_RESUME_PREFIX = 'cdlDownloadAllResume:';
 const DOWNLOAD_ALL_RESUME_VERSION = 1;
 let _dlPersistTimer = null;
+let _dlStorageQueue = Promise.resolve();
+
+function queueDownloadAllStorage(task) {
+  _dlStorageQueue = _dlStorageQueue.then(task).catch(() => {});
+  return _dlStorageQueue;
+}
 
 function cloneDownloadAllOptions(options) {
   try {
@@ -1116,7 +1166,7 @@ function _serializeSession(s) {
   if (!s) return null;
   const keys = ['active', 'status', 'originTabId', 'mangaName', 'zipName', 'totalChapters',
     'chapterIndex', 'completed', 'concurrency', 'imagesDone', 'imagesTotal', 'phase', 'zipPart',
-    'seriesSlug',
+    'seriesSlug', 'sessionId', 'revision', 'cancelRequested',
     'startedAt', 'updatedAt', 'lastProgress', 'lastError', 'lastDone', 'lastCancelled',
     'lastSaveCancelled', 'saveFilename', 'saveZipPart', 'saveFinalPart', 'doneZipName',
     'lastInterrupted', 'resumeFromChapter', 'resumeChapterLabel', 'warning', 'error',
@@ -1129,15 +1179,19 @@ function _serializeSession(s) {
   return out;
 }
 function persistDownloadAllSession(force = false, includeResumeData = false) {
+  const session = downloadAllSession;
+  if (!session) return;
+  session.revision = (Number(session.revision) || 0) + 1;
   const write = () => {
     _dlPersistTimer = null;
     try {
-      const keys = downloadAllStorageKeys(downloadAllSession);
-      const values = { [keys.session]: _serializeSession(downloadAllSession) };
-      if (includeResumeData && downloadAllSession && downloadAllSession.resumeData) {
-        values[keys.resume] = downloadAllSession.resumeData;
+      const keys = downloadAllStorageKeys(session);
+      const values = { [keys.session]: _serializeSession(session) };
+      if (includeResumeData || !session.resumeData) {
+        values[keys.resume] = session.resumeData || null;
       }
-      chrome.storage.local.set(values);
+      const snapshot = JSON.parse(JSON.stringify(values));
+      queueDownloadAllStorage(() => chrome.storage.local.set(snapshot));
     } catch (_) {}
   };
   if (force) { if (_dlPersistTimer) { clearTimeout(_dlPersistTimer); _dlPersistTimer = null; } write(); return; }
@@ -1147,18 +1201,19 @@ function persistDownloadAllSession(force = false, includeResumeData = false) {
 function clearPersistedSession(session = downloadAllSession) {
   if (_dlPersistTimer) { clearTimeout(_dlPersistTimer); _dlPersistTimer = null; }
   const keys = downloadAllStorageKeys(session);
-  try { chrome.storage.local.remove([keys.session, keys.resume]); } catch (_) {}
+  return queueDownloadAllStorage(() => chrome.storage.local.remove([keys.session, keys.resume]));
 }
 function clearPersistedDownloadAllResume(session = downloadAllSession) {
   const keys = downloadAllStorageKeys(session);
   if (session) session.resumeData = null;
-  try { chrome.storage.local.remove(keys.resume); } catch (_) {}
+  return queueDownloadAllStorage(() => chrome.storage.local.remove(keys.resume));
 }
 function clearLegacyPersistedDownloadAllSession() {
-  try { chrome.storage.local.remove([DL_SESSION_KEY, DL_RESUME_KEY]); } catch (_) {}
+  return queueDownloadAllStorage(() => chrome.storage.local.remove([DL_SESSION_KEY, DL_RESUME_KEY]));
 }
 async function loadPersistedSession(tabUrl = '') {
   try {
+    await _dlStorageQueue;
     const requestedSlug = downloadAllTabSlug(tabUrl);
     const keys = downloadAllStorageKeys(requestedSlug);
     const names = [...new Set([keys.session, keys.resume, DL_SESSION_KEY, DL_RESUME_KEY])];
@@ -1177,7 +1232,7 @@ async function loadPersistedSession(tabUrl = '') {
     }
     return session;
   } catch (_) {
-    return null;
+    throw new Error('The saved download checkpoint could not be read. Please try again.');
   }
 }
 
@@ -1189,6 +1244,14 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
   const resumeData = stored && stored.resumeData;
   const previousStatus = stored && stored.status;
   const previousPhase = stored && stored.phase;
+  if (stored && (stored.cancelRequested || previousStatus === 'cancelling' || previousStatus === 'cancelled')) {
+    Object.assign(stored, {
+      active: false, status: 'cancelled', phase: 'cancelled', resumeData: null,
+      canRetryZip: false, canRetrySave: false, canResumeDownload: false,
+      lastProgress: null, updatedAt: Date.now(),
+    });
+    return stored;
+  }
   if (isCompletedDownloadAllResumeData(resumeData)) {
     const doneZipName = resumeData.savedZipNames.length === 1
       ? resumeData.savedZipNames[0]
@@ -1311,6 +1374,10 @@ function prepareInterruptedDownloadAllSession(stored, tabId) {
 }
 
 async function getDownloadAllSessionForTabAsync(tabId, tabUrl = '') {
+  return withDownloadAllSessionLock(() => loadDownloadAllSessionForTab(tabId, tabUrl));
+}
+
+async function loadDownloadAllSessionForTab(tabId, tabUrl = '') {
   const requestedSlug = downloadAllTabSlug(tabUrl);
   const currentSlug = downloadAllSessionSlug(downloadAllSession);
   const currentMatchesTitle = !downloadAllSession || !requestedSlug || !currentSlug ||
@@ -1320,7 +1387,7 @@ async function getDownloadAllSessionForTabAsync(tabId, tabUrl = '') {
   // page. Swap to this title's persisted slot while leaving the other checkpoint
   // available under its own slug. A genuinely active run stays in memory because
   // the downloader currently supports one active Download All operation at a time.
-  if (!downloadAllSession || (!downloadAllSession.active && !currentMatchesTitle)) {
+  if (!_downloadAllRun && (!downloadAllSession || (!downloadAllSession.active && !currentMatchesTitle))) {
     const stored = await loadPersistedSession(tabUrl);
     if (stored) {
       const expectedSlug = downloadAllSessionSlug(stored);
@@ -1331,11 +1398,12 @@ async function getDownloadAllSessionForTabAsync(tabId, tabUrl = '') {
         ['running', 'resuming', 'cancelling', 'awaiting_save'].includes(stored.status) ||
         (stored.status === 'error' && stored.canRetryZip);
       if (lostRuntimeState) {
-        prepareInterruptedDownloadAllSession(stored, sameTitle ? tabId : stored.originTabId);
+        prepareInterruptedDownloadAllSession(stored, stored.originTabId ?? (sameTitle ? tabId : null));
       }
       const migratedFromLegacy = !!stored._loadedFromLegacyStorage;
       delete stored._loadedFromLegacyStorage;
       downloadAllSession = stored;
+      if (!stored.sessionId) stored.sessionId = crypto.randomUUID();
       persistDownloadAllSession(true, migratedFromLegacy);
       if (migratedFromLegacy) clearLegacyPersistedDownloadAllSession();
       if (stored.status === 'done' && isCompletedDownloadAllResumeData(stored.resumeData)) {
@@ -1351,27 +1419,41 @@ async function getDownloadAllSessionForTabAsync(tabId, tabUrl = '') {
     return null;
   }
 
+  // Finished runs are delivered to the current UI once, not reopened on every visit.
+  if (downloadAllSession && ['done', 'cancelled'].includes(downloadAllSession.status)) {
+    if (!_downloadAllRun) {
+      const finished = downloadAllSession;
+      downloadAllSession = null;
+      await clearPersistedSession(finished);
+    }
+    return null;
+  }
+
+  if (downloadAllSession && !downloadAllSession.active && !downloadAllSession.canResumeDownload &&
+      Date.now() - (downloadAllSession.updatedAt || 0) > DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS) {
+    const expired = downloadAllSession;
+    downloadAllSession = null;
+    await clearPersistedSession(expired);
+    return null;
+  }
+
   if (
     downloadAllSession &&
-    !downloadAllSession.active &&
-    downloadAllSession.originTabId != null &&
     tabId != null &&
     downloadAllSession.originTabId !== tabId &&
     downloadAllSessionMatchesUrl(downloadAllSession, tabUrl)
   ) {
+    if (downloadAllSession.originTabId != null) {
+      try {
+        const owner = await chrome.tabs.get(downloadAllSession.originTabId);
+        if (downloadAllSessionMatchesUrl(downloadAllSession, owner && owner.url)) return null;
+      } catch (_) {}
+    }
     downloadAllSession.originTabId = tabId;
-    downloadAllSession.updatedAt = Date.now();
+    if (_pendingZip) _pendingZip.originTabId = tabId;
     persistDownloadAllSession(true);
   }
-  const session = getDownloadAllSessionForTab(tabId);
-  if (!session && downloadAllSession && !downloadAllSession.active &&
-      !downloadAllSession.canResumeDownload &&
-      Date.now() - (downloadAllSession.updatedAt || 0) > DOWNLOAD_ALL_TERMINAL_SESSION_TTL_MS) {
-    const expired = downloadAllSession;
-    downloadAllSession = null;
-    clearPersistedSession(expired);
-  }
-  return session;
+  return getDownloadAllSessionForTab(tabId);
 }
 
 function getDownloadAllSessionForTab(tabId) {
@@ -1393,8 +1475,9 @@ function getDownloadAllSessionForTab(tabId) {
   return downloadAllSession;
 }
 
-function dismissDownloadAllSessionForTab(tabId, tabUrl = '') {
+function dismissDownloadAllSessionForTab(tabId, tabUrl = '', sessionId = '') {
   if (!downloadAllSession) return;
+  if (sessionId && downloadAllSession.sessionId !== sessionId) return;
   if (downloadAllSessionSlug(downloadAllSession) && downloadAllTabSlug(tabUrl) &&
       !downloadAllSessionMatchesUrl(downloadAllSession, tabUrl)) {
     return;
@@ -1414,16 +1497,25 @@ function dismissDownloadAllSessionForTab(tabId, tabUrl = '') {
 }
 
 function notifyDownloadAllProgress(originTabId, progress) {
-  recordDownloadAllProgress(progress);
+  if (!recordDownloadAllProgress(progress)) return;
   if (typeof progress.completed === 'number' && progress.totalChapters) {
     setProgressBadge(progress.completed, progress.totalChapters);
   }
-  notifyTab(originTabId, { action: 'downloadAllProgress', ...progress });
+  notifyDownloadAllMessage(originTabId, { action: 'downloadAllProgress', ...progress });
+}
+
+function notifyDownloadAllMessage(originTabId, message) {
+  const session = downloadAllSession;
+  notifyTab(session ? session.originTabId : originTabId, {
+    ...message, sessionId: session && session.sessionId,
+    revision: session && session.revision, seriesSlug: downloadAllSessionSlug(session),
+  });
 }
 
 function notifyDownloadAllDone(originTabId, zipName, warning = '') {
   const message = { action: 'downloadAllDone', zipName, warning };
   recordDownloadAllTerminal('done', {
+    resumeData: null,
     originTabId,
     doneZipName: zipName,
     warning,
@@ -1432,7 +1524,7 @@ function notifyDownloadAllDone(originTabId, zipName, warning = '') {
   });
   clearPersistedDownloadAllResume();
   restoreIdleBadge();
-  notifyTab(originTabId, message);
+  notifyDownloadAllMessage(originTabId, message);
 }
 
 function notifyDownloadAllError(originTabId, error, options = false) {
@@ -1494,7 +1586,7 @@ function notifyDownloadAllError(originTabId, error, options = false) {
     lastError: message,
   });
   restoreIdleBadge();
-  notifyTab(originTabId, message);
+  notifyDownloadAllMessage(originTabId, message);
 }
 
 function chapterFailurePresentation(error, options = {}) {
@@ -1562,7 +1654,7 @@ function notifyDownloadAllSaveCancelled(originTabId, filename, zipPart = 1, fina
       active: true,
       status: 'awaiting_save',
       phase: 'saving',
-      originTabId,
+      originTabId: downloadAllSession.originTabId ?? originTabId,
       saveFilename: filename,
       saveZipPart: zipPart,
       saveFinalPart: finalPart,
@@ -1572,7 +1664,7 @@ function notifyDownloadAllSaveCancelled(originTabId, filename, zipPart = 1, fina
     });
     persistDownloadAllSession(true);
   }
-  notifyTab(originTabId, message);
+  notifyDownloadAllMessage(originTabId, message);
 }
 
 function notifyDownloadAllCancelled(originTabId, details = {}) {
@@ -1583,6 +1675,7 @@ function notifyDownloadAllCancelled(originTabId, details = {}) {
     warning: String(details.warning || ''),
   };
   recordDownloadAllTerminal('cancelled', {
+    resumeData: null,
     originTabId,
     doneZipName: message.zipName,
     savedChapters: message.savedChapters,
@@ -1592,13 +1685,14 @@ function notifyDownloadAllCancelled(originTabId, details = {}) {
   });
   clearPersistedDownloadAllResume();
   restoreIdleBadge();
-  notifyTab(originTabId, message);
+  notifyDownloadAllMessage(originTabId, message);
 }
 
-async function resumeDownloadAllFromCheckpoint(originTabId, tabUrl = '') {
-  const session = await getDownloadAllSessionForTabAsync(originTabId, tabUrl);
+async function resumeDownloadAllFromCheckpoint(originTabId, tabUrl = '', sessionId = '') {
+  const session = await loadDownloadAllSessionForTab(originTabId, tabUrl);
   if (!session) throw new Error('No interrupted download was found for this title.');
-  if (session.active) throw new Error('The download is already running.');
+  if (!downloadAllSessionOwnedBy(session, originTabId, tabUrl, sessionId)) throw new Error('This download belongs to another tab or session.');
+  if (_downloadAllRun || session.active) throw new Error('The previous download is still stopping. Try again shortly.');
   if (
     !['interrupted', 'error'].includes(session.status) ||
     !session.canResumeDownload ||
@@ -1617,6 +1711,8 @@ async function resumeDownloadAllFromCheckpoint(originTabId, tabUrl = '') {
   );
   const resumeState = {
     ...resumeData,
+    sessionId: session.sessionId,
+    revision: session.revision,
     logItems: (Array.isArray(session.logItems) ? session.logItems : [])
       .filter((item) => item && completedLabels.has(item.id)),
     startedAt: session.startedAt || Date.now(),
@@ -1645,38 +1741,44 @@ async function resumeDownloadAllFromCheckpoint(originTabId, tabUrl = '') {
     updatedAt: Date.now(),
   });
   persistDownloadAllSession(true);
-  _resetDownloadAllAbort();
-
-  Promise.resolve()
-    .then(() => handleDownloadAllRequest(
+  runDownloadAllRequest(
       remainingChapters,
       resumeData.mangaName,
       resumeData.zipName,
       originTabId,
       resumeData.options,
       resumeState
-    ))
+    )
     .catch((error) => {
       try { cdlLog('error', 'Download All resume failed: ' + (error?.message || error)); } catch (_) {}
-      notifyDownloadAllError(
-        originTabId,
-        error?.message || 'The download could not be resumed.',
-        {
-          errorTitle: 'Resume failed.',
-          errorKind: 'resume',
-          failurePhase: 'resuming',
-        }
-      );
     });
 
   return {
     checkpointIndex,
     totalChapters: resumeData.totalChapters,
     resumeChapterLabel: remainingChapters[0].chapterLabel,
+    sessionId: session.sessionId,
   };
 }
 
 // ── Réception des messages depuis content_title.js ───────────────────────────
+
+async function cancelDownloadAllForTab(tabId, tabUrl = '', sessionId = '') {
+  const session = await loadDownloadAllSessionForTab(tabId, tabUrl);
+  if (!session) return { ok: true, session: null };
+  if (!downloadAllSessionOwnedBy(session, tabId, tabUrl, sessionId)) {
+    return { ok: false, error: 'This download belongs to another tab or session.' };
+  }
+  if (!_downloadAllRun || !session.active) {
+    dismissDownloadAllSessionForTab(tabId, tabUrl, sessionId);
+    return { ok: true, session: null };
+  }
+  _signalDownloadAllStop();
+  recordDownloadAllCancelling();
+  resolvePendingArchiveSaveDecision(false);
+  notifyDownloadAllMessage(tabId, session.lastProgress);
+  return { ok: true, session: _serializeSession(session) };
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'getPopupActivity') {
@@ -1760,16 +1862,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === 'downloadAllChapters') {
     const originTabId = sender.tab?.id ?? null;
-    Promise.resolve()
-      .then(async () => {
-        const existing = await getDownloadAllSessionForTabAsync(originTabId, sender.tab?.url || '');
+    withDownloadAllSessionLock(async () => {
+        const existing = await loadDownloadAllSessionForTab(originTabId, sender.tab?.url || '');
         if (existing && (
           existing.active || existing.status === 'awaiting_save' || existing.canResumeDownload
         )) {
           sendResponse({ ok: false, existing: true, session: _serializeSession(existing) });
           return;
         }
-        if (downloadAllSession && downloadAllSession.active) {
+        if (_downloadAllRun || (downloadAllSession && downloadAllSession.active)) {
           sendResponse({
             ok: false,
             error: 'Another Download All operation is already running.',
@@ -1777,31 +1878,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
 
-        sendResponse({ ok: true });
-        _resetDownloadAllAbort();
+        if (!Array.isArray(message.chapters) || !message.chapters.length ||
+            message.chapters.some((chapter) => !chapter || !chapter.chapterUrl || !chapter.chapterLabel)) {
+          throw new Error('The selected chapter list is empty or no longer valid.');
+        }
         // Fire-and-forget, but ALWAYS catch: an unhandled rejection here can take down the MV3
         // service worker (and make the next Retry fail with "connection failed").
-        Promise.resolve()
-          .then(() => handleDownloadAllRequest(
+        runDownloadAllRequest(
             message.chapters,
             message.mangaName,
             message.zipName,
             originTabId,
-            message.options
-          ))
+            message.options,
+            null,
+            message.sessionId
+          )
           .catch((e) => {
             try { cdlLog('error', 'Download All failed: ' + (e?.message || e)); } catch (_) {}
-            notifyDownloadAllError(
-              originTabId,
-              e?.message || 'Unexpected download pipeline error.',
-              {
-                errorTitle: 'Download stopped unexpectedly.',
-                errorKind: 'pipeline',
-                failurePhase: (downloadAllSession && downloadAllSession.phase) || 'unknown',
-                cause: e,
-              }
-            );
           });
+        sendResponse({ ok: true, sessionId: downloadAllSession.sessionId });
       })
       .catch((error) => {
         const publicMessage = error?.message || 'The download could not be started.';
@@ -1819,15 +1914,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'cancelDownloadAll') {
-    _signalDownloadAllStop();
-    recordDownloadAllCancelling();
-    sendResponse({ ok: true });
+    withDownloadAllSessionLock(() => cancelDownloadAllForTab(
+      sender.tab?.id ?? null, sender.tab?.url || '', message.sessionId || ''
+    )).then(sendResponse).catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
   }
 
   if (message.action === 'resumeDownloadAll') {
     const originTabId = sender.tab?.id ?? null;
-    resumeDownloadAllFromCheckpoint(originTabId, sender.tab?.url || '')
+    withDownloadAllSessionLock(() => resumeDownloadAllFromCheckpoint(
+      originTabId, sender.tab?.url || '', message.sessionId || ''
+    ))
       .then((result) => sendResponse({ ok: true, ...result }))
       .catch((error) => {
         const publicMessage = error?.message || 'The download could not be resumed.';
@@ -1848,7 +1945,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const belongsToSender = !!_pendingZip && (
       _pendingZip.originTabId == null || _pendingZip.originTabId === originTabId
     );
-    const resumed = belongsToSender && resolvePendingArchiveSaveDecision(true);
+    const resumed = belongsToSender &&
+      downloadAllSessionOwnedBy(downloadAllSession, originTabId, sender.tab?.url || '', message.sessionId || '') &&
+      resolvePendingArchiveSaveDecision(true);
     const error = resumed ? '' : 'The prepared archive is no longer available. Restart Download All.';
     sendResponse({
       ok: resumed,
@@ -1866,8 +1965,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const belongsToSender = !!_pendingZip && (
       _pendingZip.originTabId == null || _pendingZip.originTabId === originTabId
     );
-    if (belongsToSender) _pendingZip.dismissAfterAbandon = true;
-    const abandoned = belongsToSender && resolvePendingArchiveSaveDecision(false);
+    const ownsSession = belongsToSender &&
+      downloadAllSessionOwnedBy(downloadAllSession, originTabId, sender.tab?.url || '', message.sessionId || '');
+    if (ownsSession) _pendingZip.dismissAfterAbandon = true;
+    const abandoned = ownsSession && resolvePendingArchiveSaveDecision(false);
     sendResponse({ ok: abandoned });
     return true;
   }
@@ -1877,14 +1978,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Async: may need to read the persisted session when the worker was restarted.
     getDownloadAllSessionForTabAsync(originTabId, sender.tab?.url || '')
       .then((session) => sendResponse({ ok: true, session: _serializeSession(session) }))
-      .catch(() => sendResponse({ ok: true, session: null }));
+      .catch(() => sendResponse({ ok: false, session: null }));
     return true;
   }
 
   if (message.action === 'dismissDownloadAllSession') {
     const originTabId = sender.tab?.id ?? null;
-    dismissDownloadAllSessionForTab(originTabId, sender.tab?.url || '');
-    sendResponse({ ok: true });
+    withDownloadAllSessionLock(async () => {
+      await loadDownloadAllSessionForTab(originTabId, sender.tab?.url || '');
+      dismissDownloadAllSessionForTab(originTabId, sender.tab?.url || '', message.sessionId || '');
+      await _dlStorageQueue;
+      return { ok: true };
+    }).then(sendResponse).catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
   }
 
@@ -2749,8 +2854,11 @@ function analyzeImageSequence(images) {
 
 // true = la page existe, false = absente (HTTP non-2xx ou contenu non-image),
 // null = indéterminé (erreur réseau / timeout) → l'appelant doit abandonner.
-async function probeImageUrl(url, sourceUrl) {
+async function probeImageUrl(url, sourceUrl, signal = null) {
+  if (signal && signal.aborted) return null;
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal) signal.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
     const res = await fetch(url, {
@@ -2771,19 +2879,20 @@ async function probeImageUrl(url, sourceUrl) {
     return null;
   } finally {
     clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', abort);
   }
 }
 
 const PROBE_PAGE_CAP = 2000; // garde-fou absolu sur le nombre de pages d'un chapitre
 
-async function verifyEnumeratedImages(images, label, sourceUrl) {
+async function verifyEnumeratedImages(images, label, sourceUrl, signal = null) {
   const seq = analyzeImageSequence(images);
   if (!seq) return images;
   const urlAt = (n) => `${seq.base}${String(n).padStart(seq.digits, '0')}${seq.ext}`;
 
   // Bornes de la dichotomie : lo = dernière page confirmée, hi = première absente.
   let lo, hi;
-  const lastOk = await probeImageUrl(urlAt(seq.count), sourceUrl);
+  const lastOk = await probeImageUrl(urlAt(seq.count), sourceUrl, signal);
   if (lastOk === null) return images;
   if (lastOk) {
     // La dernière page énumérée existe — vérifier s'il y en a d'autres au-delà
@@ -2792,20 +2901,20 @@ async function verifyEnumeratedImages(images, label, sourceUrl) {
     for (let step = 1; !hi; step *= 2) {
       const n = lo + step;
       if (n > PROBE_PAGE_CAP) { hi = PROBE_PAGE_CAP + 1; break; }
-      const ok = await probeImageUrl(urlAt(n), sourceUrl);
+      const ok = await probeImageUrl(urlAt(n), sourceUrl, signal);
       if (ok === null) return images;
       if (ok) lo = n; else hi = n;
     }
   } else {
     // Total surestimé — la page 1 doit exister (le pattern vient d'une vraie image).
-    const firstOk = await probeImageUrl(urlAt(1), sourceUrl);
+    const firstOk = await probeImageUrl(urlAt(1), sourceUrl, signal);
     if (!firstOk) return images; // sonde non fiable sur ce CDN → on n'y touche pas
     lo = 1; hi = seq.count;
   }
 
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
-    const ok = await probeImageUrl(urlAt(mid), sourceUrl);
+    const ok = await probeImageUrl(urlAt(mid), sourceUrl, signal);
     if (ok === null) return images;
     if (ok) lo = mid; else hi = mid;
   }
@@ -4823,7 +4932,7 @@ async function extractFromTab(url, cfg, navigation = {}) {
 // not-yet-packed chapters are held in memory. concurrency === 1 reproduces the
 // original strictly-sequential behavior.
 async function handleDownloadAllRequest(
-  chapters, mangaName, zipName, originTabId, options, resumeState = null
+  chapters, mangaName, zipName, originTabId, options, resumeState = null, sessionId = crypto.randomUUID()
 ) {
   const resumeData = createDownloadAllResumeData({
     chapters, mangaName, zipName, options, resumeState,
@@ -4835,6 +4944,8 @@ async function handleDownloadAllRequest(
   }
 
   startDownloadAllSession({
+    sessionId: resumeState && resumeState.sessionId || sessionId,
+    revision: resumeState && resumeState.revision || 0,
     originTabId,
     mangaName: resumeData.mangaName,
     zipName: resumeData.zipName,
@@ -4846,6 +4957,7 @@ async function handleDownloadAllRequest(
   });
   persistDownloadAllSession(true, true);
 
+  const session = downloadAllSession;
   const cfg = await loadCfg();
   const opts = resolveOutputOptions(cfg, options);
   const directCbz = opts.format === 'cbz' && opts.directCbz === true;
@@ -4906,6 +5018,7 @@ async function handleDownloadAllRequest(
   };
 
   const notify = (extra) => {
+    if (downloadAllSession !== session || !session.active) return;
     const phase = extra && extra.phase;
     if (downloadAllStopFlag && chapterProgressPhases.has(phase)) return;
     const completed = archivePresentationActive && archiveProgressPhases.has(phase)
@@ -4930,7 +5043,7 @@ async function handleDownloadAllRequest(
   };
 
   const flushDeferredChapterProgress = () => {
-    if (archivePresentationActive || pdfPresentationActive) return 0;
+    if (archivePresentationActive || pdfPresentationActive || downloadAllShouldStop() || !session.active) return 0;
     const buffered = [...deferredChapterProgress.values()]
       .sort((a, b) => a.sequence - b.sequence);
     deferredChapterProgress.clear();
@@ -5421,7 +5534,7 @@ async function handleDownloadAllRequest(
         }),
       };
     }
-    images = await verifyEnumeratedImages(images, chapterLabel, chapterUrl);
+    images = await verifyEnumeratedImages(images, chapterLabel, chapterUrl, networkSignal);
     cdlLog('info', `${chapterLabel}: extracted ${images.length} images`);
 
     // Re-sequence to clean 1..N page numbers (sorted by the extractor's index) so
@@ -5759,7 +5872,15 @@ async function handleDownloadAllRequest(
 
   const workers = [];
   for (let w = 0; w < concurrency; w++) workers.push(worker());
-  await Promise.all([packer(), ...workers]);
+  const settle = (task) => task.catch((error) => {
+    _signalDownloadAllAbort();
+    wakeWindow();
+    resumeArchiveAdmission();
+    throw error;
+  });
+  const settled = await Promise.allSettled([packer(), ...workers].map(settle));
+  const rejected = settled.find((result) => result.status === 'rejected');
+  if (rejected) throw rejected.reason;
 
   if (packFailed) return;   // the ZIP error was already reported by _doZipAndSave
   if (downloadAllAbortFlag) return;
@@ -5863,6 +5984,10 @@ async function handleDownloadAllRequest(
   // Let queued library pushes drain before reporting done (also keeps the MV3
   // service worker alive until the last upload finishes).
   if (opts.pushLib) { try { await _libPushChain; } catch (_) {} }
+  if (downloadAllStopFlag) {
+    finishGracefulCancellation();
+    return;
+  }
 
   const doneName = directCbz
     ? `${savedZipNames.length} CBZ file${savedZipNames.length === 1 ? '' : 's'}`
@@ -5885,6 +6010,10 @@ async function handleDownloadAllRequest(
   if (confirmedZipParts > 0 && confirmedZipParts === savedZipNames.length &&
       unconfirmedZipParts === 0 && incompleteCount === 0) {
     await recordSuccessfulDownloadForReview();
+  }
+  if (downloadAllStopFlag) {
+    finishGracefulCancellation();
+    return;
   }
   notifyDownloadAllDone(originTabId, doneName, warning);
 }
@@ -5939,7 +6068,7 @@ async function _doZipAndSave(pending) {
           base64: generated.base64,
           zip: null,
           filename,
-          originTabId,
+          originTabId: pending.originTabId,
           onSaveProgress,
           cancelRetryCount: manualSaveAttempt ? 0 : 1,
           preserveOnCancel: true,
@@ -5958,7 +6087,7 @@ async function _doZipAndSave(pending) {
           releasePendingGeneratedArchive(pending);
           if (_pendingZip === pending) _pendingZip = null;
           notifyDownloadAllCancelled(originTabId, pending.cancelDetails);
-          if (dismissAfterAbandon) dismissDownloadAllSessionForTab(originTabId);
+          if (dismissAfterAbandon) dismissDownloadAllSessionForTab(pending.originTabId);
           return null;
         }
         manualSaveAttempt = true;
@@ -6337,23 +6466,25 @@ function queueAutoDownload(slug, mangaName, newOnes, cfg, seriesTotal) {
   return _autoDlChain;
 }
 
+async function postponeAutoDownload(slug, mangaName, newOnes) {
+  // Drop these keys from the baseline so the next subscription check retries.
+  cdlLog('warn', `Auto-download postponed (another download is running): ${mangaName}`);
+  try {
+    const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
+    const entry = cdlSubscriptions[slug];
+    if (entry && Array.isArray(entry.lastSeen)) {
+      const drop = new Set(newOnes.map((c) => c.key));
+      entry.lastSeen = entry.lastSeen.filter((k) => !drop.has(k));
+      await chrome.storage.local.set({ cdlSubscriptions });
+    }
+  } catch (_) {}
+}
+
 async function autoDownloadNew(slug, mangaName, newOnes, cfg, seriesTotal) {
-  if (downloadAllSession && downloadAllSession.active) {
-    // A user-initiated run is in progress — postpone. Drop these keys from the
-    // baseline so the next periodic check re-detects them and retries.
-    cdlLog('warn', `Auto-download postponed (another download is running): ${mangaName}`);
-    try {
-      const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
-      const entry = cdlSubscriptions[slug];
-      if (entry && Array.isArray(entry.lastSeen)) {
-        const drop = new Set(newOnes.map((c) => c.key));
-        entry.lastSeen = entry.lastSeen.filter((k) => !drop.has(k));
-        await chrome.storage.local.set({ cdlSubscriptions });
-      }
-    } catch (_) {}
+  if (_downloadAllRun || (downloadAllSession && downloadAllSession.active)) {
+    await postponeAutoDownload(slug, mangaName, newOnes);
     return;
   }
-  _resetDownloadAllAbort();
   const prefs = await getSeriesPrefsBg(slug);
   const options = {
     format: prefs.format || cfg['output.format'] || 'zip',
@@ -6370,15 +6501,26 @@ async function autoDownloadNew(slug, mangaName, newOnes, cfg, seriesTotal) {
   try { if (typeof CDLSettings !== 'undefined') zipName = `${CDLSettings.renderName(cfg['naming.allZipTpl'] || '{manga}', { manga: mangaName }, 180)}-new`; } catch (_) {}
   const chapters = newOnes.map((c) => ({ chapterUrl: c.chapterUrl, chapterLabel: c.chapterLabel }));
   cdlLog('info', `Auto-downloading ${chapters.length} new chapter(s) of "${mangaName}"`);
-  await handleDownloadAllRequest(chapters, mangaName, zipName, null, options);
+  const task = await withDownloadAllSessionLock(() => {
+    if (_downloadAllRun || (downloadAllSession && downloadAllSession.active)) return null;
+    const running = runDownloadAllRequest(chapters, mangaName, zipName, null, options);
+    return { running, session: downloadAllSession };
+  });
+  if (!task) {
+    await postponeAutoDownload(slug, mangaName, newOnes);
+    return;
+  }
+  await task.running;
   // Replaces the "new chapters" notification for this series with the outcome.
   if (cfg['subscribe.notify'] && chrome.notifications) {
     try {
       chrome.notifications.create(`cdlsub:${slug}`, {
         type: 'basic',
         iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-        title: `Auto-download finished — ${mangaName}`,
-        message: `${chapters.length} new chapter(s) saved to your downloads folder.`,
+        title: `Auto-download ${task.session.status === 'done' ? 'finished' : 'stopped'} — ${mangaName}`,
+        message: task.session.status === 'done'
+          ? task.session.warning || `${chapters.length} new chapter(s) saved to your downloads folder.`
+          : task.session.error || 'The download was cancelled. Previously saved chapters are kept.',
         priority: 0,
       });
     } catch (_) {}
