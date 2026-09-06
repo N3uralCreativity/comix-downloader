@@ -1608,7 +1608,9 @@ function chapterFailurePresentation(error, options = {}) {
     } else if (diagnostic.kind === 'image_download') {
       message = 'Some chapter images could not be downloaded. Reload the Comix page and try again.';
     } else if (diagnostic.kind === 'chapter_extraction') {
-      message = 'The extension could not read this chapter. Reload the Comix page, complete any verification, and try again.';
+      message = diagnostic.code === 'CDL-EXTRACT-003'
+        ? 'The browser has not given the extension access to this site. Allow Comix Downloader to access it in the browser add-on permissions, then start the download again.'
+        : 'The extension could not read this chapter. Reload the Comix page, complete any verification, and try again.';
     } else if (diagnostic.kind === 'tab_open') {
       message = 'The background chapter page could not be opened.';
     } else if (diagnostic.kind === 'archive_build' || diagnostic.kind === 'chapter_packaging') {
@@ -2297,6 +2299,15 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
   const { chapterUrl, zipName, originTabId, cfg, options } = pending;
 
   try {
+    // Same Firefox guard as Download All: the tab can report the chapter URL
+    // while still holding its initial about:blank document.
+    await waitForInjectableTab(tabId, {
+      timeoutMs: Math.min(
+        Math.max((cfg && cfg['perf.tabLoadTimeoutMs']) || 120000, 15000),
+        INJECTION_READY_TIMEOUT_MS
+      ),
+      nudge: () => chrome.tabs.update(tabId, { url: withExtractMarker(chapterUrl) }),
+    });
     const challenge = await coordinateCloudflareChallenge(tabId, {
       originTabId,
       expectedSeriesSlug: (String(chapterUrl).match(/\/title\/([^/]+)/) || [])[1] || '',
@@ -2319,7 +2330,7 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
     }
 
     // Injecter le script d'extraction dans l'onglet chapitre
-    const results = await chrome.scripting.executeScript({
+    const results = await executeScriptWhenInjectable({
       target: { tabId },
       world: 'MAIN',   // share the page's Resource Timing buffer (canvas-page URLs)
       func: extractChapterImagesFromPage,
@@ -3737,6 +3748,7 @@ function diagnosticDefinition(error, requestedKind, requestedPhase) {
     if (error && error.downloadPhase) kind = 'archive_save';
     else if (/FILE_|NETWORK_|SERVER_|USER_/i.test(raw) && /save|download|interrupt|file/i.test(raw)) kind = 'archive_save';
     else if (/cloudflare|captcha|challenge|verification/i.test(raw)) kind = 'verification';
+    else if (HOST_PERMISSION_ERROR_RE.test(raw)) kind = 'chapter_extraction';
     else if (/no images?|aucune image|extract/i.test(raw)) kind = 'chapter_extraction';
     else if (/only\s+\d+\s+of\s+\d+\s+images?|image request|HTTP\s+\d{3}/i.test(raw)) kind = 'image_download';
     else if (/context invalidated|receiving end does not exist|message port closed/i.test(raw)) kind = 'runtime_connection';
@@ -3752,6 +3764,19 @@ function diagnosticDefinition(error, requestedKind, requestedPhase) {
     if (/FILE_BLOCKED|SECURITY_CHECK/i.test(raw)) return { code: 'CDL-SAVE-006', kind, phase, summary: 'The browser security check blocked the archive.' };
     if (/NETWORK_|SERVER_|timed?\s*out/i.test(raw)) return { code: 'CDL-SAVE-007', kind, phase, summary: 'The browser download manager interrupted the save.' };
     return { code: 'CDL-SAVE-001', kind, phase, summary: 'The browser could not save or confirm the archive.' };
+  }
+
+  if (kind === 'chapter_extraction') {
+    const permissionDenied = Boolean(error && error.code === 'HOST_PERMISSION_MISSING') ||
+      HOST_PERMISSION_ERROR_RE.test(raw);
+    if (permissionDenied) {
+      return {
+        code: 'CDL-EXTRACT-003',
+        kind,
+        phase,
+        summary: 'The browser has not granted the extension access to the chapter page.',
+      };
+    }
   }
 
   const definitions = {
@@ -4494,6 +4519,157 @@ function notifyTab(tabId, message) {
   chrome.tabs.sendMessage(tabId, message).catch(() => {});
 }
 
+// ── Injection readiness (Firefox / Firefox for Android) ───────────────────────
+// Chrome keeps a navigation target in `tabs.Tab.pendingUrl` and leaves `url` on
+// the document that is actually loaded. Firefox has no `pendingUrl`: it
+// publishes the target URL as `url` as soon as the navigation is requested, so
+// a freshly created background tab reports status:"complete" with the chapter
+// URL while it still holds its initial about:blank document. Injecting there
+// throws "Missing host permission for the tab" (about:blank is covered by no
+// host permission), which failed the extraction of every chapter on Firefox for
+// Android — the extraction tab is opened in the background there and pushed
+// back to the background by the mobile tab restore, so its load commits well
+// after the first "complete" event.
+//
+// Injection is therefore retried while the tab sits between documents, and is
+// only reported as a permission problem when the extension genuinely does not
+// hold the host permission for the page it is trying to read.
+const HOST_PERMISSION_ERROR_RE =
+  /missing host permission|cannot access (?:the )?(?:contents of|page)|manifest must request permission|no permission to access/i;
+const INJECTION_RETRY_BASE_MS = 200;
+const INJECTION_RETRY_MAX_MS = 1000;
+const INJECTION_READY_TIMEOUT_MS = 45000;
+// Firefox for Android can also unload a background tab under memory pressure:
+// it keeps reporting status:"complete" and its URL while holding no document at
+// all. Re-issuing the navigation once wakes it instead of waiting out the whole
+// deadline for a load that will never happen on its own.
+const INJECTION_STALLED_NUDGE_MS = 8000;
+
+function isHostPermissionError(error) {
+  return HOST_PERMISSION_ERROR_RE.test(downloadErrorText(error));
+}
+
+function injectionOriginPattern(url) {
+  try {
+    const parsed = new URL(String(url || ''));
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return `${parsed.protocol}//${parsed.hostname}/*`;
+  } catch (_) {
+    return null;
+  }
+}
+
+// null  → not a real page yet (about:blank, empty URL): keep waiting.
+// false → the browser has not granted access to that origin: stop waiting.
+async function hasGrantedHostPermission(url) {
+  const pattern = injectionOriginPattern(url);
+  if (!pattern) return null;
+  try {
+    return await new Promise((resolve) => {
+      chrome.permissions.contains({ origins: [pattern] }, (granted) => {
+        // A pattern the browser refuses to evaluate must not be read as a
+        // denial — only an explicit "no" ends the wait.
+        if (chrome.runtime.lastError) resolve(true);
+        else resolve(!!granted);
+      });
+    });
+  } catch (_) {
+    return true;
+  }
+}
+
+// The tab kept reporting a page the extension may read while never committing a
+// document to read. Say that, rather than repeating the browser's raw
+// "Missing host permission" text, which points at the wrong problem.
+function makeInjectionNotReadyError(url) {
+  let host = '';
+  try { host = new URL(String(url || '')).hostname; } catch (_) {}
+  const error = new Error(
+    `The chapter page never finished loading in the background tab${host ? ` (${host})` : ''}.`
+  );
+  error.name = 'InjectionNotReadyError';
+  error.code = 'INJECTION_NOT_READY';
+  error.cdlKind = 'chapter_extraction';
+  return error;
+}
+
+function makeMissingHostPermissionError(url) {
+  let host = '';
+  try { host = new URL(String(url || '')).hostname; } catch (_) {}
+  const target = host || 'this site';
+  const error = new Error(
+    `The browser has not allowed the extension to read ${target}. Grant Comix Downloader ` +
+    `access to ${target} in the browser add-on permissions (Firefox: Menu → Add-ons → ` +
+    `Comix Downloader → Permissions), then start the download again.`
+  );
+  error.name = 'HostPermissionError';
+  error.code = 'HOST_PERMISSION_MISSING';
+  error.cdlKind = 'chapter_extraction';
+  return error;
+}
+
+// Returns the tab's target URL, or null when the tab itself is gone.
+async function injectionTargetUrl(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return String(tab && (tab.url || tab.pendingUrl) || '');
+  } catch (_) {
+    return null;
+  }
+}
+
+async function executeScriptWhenInjectable(injection, options = {}) {
+  const tabId = injection && injection.target && injection.target.tabId;
+  const startedAt = Date.now();
+  const deadline = startedAt + (Number(options.timeoutMs) || INJECTION_READY_TIMEOUT_MS);
+  const cancelled = typeof options.cancelled === 'function' ? options.cancelled : null;
+  const nudge = typeof options.nudge === 'function' ? options.nudge : null;
+  const nudgeAfterMs = Number(options.nudgeAfterMs) || INJECTION_STALLED_NUDGE_MS;
+  let nudged = false;
+
+  for (let attempt = 1; ; attempt++) {
+    if (cancelled && cancelled()) throw makeDownloadAllStoppedError();
+    try {
+      return await chrome.scripting.executeScript(injection);
+    } catch (error) {
+      if (!isHostPermissionError(error)) throw error;
+      const url = await injectionTargetUrl(tabId);
+      if (url === null) throw error; // the tab was closed — nothing left to wait for
+      if ((await hasGrantedHostPermission(url)) === false) {
+        throw makeMissingHostPermissionError(url);
+      }
+      const now = Date.now();
+      if (now >= deadline) throw makeInjectionNotReadyError(url);
+      if (nudge && !nudged && now - startedAt >= nudgeAfterMs) {
+        nudged = true;
+        try { await nudge(); } catch (_) {}
+      }
+      await new Promise((resolve) => setTimeout(
+        resolve,
+        Math.min(INJECTION_RETRY_BASE_MS * attempt, INJECTION_RETRY_MAX_MS)
+      ));
+    }
+  }
+}
+
+// Injected purely to prove the tab holds a document the extension may read.
+function probeInjectableDocument() {
+  return {
+    url: String(typeof location !== 'undefined' ? location.href || '' : ''),
+    readyState: String(document && document.readyState || ''),
+  };
+}
+
+// Resolves once the tab actually holds an injectable document, so the Cloudflare
+// probe and the extraction script never run against an uncommitted about:blank.
+async function waitForInjectableTab(tabId, options = {}) {
+  const results = await executeScriptWhenInjectable({
+    target: { tabId },
+    func: probeInjectableDocument,
+  }, options);
+  return (results && results[0] && results[0].result) || null;
+}
+
 // Cloudflare challenges must be completed by the user in their real browser
 // session. Coordinate all extraction tabs behind one visible challenge so a
 // concurrent Download All cannot open several verification pages at once.
@@ -4865,6 +5041,13 @@ async function extractFromTab(url, cfg, navigation = {}) {
       handling = true;
       try {
         clearTimeout(timer);
+        // Firefox reports the tab as complete on the chapter URL before the
+        // document commits; wait for a document the extension may actually read.
+        await waitForInjectableTab(tabId, {
+          timeoutMs: Math.min(Math.max(tabTimeout, 15000), INJECTION_READY_TIMEOUT_MS),
+          cancelled: opened.navigation.cancelled,
+          nudge: () => chrome.tabs.update(tabId, { url: withExtractMarker(url) }),
+        });
         const challenge = await coordinateCloudflareChallenge(tabId, opened.navigation);
         if (challenge.challenged) opened.navigation.challengeEncountered = true;
         if (challenge.reloaded) {
@@ -4878,7 +5061,7 @@ async function extractFromTab(url, cfg, navigation = {}) {
           return;
         }
         armTimer();
-        const results = await chrome.scripting.executeScript({
+        const results = await executeScriptWhenInjectable({
           target: { tabId },
           world: 'MAIN',   // share the page's Resource Timing buffer (canvas-page URLs)
           func:   extractChapterImagesFromPage,
@@ -4888,7 +5071,7 @@ async function extractFromTab(url, cfg, navigation = {}) {
             settleMs: cfg['perf.pageSettleMs'],
             scrollSettleMs: cfg['perf.scrollSettleMs'],
           }],
-        });
+        }, { cancelled: opened.navigation.cancelled });
         const images = results?.[0]?.result || [];
         if ((!Array.isArray(images) || images.length === 0) &&
             opened.navigation.challengeEncountered) {

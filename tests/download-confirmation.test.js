@@ -39,6 +39,12 @@ function extractFunction(name) {
   throw new Error(`Unterminated function ${name}`);
 }
 
+function extractConst(name) {
+  const marker = source.indexOf(`const ${name} =`);
+  if (marker === -1) throw new Error(`Missing const ${name}`);
+  return source.slice(marker, source.indexOf(';', marker) + 1);
+}
+
 const helperSource = [
   'downloadErrorText',
   'isDownloadCancelledError',
@@ -175,6 +181,7 @@ vm.runInContext(`
   ${extractFunction('sanitizeDiagnosticText')}
   ${extractFunction('sanitizeDiagnosticContext')}
   ${extractFunction('diagnosticHttpStatus')}
+  ${extractConst('HOST_PERMISSION_ERROR_RE')}
   ${extractFunction('diagnosticDefinition')}
   ${extractFunction('createErrorDiagnostic')}
   ${extractFunction('describeArchiveFailure')}
