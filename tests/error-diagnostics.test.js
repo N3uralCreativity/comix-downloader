@@ -43,10 +43,17 @@ function extractFunction(name) {
   throw new Error(`Unterminated function ${name}`);
 }
 
+function extractConst(name) {
+  const marker = source.indexOf(`const ${name} =`);
+  if (marker === -1) throw new Error(`Missing const ${name}`);
+  return source.slice(marker, source.indexOf(';', marker) + 1);
+}
+
 const context = { Date, Error, JSON, Math, Number, Object, Set, String };
 vm.createContext(context);
 vm.runInContext(`
   function extensionVersion() { return '4.2.test'; }
+  ${extractConst('HOST_PERMISSION_ERROR_RE')}
   ${extractFunction('downloadErrorText')}
   ${extractFunction('sanitizeDiagnosticText')}
   ${extractFunction('sanitizeDiagnosticContext')}
