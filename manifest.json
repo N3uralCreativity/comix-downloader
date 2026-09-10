@@ -8,6 +8,7 @@
   "permissions": [
     "tabs",
     "downloads",
+    "offscreen",
     "scripting",
     "storage",
     "contextMenus",

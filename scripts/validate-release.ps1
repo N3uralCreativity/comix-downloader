@@ -87,6 +87,7 @@ function Assert-ChromiumManifest($Manifest, [string]$Target, [string]$ExpectedVe
   Assert-Release ($Manifest.description -eq '__MSG_extensionDescription__') "$target description must use localized metadata."
   Assert-Release (Has-Property $Manifest.background 'service_worker') "$target must use a background service worker."
   Assert-Release ($Manifest.background.service_worker -eq 'background.js') "$target has the wrong service worker."
+  Assert-Release ($Manifest.permissions -contains 'offscreen') "$target is missing the offscreen download permission."
   Assert-Release (-not (Has-Property $Manifest.background 'scripts')) "$target unexpectedly contains Firefox background scripts."
   Assert-Release (-not (Has-Property $Manifest 'browser_specific_settings')) "$target unexpectedly contains browser-specific Firefox settings."
   $outroResources = @(
@@ -127,6 +128,9 @@ $referenceDir = Join-Path $stagingFull 'chrome'
 Assert-Release (Test-Path -LiteralPath $referenceDir -PathType Container) "Missing Chrome staging directory."
 $referenceMap = Get-DirectoryFileMap $referenceDir
 Assert-Release ($referenceMap.Contains('manifest.json')) "Chrome package is missing manifest.json."
+foreach ($path in @('core/cdl-download-url.js', 'offscreen/downloads.html', 'offscreen/downloads.js')) {
+  Assert-Release ($referenceMap.Contains($path)) "Chrome package is missing archive URL support: $path."
+}
 $expectedLocales = @('en', 'es', 'fr', 'id', 'ja', 'pt_BR', 'th', 'vi')
 foreach ($locale in $expectedLocales) {
   Assert-Release ($referenceMap.Contains("_locales/$locale/messages.json")) "Chrome package is missing locale $locale."
@@ -160,7 +164,8 @@ foreach ($path in $referenceMap.Keys) {
 }
 
 $firefoxManifest = Get-Content -LiteralPath (Join-Path $firefoxDir 'manifest.json') -Raw | ConvertFrom-Json
-$expectedFirefoxScripts = @('lib/jszip.min.js', 'lib/pdf-lib.min.js', 'core/settings.js', 'core/cdl-features-core.js', 'core/cdl-comicinfo.js', 'core/cdl-pdf.js', 'core/review-prompt.js', 'core/update-state.js', 'background.js')
+$expectedFirefoxScripts = @('lib/jszip.min.js', 'lib/pdf-lib.min.js', 'core/settings.js', 'core/cdl-features-core.js', 'core/cdl-comicinfo.js', 'core/cdl-pdf.js', 'core/cdl-download-url.js', 'core/review-prompt.js', 'core/update-state.js', 'background.js')
+Assert-Release ($firefoxManifest.permissions -notcontains 'offscreen') "Firefox must not request Chromium's offscreen permission."
 Assert-Release ($firefoxManifest.manifest_version -eq 3) "Firefox must use Manifest V3."
 Assert-Release ($firefoxManifest.version -eq $Version) "Firefox manifest has the wrong version."
 Assert-Release ($firefoxManifest.default_locale -eq 'en') "Firefox must declare the English fallback locale."

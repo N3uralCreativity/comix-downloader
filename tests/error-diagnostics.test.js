@@ -60,7 +60,8 @@ vm.runInContext(`
   ${extractFunction('diagnosticHttpStatus')}
   ${extractFunction('diagnosticDefinition')}
   ${extractFunction('createErrorDiagnostic')}
-  globalThis.api = { sanitizeDiagnosticText, createErrorDiagnostic };
+  ${extractFunction('describeArchiveFailure')}
+  globalThis.api = { sanitizeDiagnosticText, createErrorDiagnostic, describeArchiveFailure };
 `, context);
 
 const noSpace = context.api.createErrorDiagnostic(
@@ -69,6 +70,22 @@ const noSpace = context.api.createErrorDiagnostic(
 );
 check('a no-space save failure has a stable specific code',
   noSpace.code === 'CDL-SAVE-002' && noSpace.kind === 'archive_save');
+
+const unavailableUrl = context.api.describeArchiveFailure(
+  Object.assign(new Error('The archive download document did not respond.'), {
+    cdlKind: 'archive_url', cdlPhase: 'archive_url',
+  }),
+  'archive_build'
+);
+check('URL preparation failures are not reported as ZIP memory failures',
+  unavailableUrl.diagnostic.code === 'CDL-URL-001' &&
+  unavailableUrl.failurePhase === 'archive_url' &&
+  unavailableUrl.errorTitle === 'Download preparation failed.' &&
+  !unavailableUrl.message.includes('ZIP part size'));
+
+const zipFailure = context.api.describeArchiveFailure(new Error('Allocation failed'), 'archive_build');
+check('real ZIP generation failures keep their original diagnostic',
+  zipFailure.diagnostic.code === 'CDL-ZIP-001' && zipFailure.failurePhase === 'archive_build');
 
 const image = context.api.createErrorDiagnostic(
   Object.assign(new Error('Image request failed: HTTP 520'), { status: 520 }),

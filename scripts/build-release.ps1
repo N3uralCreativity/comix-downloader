@@ -49,6 +49,7 @@ function Copy-ReleaseFiles([string]$Destination) {
     "core/cdl-badge-core.js",
     "core/cdl-comicinfo.js",
     "core/cdl-pdf.js",
+    "core/cdl-download-url.js",
     "core/review-prompt.js",
     "core/update-state.js",
     "_locales",
@@ -61,6 +62,7 @@ function Copy-ReleaseFiles([string]$Destination) {
     "assets/settings-outro",
     "icons",
     "lib",
+    "offscreen",
     "rules"
   )
 
@@ -134,6 +136,7 @@ foreach ($target in $chromiumTargets) {
 }
 
 $firefoxManifest = $manifest | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+$firefoxManifest.permissions = @($firefoxManifest.permissions | Where-Object { $_ -ne 'offscreen' })
 $firefoxManifest.background = [ordered]@{
   scripts = @(
     "lib/jszip.min.js",
@@ -142,6 +145,7 @@ $firefoxManifest.background = [ordered]@{
     "core/cdl-features-core.js",
     "core/cdl-comicinfo.js",
     "core/cdl-pdf.js",
+    "core/cdl-download-url.js",
     "core/review-prompt.js",
     "core/update-state.js",
     "background.js"

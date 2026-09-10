@@ -40,6 +40,9 @@ if (typeof importScripts === 'function' && typeof CDLReviewPrompt === 'undefined
 if (typeof importScripts === 'function' && typeof CDLUpdateState === 'undefined') {
   importScripts('core/update-state.js');
 }
+if (typeof importScripts === 'function' && typeof CDLDownloadUrl === 'undefined') {
+  importScripts('core/cdl-download-url.js');
+}
 
 'use strict';
 
@@ -280,10 +283,9 @@ async function flagLookup(chapterIds) {
   return { ok: true, counts: out };
 }
 
-// Firefox exposes `browser` in addition to `chrome`; Chrome does not.
-// In Firefox Android, blob: URLs created in a service worker cannot be resolved
-// by the downloads API, so we use base64 data: URLs there instead.
-const _IS_FIREFOX = typeof browser !== 'undefined';
+// Chrome also exposes `browser` in newer versions. Use the extension's own
+// origin to preserve the Firefox/Android data-URL download path.
+const _IS_FIREFOX = chrome.runtime.getURL('').startsWith('moz-extension://');
 
 // ── État global ───────────────────────────────────────────────────────────────
 
@@ -3643,19 +3645,17 @@ function makeScramblePermutation(seed, count, initConst = 0xe42f) {
 
 /**
  * Génère le ZIP et retourne une URL téléchargeable.
- * Chrome : blob: URL (sans limite de taille).
- * Firefox : data: base64 — blob URLs created in a service worker cannot be
- *   resolved by the Firefox downloads API (they are scoped to the SW context).
+ * Chromium: blob URL owned by an offscreen document, not the service worker.
+ * Firefox (and browsers without offscreen support): base64 data URL.
  * Retourne { url, revoke, base64? } — appeler revoke() après téléchargement.
  */
 async function _zipToDownloadUrl(zip, onUpdate) {
   const report = typeof onUpdate === 'function'
     ? (metadata) => { try { onUpdate(metadata || {}); } catch (_) {} }
     : undefined;
-  if (!_IS_FIREFOX) {
+  if (!_IS_FIREFOX && CDLDownloadUrl.supported()) {
     const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' }, report);
-    const url  = URL.createObjectURL(blob);
-    return { url, revoke: () => URL.revokeObjectURL(url) };
+    return CDLDownloadUrl.fromBlob(blob);
   }
   // Firefox: base64 data URL
   const base64 = await zip.generateAsync({ type: 'base64', compression: 'STORE' }, report);
@@ -3678,9 +3678,8 @@ function bytesToBase64(bytes) {
 async function _bytesToDownloadUrl(bytes, mimeType) {
   const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   const mime = mimeType || 'application/octet-stream';
-  if (!_IS_FIREFOX) {
-    const url = URL.createObjectURL(new Blob([data], { type: mime }));
-    return { url, revoke: () => URL.revokeObjectURL(url) };
+  if (!_IS_FIREFOX && CDLDownloadUrl.supported()) {
+    return CDLDownloadUrl.fromBlob(new Blob([data], { type: mime }));
   }
   const base64 = bytesToBase64(data);
   return { url: `data:${mime};base64,${base64}`, revoke: () => {}, base64 };
@@ -3797,6 +3796,7 @@ function diagnosticDefinition(error, requestedKind, requestedPhase) {
     verification: ['CDL-VERIFY-001', 'Cloudflare verification did not complete correctly.'],
     chapter_packaging: ['CDL-PACK-001', 'A completed chapter could not be added to the output.'],
     archive_build: ['CDL-ZIP-001', 'The archive could not be generated in memory.'],
+    archive_url: ['CDL-URL-001', 'The generated file could not be made available to the browser download manager.'],
     runtime_interruption: ['CDL-RUNTIME-001', 'The browser stopped the active extension process.'],
     runtime_connection: ['CDL-RUNTIME-002', 'The page lost its connection to the extension.'],
     resume: ['CDL-RESUME-001', 'The saved download checkpoint could not be resumed.'],
@@ -3888,6 +3888,16 @@ function tagDownloadError(error, phase) {
 function describeArchiveFailure(error, failurePhase, context = {}) {
   const raw = downloadErrorText(error) || 'Unexpected archive error';
   const outputLabel = context.outputLabel === 'CBZ' ? 'CBZ' : 'ZIP';
+  if (error && error.cdlKind === 'archive_url') {
+    const result = {
+      errorTitle: 'Download preparation failed.',
+      errorKind: 'archive_url',
+      failurePhase: 'archive_url',
+      message: `${raw} Retry the download. If this happens again, reload the extension.`,
+    };
+    result.diagnostic = createErrorDiagnostic(error, { ...result, context });
+    return result;
+  }
   if (failurePhase === 'archive_save') {
     const code = (raw.match(/\b(?:FILE|NETWORK|SERVER|USER)_[A-Z_]+\b/) || [])[0] || '';
     const known = {

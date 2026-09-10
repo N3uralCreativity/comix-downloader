@@ -88,6 +88,7 @@ const zipGenerationContext = {
   },
 };
 vm.createContext(zipGenerationContext);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'core', 'cdl-download-url.js'), 'utf8'), zipGenerationContext);
 vm.runInContext(`
   ${extractFunction('_zipToDownloadUrl')}
   globalThis.zipToDownloadUrl = _zipToDownloadUrl;
