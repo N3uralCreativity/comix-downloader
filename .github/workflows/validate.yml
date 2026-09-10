@@ -52,6 +52,9 @@ jobs:
           npx playwright install --with-deps chromium
           node tests/browser/archive-downloads.js
 
+      - name: Test title action layout
+        run: node tests/browser/title-actions.js
+
       - name: Validate D1 migrations locally
         run: npx --yes wrangler@4.110.0 d1 migrations apply FLAGS_DB --local --config worker/wrangler.toml
 

@@ -253,11 +253,25 @@ function injectStyles() {
     .${DOWNLOAD_BTN_CLASS}[data-state="loading"] .${PROGRESS_SPAN_CLASS} { display: inline; }
     .${DOWNLOAD_BTN_CLASS}:not([data-state="loading"]) .${PROGRESS_SPAN_CLASS} { display: none; }
     /* ── Bouton Download All ──────────────────────────────────────────────── */
+    .cdl-title-actions {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      max-width: 100%;
+    }
     .cdl-dl-all-btn {
-      display: flex !important;
+      display: inline-flex !important;
       align-items: center !important;
+      justify-content: center;
       gap: 7px !important;
-      margin-top: 8px !important;
+      margin: 0 !important;
+      max-width: 100%;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }
+    .cdl-dl-all-btn svg {
+      flex-shrink: 0;
     }
     /* ── Bouton Download All (floating mobile fallback) ────────────────────── */
     .cdl-dl-all-btn.cdl-floating {
@@ -2659,31 +2673,39 @@ function isElVisible(el) {
  * Finds the anchor element for inserting the Download All button.
  * Each candidate is checked for actual visibility so we don't inject
  * into a container that is display:none on mobile.
- * Returns { anchor, mode } where mode is 'afterend' | 'append' | 'floating',
+ * Returns { anchor, mode } where mode is 'beforebegin' | 'afterend' | 'append' | 'floating',
  * or null (anchor not in DOM yet — caller should retry).
  */
 function findDownloadAllAnchor() {
+  // Keep extension actions outside Follow/Reading's dropdown and its mobile
+  // auxiliary strip. The outer action row already provides wrapping and gaps.
+  const actionContainer = [...document.querySelectorAll(
+    '.mpage__actions, .mpage__cta, .mpage-actions, .page-actions'
+  )].find(isElVisible);
+  if (actionContainer) {
+    const auxiliary = [...actionContainer.children].find(el => el.matches('.mpage__actions-aux'));
+    return auxiliary
+      ? { anchor: auxiliary, mode: 'beforebegin' }
+      : { anchor: actionContainer, mode: 'append' };
+  }
+
+  const nativeButton = el => !el.closest('.cdl-dl-all-btn');
+  const afterFollow = el => ({ anchor: el.closest('.mpage__follow, .fdrop') || el, mode: 'afterend' });
   // 1. Desktop exact class — only if visible
-  const desktop = document.querySelector('.mpage__follow-btn');
-  if (desktop && isElVisible(desktop)) return { anchor: desktop, mode: 'afterend' };
+  const desktop = [...document.querySelectorAll('.mpage__follow-btn')].find(nativeButton);
+  if (desktop && isElVisible(desktop)) return afterFollow(desktop);
 
   // 2. Any follow-like class within the manga header, only if visible
   const pageRoot = document.querySelector('[class*="mpage"], [class*="manga-header"], [class*="title-page"]') || document.body;
   const followLike = [...pageRoot.querySelectorAll(
     '[class*="follow-btn"], [class*="follow_btn"], [class*="followBtn"], [class*="follow-button"]'
-  )].find(isElVisible);
-  if (followLike) return { anchor: followLike, mode: 'afterend' };
+  )].find(el => nativeButton(el) && isElVisible(el));
+  if (followLike) return afterFollow(followLike);
 
   // 3. Button / link / role=button whose text starts with "Follow", visible
   const followByText = [...document.querySelectorAll('button, a, [role="button"]')]
-    .find(el => isElVisible(el) && /^follow(ing)?\b/i.test((el.textContent || '').trim()));
-  if (followByText) return { anchor: followByText, mode: 'afterend' };
-
-  // 4. Visible action container
-  const actionContainer = [...document.querySelectorAll(
-    '[class*="mpage__actions"], [class*="mpage-actions"], [class*="page-actions"]'
-  )].find(isElVisible);
-  if (actionContainer) return { anchor: actionContainer, mode: 'append' };
+    .find(el => nativeButton(el) && isElVisible(el) && /^follow(ing)?\b/i.test((el.textContent || '').trim()));
+  if (followByText) return afterFollow(followByText);
 
   // 5. Desktop button is in DOM but hidden (mobile collapses that section).
   //    Use 'floating' mode: fixed-position button anchored to the viewport.
@@ -2693,9 +2715,36 @@ function findDownloadAllAnchor() {
   return null;
 }
 
-/** Injecte le bouton "Download All" sous le bouton Follow/Start-reading. */
+function placeDownloadAllButton(btn, { anchor, mode }) {
+  let group = document.querySelector('.cdl-title-actions');
+  const subscription = document.querySelector('.cdl-sub-btn');
+  btn.classList.toggle('cdl-floating', mode === 'floating');
+  if (mode === 'floating') {
+    if (btn.parentElement !== anchor) anchor.appendChild(btn);
+    subscription?.remove();
+    group?.remove();
+    return;
+  }
+  if (!group) {
+    group = document.createElement('div');
+    group.className = 'cdl-title-actions';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'Comix Downloader');
+  }
+  if (btn.parentElement !== group) group.appendChild(btn);
+  if (subscription && subscription.parentElement !== group) group.appendChild(subscription);
+  if (mode === 'append') {
+    if (group.parentElement !== anchor || group.nextElementSibling) anchor.appendChild(group);
+  } else if (mode === 'beforebegin') {
+    if (group.nextElementSibling !== anchor) anchor.insertAdjacentElement('beforebegin', group);
+  } else if (anchor.nextElementSibling !== group) {
+    anchor.insertAdjacentElement('afterend', group);
+  }
+}
+
+/** Inject Download All beside the native title actions, never inside a dropdown. */
 function injectDownloadAllButton() {
-  if (document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)')) return;
+  const existing = document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)');
   const found = findDownloadAllAnchor();
   if (!found) {
     // Follow button not yet in DOM (React renders it late on mobile) — retry
@@ -2704,6 +2753,7 @@ function injectDownloadAllButton() {
       const retry = () => {
         if (document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)')) { _dlAllInjRetryTimer = null; return; }
         injectDownloadAllButton();
+        injectSubscribeButton();
         if (!document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)') && attempts++ < 20) {
           _dlAllInjRetryTimer = setTimeout(retry, 500);
         } else {
@@ -2716,12 +2766,15 @@ function injectDownloadAllButton() {
   }
   // Cancel any pending retry — we found the anchor
   if (_dlAllInjRetryTimer) { clearTimeout(_dlAllInjRetryTimer); _dlAllInjRetryTimer = null; }
-  const { anchor, mode } = found;
+  const { mode } = found;
   if (mode === 'floating' && CFG['appearance.allowFloating'] === false) return;
+  if (existing) {
+    placeDownloadAllButton(existing, found);
+    return;
+  }
 
   const btn = document.createElement('button');
-  btn.className = 'btn btn--soft mpage__follow-btn cdl-dl-all-btn';
-  if (mode === 'floating') btn.classList.add('cdl-floating');
+  btn.className = 'btn btn--soft cdl-dl-all-btn';
   btn.type = 'button';
   btn.title = 'Download all chapters as a ZIP';
   _setHTML(btn, `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`);
@@ -2797,9 +2850,7 @@ function injectDownloadAllButton() {
     showDownloadAllOptionsPanel(mangaName, rows);
   });
 
-  if (mode === 'floating') document.body.appendChild(btn);
-  else if (mode === 'append') anchor.appendChild(btn);
-  else anchor.insertAdjacentElement('afterend', btn);
+  placeDownloadAllButton(btn, found);
 }
 
 // ── Popup Download All ────────────────────────────────────────────────────────
@@ -4602,7 +4653,7 @@ function injectSubscribeButton() {
   if (!slug) return;
 
   const btn = document.createElement('button');
-  btn.className = 'btn btn--soft mpage__follow-btn cdl-dl-all-btn cdl-sub-btn';
+  btn.className = 'btn btn--soft cdl-dl-all-btn cdl-sub-btn';
   btn.type = 'button';
   const render = (subscribed) => {
     btn.dataset.sub = subscribed ? '1' : '0';
@@ -4654,6 +4705,15 @@ function scanAndInject() {
 }
 
 let _cdlBodyObserver = null;
+let _cdlActionsResizeFrame = null;
+function refreshTitleActionsOnResize() {
+  if (_cdlActionsResizeFrame !== null) return;
+  _cdlActionsResizeFrame = requestAnimationFrame(() => {
+    _cdlActionsResizeFrame = null;
+    injectDownloadAllButton();
+    injectSubscribeButton();
+  });
+}
 function observeDOM() {
   if (_cdlBodyObserver) return; // already watching — keep a single observer
   const observer = new MutationObserver((mutations) => {
@@ -4690,6 +4750,7 @@ function observeDOM() {
             ))
         ) {
           injectDownloadAllButton();
+          injectSubscribeButton();
         }
       }
     }
@@ -4697,9 +4758,12 @@ function observeDOM() {
 
   observer.observe(document.body, { childList: true, subtree: true });
   _cdlBodyObserver = observer;
+  window.addEventListener('resize', refreshTitleActionsOnResize);
 }
 function disconnectDOM() {
   if (_cdlBodyObserver) { _cdlBodyObserver.disconnect(); _cdlBodyObserver = null; }
+  window.removeEventListener('resize', refreshTitleActionsOnResize);
+  if (_cdlActionsResizeFrame !== null) { cancelAnimationFrame(_cdlActionsResizeFrame); _cdlActionsResizeFrame = null; }
   _chapterListCollectionControl?.cancel?.();
   _chapterListCollectionControl = null;
   document.querySelector('#cdl-all-popup[data-view="chapter-list"]')?.remove();
