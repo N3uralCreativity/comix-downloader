@@ -762,6 +762,13 @@ function injectStyles() {
     }
     .cdl-se-retry { border: 1px solid var(--cdl-err-border); background: var(--cdl-err-bg); color: var(--cdl-err); }
     .cdl-se-dismiss { border: 1px solid var(--cdl-border); background: transparent; color: var(--cdl-text); }
+    #cdl-single-error[data-task-id] .cdl-se-actions,
+    #cdl-all-popup[data-session-status="blocked"] .cdl-ap-footer { flex-wrap: wrap; }
+    #cdl-single-error[data-task-id] .cdl-se-actions a {
+      border: 1px solid var(--cdl-border); border-radius: 6px;
+      padding: 6px 12px; color: var(--cdl-text); font-size: 11px;
+      font-weight: 600; text-decoration: none;
+    }
     .cdl-ap-footer {
       padding: 11px 15px 13px;
       border-top: 1px solid var(--cdl-border-soft);
@@ -1348,6 +1355,66 @@ function showChapterDownloadError(message, diagnostic, btn, errorTitle = 'Chapte
   _cdlAddDiagnostic(details, normalized, message);
 }
 
+function showChapterDownloadBlocked(message) {
+  if (!isTitleOverviewPage() || !String(message.chapterUrl || '').includes(`/title/${_cdlSlug()}/`)) return;
+  document.getElementById('cdl-single-error')?.remove();
+  const btn = findButtonByChapterUrl(message.chapterUrl);
+  if (btn) setButtonState(btn, 'loading', message.error);
+  const panel = document.createElement('div');
+  panel.id = 'cdl-single-error';
+  panel.dataset.taskId = message.taskId;
+  const heading = document.createElement('strong');
+  heading.className = 'cdl-se-header';
+  heading.textContent = 'Download paused - Cloudflare';
+  const body = document.createElement('div');
+  body.className = 'cdl-se-body';
+  body.textContent = `${message.error} Wait until access works again, then resume. Keep this tab and browser open to retain downloaded images.`;
+  const actions = document.createElement('div');
+  actions.className = 'cdl-se-actions';
+  for (const [label, action] of [['Resume download', 'resumeBlockedChapter'], ['Cancel', 'cancelBlockedChapter']]) {
+    const button = document.createElement('button');
+    button.className = 'cdl-se-dismiss';
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      button.disabled = true;
+      try {
+        chrome.runtime.sendMessage({ action, taskId: message.taskId }, (response) => {
+          const error = chrome.runtime.lastError;
+          if (!error && response?.ok) {
+            panel.remove();
+            restoreChapterAccessPause();
+          } else {
+            button.disabled = false;
+            cdlToast(response?.error || 'The extension connection was lost. Refresh this page.');
+          }
+        });
+      } catch (_) {
+        button.disabled = false;
+        cdlToast('The extension connection was lost. Refresh this page.');
+      }
+    });
+    actions.appendChild(button);
+  }
+  const check = document.createElement('a');
+  check.textContent = 'Check access';
+  check.href = /^https?:\/\//i.test(message.blockedUrl || '') ? message.blockedUrl : message.chapterUrl;
+  check.target = '_blank';
+  check.rel = 'noopener noreferrer';
+  actions.appendChild(check);
+  panel.append(heading, body, actions);
+  document.body.appendChild(panel);
+}
+
+function restoreChapterAccessPause() {
+  try {
+    chrome.runtime.sendMessage({ action: 'getChapterAccessPauses' }, (response) => {
+      if (chrome.runtime.lastError || !isTitleOverviewPage()) return;
+      const message = response?.pauses?.find((item) => String(item.chapterUrl || '').includes(`/title/${_cdlSlug()}/`));
+      if (message) showChapterDownloadBlocked(message);
+    });
+  } catch (_) {}
+}
+
 function getSpinnerSVG() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
@@ -1358,7 +1425,12 @@ function getSpinnerSVG() {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (String(message.action || '').startsWith('downloadAll') && !acceptDownloadAllUpdate(message)) return;
-  if (message.action === 'downloadProgress') {
+  if (message.action === 'downloadBlocked') {
+    showChapterDownloadBlocked(message);
+  } else if (message.action === 'downloadResumed') {
+    const panel = document.getElementById('cdl-single-error');
+    if (panel?.dataset.taskId === message.taskId) panel.remove();
+  } else if (message.action === 'downloadProgress') {
     const btn = findButtonByChapterUrl(message.chapterUrl);
     if (btn && btn.getAttribute('data-state') === 'loading') {
       const progressSpan = btn.querySelector(`.${PROGRESS_SPAN_CLASS}`);
@@ -4096,6 +4168,12 @@ function updateDownloadAllPopup(msg) {
   const popup = document.getElementById('cdl-all-popup');
   if (!popup) return;
   const { phase, chapterIndex, totalChapters, chapterLabel, imagesDone, imagesTotal } = msg;
+  if (phase === 'blocked') {
+    updateDownloadAllPopupBlocked(msg);
+    return;
+  }
+  if (popup.dataset.sessionStatus === 'blocked') popup.dataset.sessionStatus = 'running';
+  if (popup.querySelector('#cdl-ap-access-resume')) _dlAllSetFooterCancel(popup);
   if (popup.dataset.awaitingSave === 'true') {
     delete popup.dataset.awaitingSave;
     _dlAllSetFooterCancel(popup);
@@ -4443,6 +4521,61 @@ function acceptDownloadAllUpdate(message) {
   popup.dataset.startPending = 'false';
   popup.dataset.sessionAccepted = 'true';
   return true;
+}
+
+function updateDownloadAllPopupBlocked(message) {
+  const popup = document.getElementById('cdl-all-popup');
+  if (!popup) return;
+  popup.dataset.sessionStatus = 'blocked';
+  delete popup.dataset.awaitingSave;
+  _dlAllSetStage(popup, 'download', 'paused');
+  _dlAllHideArchiveProgress();
+  _dlAllSetChapterProgress(message.completed || 0, message.totalChapters || 0);
+  const status = document.getElementById('cdl-ap-chapter-status');
+  status.textContent = 'Download paused - Cloudflare';
+  status.classList.remove('error');
+  status.classList.add('warning');
+  const detail = document.getElementById('cdl-ap-img-status');
+  detail.textContent = `${message.error} No automatic retries. Once access works again, choose Resume download. Downloaded images are kept while the extension stays running; after a browser restart, resume uses the last saved archive checkpoint.`;
+  const existingResume = popup.querySelector('#cdl-ap-access-resume');
+  if (existingResume) {
+    existingResume.disabled = false;
+    return;
+  }
+  _dlAllSetFooterCancel(popup);
+  const footer = popup.querySelector('.cdl-ap-footer');
+  const resume = document.createElement('button');
+  resume.id = 'cdl-ap-access-resume';
+  resume.className = 'cdl-ap-save-btn';
+  _setHTML(resume, `${ICON_DOWNLOAD}<span>Resume download</span>`);
+  resume.addEventListener('click', () => {
+    resume.disabled = true;
+    try {
+      chrome.runtime.sendMessage({ action: 'resumeDownloadAll', sessionId: popup.dataset.sessionId }, (response) => {
+        const error = chrome.runtime.lastError;
+        if (document.getElementById('cdl-all-popup') !== popup) return;
+        if (error || !response?.ok) {
+          resume.disabled = false;
+          cdlToast(response?.error || 'Could not resume. Refresh this page to recover the checkpoint.');
+        }
+        startDownloadAllSessionSync(0);
+      });
+    } catch (_) {
+      resume.disabled = false;
+      cdlToast('The extension connection was lost. Refresh this page.');
+    }
+  });
+  footer.prepend(resume);
+  const accessUrl = message.blockedUrl || message.chapterUrl;
+  if (/^https?:\/\//i.test(accessUrl || '')) {
+    const check = document.createElement('a');
+    check.className = 'cdl-ap-secondary-btn';
+    check.textContent = 'Check access';
+    check.href = accessUrl;
+    check.target = '_blank';
+    check.rel = 'noopener noreferrer';
+    footer.insertBefore(check, resume.nextSibling);
+  }
 }
 
 function resetDownloadAllView() {
@@ -4800,6 +4933,7 @@ function cdlSyncRoute() {
     scanAndInject();
     observeDOM();
     restoreDownloadAllPopupFromBackground();
+    restoreChapterAccessPause();
   } else {
     // Left the overview (reader/home/settings/search/…). The injected nodes vanish
     // with the old DOM that Next.js replaces, so just stop observing — but DO remove

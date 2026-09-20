@@ -74,6 +74,7 @@ vm.runInContext(`
   ${extractFunction('isRetryableImageRequestError')}
   ${extractFunction('imageRetryLimit')}
   ${extractFunction('parseRetryAfterMs')}
+  ${extractFunction('isCloudflareAccessError')}
   ${extractFunction('fetchImageWithRetry')}
   globalThis.retryApi = {
     isRetryableImageRequestError,
@@ -356,6 +357,8 @@ vm.runInContext(`
   ${extractFunction('downloadAllPartSplitReason')}
   ${extractFunction('downloadAllProjectedPartSplitReason')}
   ${extractFunction('handleDownloadAllRequest')}
+  ${extractFunction('createCloudflarePauseControl')}
+  ${extractFunction('isCloudflareAccessError')}
   globalThis.handleDownloadAllRequest = handleDownloadAllRequest;
   globalThis.partitionApi = {
     downloadAllPartitionPolicy,

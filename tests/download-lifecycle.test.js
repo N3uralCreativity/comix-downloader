@@ -53,7 +53,7 @@ function harness(overrides = {}) {
   const tabs = new Map([[1, { id: 1, url: url() }]]);
   const config = { 'perf.rateLimitMode': 'off', 'download.concurrentChapters': 2 };
   const context = {
-    crypto: webcrypto, URL, AbortController, JSZip, console,
+    crypto: webcrypto, URL, AbortController, JSZip, console, TextDecoder, Response,
     setTimeout(fn, ms) { return setTimeout(fn, ms).unref(); }, clearTimeout,
     chrome: {
       storage: { local: {
@@ -89,7 +89,12 @@ function harness(overrides = {}) {
       if (overrides.verify) await overrides.verify(images);
       return images;
     },
-    async fetchImageToFile(name) { return { file: { name: `${name}.jpg`, buffer: new Uint8Array([1, 2, 3]), bytes: 3 } }; },
+    async fetchImageForZip(src) {
+      if (overrides.image) return overrides.image(src);
+      return { buffer: new Uint8Array([1, 2, 3]), ext: 'jpg' };
+    },
+    async waitForImageHostCooldown() {},
+    imageRetryLimit() { return 0; },
     async addChapterToOuter(zip, chapter) {
       for (const file of chapter.files) zip.folder(chapter.chapterLabel).file(file.name, file.buffer);
       return chapter.bytes;
@@ -123,6 +128,9 @@ function harness(overrides = {}) {
     ${source.slice(source.indexOf('let downloadAllSession = null'), source.indexOf('const FEATURES_NOTICE_VERSION'))}
     ${source.slice(source.indexOf('function startDownloadAllSession('), source.indexOf('// ── Réception des messages depuis content_title.js'))}
     ${extractFunction('cancelDownloadAllForTab')}
+    ${['createCloudflarePauseControl', 'isCloudflareAccessError', 'makeCloudflareAccessError',
+      'showCloudflareBlockedNotification', 'fetchImageWithRetry', 'fetchImageToFile',
+      'detectCloudflareChallengeDocument', 'checkCloudflareResponse'].map((name) => extractFunction(name)).join('\n')}
     ${['resolveOutputOptions', 'chapterConcurrencyLimit', 'isArchiveDeliveryAccepted', 'isDownloadCancelledError',
       'buildChapterComicInfoXml', 'buildChapterCbzBytes', 'handleDownloadAllRequest', '_doZipAndSave',
       'autoDownloadNew', 'postponeAutoDownload'].map((name) => extractFunction(name)).join('\n')}
@@ -143,6 +151,8 @@ function harness(overrides = {}) {
       storageIdle: async () => { await _dlStorageQueue; },
       createResume: createDownloadAllResumeData,
       saveDecision: resolvePendingArchiveSaveDecision,
+      block: makeCloudflareAccessError,
+      checkResponse: checkCloudflareResponse,
     };
   `, context);
   return { api: context.api, data, messages, saved, marks, notifications, tabs, config };
@@ -343,7 +353,7 @@ async function testProbeCancellation() {
     }); },
   };
   vm.createContext(context);
-  vm.runInContext(`${extractFunction('probeImageUrl')}; globalThis.probe = probeImageUrl;`, context);
+  vm.runInContext(`${extractFunction('isCloudflareAccessError')}\n${extractFunction('probeImageUrl')}; globalThis.probe = probeImageUrl;`, context);
   const result = context.probe('https://images.example/001.jpg', url(), controller.signal);
   controller.abort();
   assert.equal(await result, null);
@@ -374,6 +384,105 @@ async function testAutoDownloadRace() {
   await failed.api.auto('series', 'Series', newOnes, { 'subscribe.notify': true }, 3);
   assert.equal(failed.api.state().status, 'error');
   assert.match(failed.notifications.at(-1).title, /stopped/, 'Failed auto-downloads must not announce successful delivery');
+}
+
+async function testCloudflarePause(directCbz) {
+  const requests = new Map();
+  let blocked = true;
+  const h = harness({
+    async extract(chapterUrl) {
+      return [1, 2].map((index) => ({ index, src: `${chapterUrl}/page${index}` }));
+    },
+    async image(src) {
+      requests.set(src, (requests.get(src) || 0) + 1);
+      if (blocked && src.endsWith('1-chapter-1/page2')) {
+        await h.api.checkResponse(new Response('<h1>Error 1006</h1> Cloudflare: your IP address has been banned.', {
+          status: 403, headers: { 'content-type': 'text/html' },
+        }), src);
+      }
+      return { buffer: new Uint8Array([1, 2, 3]), ext: 'jpg' };
+    },
+  });
+  h.config['perf.batchSize'] = 1;
+  const run = h.api.run(chapters, 'Series', 'Series.zip', 1, { slug: 'series', format: 'cbz', directCbz }, null, 'blocked');
+  await until(() => h.api.state()?.status === 'blocked');
+  const requestCount = [...requests.values()].reduce((a, b) => a + b, 0);
+  for (let i = 0; i < 10; i++) await tick();
+  assert.equal([...requests.values()].reduce((a, b) => a + b, 0), requestCount, 'A ban pauses ALL new requests without retrying automatically');
+  h.api.notifyDownloadAllProgress(1, { phase: 'downloading', completed: 1 });
+  assert.equal(h.api.state().status, 'blocked', 'Concurrent progress cannot hide the block');
+  assert.equal((await h.api.get(1, url())).lastProgress.blockKind, 'ip_ban', 'Reopening the page restores the pause reason');
+  h.tabs.set(2, { id: 2, url: url() });
+  await assert.rejects(h.api.resume(2, url(), 'blocked'), /another tab|No interrupted/);
+  await assert.rejects(h.api.resume(1, url(), 'stale'), /another tab or session/);
+  const firstResume = await h.api.resume(1, url(), 'blocked');
+  assert.equal(firstResume.liveResume, true);
+  await until(() => h.api.state()?.status === 'blocked');
+  assert.equal(requests.get(`${chapters[0].chapterUrl}/page2`), 2, 'Resuming while banned pauses again instead of skipping the page');
+  blocked = false;
+  await h.api.resume(1, url(), 'blocked');
+  await run;
+  assert.equal(h.api.state().status, 'done');
+  for (const [src, count] of requests) assert.equal(count, src.endsWith('1-chapter-1/page2') ? 3 : 1,
+    'Resume reuses all successfully downloaded images, including parallel chapters');
+  assert.deepEqual(h.marks, ['Ch1', 'Ch2', 'Ch3']);
+  assert.equal(h.saved.length, directCbz ? 3 : 2);
+  assert.ok(!h.messages.some((msg) => msg.phase === 'skipped' || msg.phase === 'error'));
+}
+
+async function testCloudflareCancelAndRecovery() {
+  let h;
+  h = harness({ async extract() { throw h.api.block({ blocked: true, blockKind: 'access_denied', cloudflareCode: '1020' }); } });
+  const run = h.api.run(chapters, 'Series', 'Series.zip', 1, { slug: 'series' }, null, 'pause-cancel');
+  await until(() => h.api.state()?.status === 'blocked');
+  await h.api.flush();
+  const stored = clone(h.data);
+  await h.api.cancel(1, url(), 'pause-cancel');
+  await run;
+  assert.equal(h.api.state().status, 'cancelled');
+  assert.equal(h.api.busy(), false, 'Cancellation releases paused workers and the packer');
+  assert.equal(await h.api.get(1, url()), null, 'Cancelled pauses cannot reopen a downloading UI');
+
+  const recovered = harness();
+  Object.assign(recovered.data, stored);
+  const session = await recovered.api.get(1, url());
+  assert.equal(session.status, 'interrupted');
+  assert.equal(session.canResumeDownload, true);
+  assert.match(session.error, /Unsaved images must be downloaded again/);
+  await recovered.api.resume(1, url(), 'pause-cancel');
+  await until(() => !recovered.api.busy());
+  assert.equal(recovered.api.state().status, 'done');
+}
+
+async function testCloudflareDuringSave() {
+  let h, blocked = true, failSave = true;
+  const saving = deferred();
+  h = harness({
+    async extract(chapterUrl) {
+      if (chapterUrl === chapters[2].chapterUrl) {
+        await saving.promise;
+        if (blocked) throw h.api.block({ blocked: true, blockKind: 'rate_limit', cloudflareCode: '1015' });
+      }
+      return [{ index: 1, src: chapterUrl }];
+    },
+    async save() {
+      saving.resolve();
+      if (failSave) throw Object.assign(new Error('Download cancelled.'), { code: 'DOWNLOAD_CANCELLED' });
+    },
+  });
+  const run = h.api.run(chapters, 'Series', 'Series.zip', 1, { slug: 'series' }, null, 'blocked-save');
+  await until(() => h.api.state()?.status === 'awaiting_save');
+  for (let i = 0; i < 10; i++) await tick();
+  assert.equal(h.api.state().status, 'awaiting_save', 'A block must not hide the Save again controls');
+  failSave = false;
+  assert.equal(h.api.saveDecision(true), true);
+  await until(() => h.api.state()?.status === 'blocked');
+  assert.equal(h.api.state().resumeData.checkpointIndex, 2, 'The prepared part is saved before resuming the blocked chapter');
+  blocked = false;
+  await h.api.resume(1, url(), 'blocked-save');
+  await run;
+  assert.equal(h.api.state().status, 'done');
+  assert.equal(h.saved.length, 2);
 }
 
 function testClientRevisions() {
@@ -427,6 +536,10 @@ function testDelayedStartRetry() {
   await testResume(true);
   await testProbeCancellation();
   await testAutoDownloadRace();
+  await testCloudflarePause(false);
+  await testCloudflarePause(true);
+  await testCloudflareCancelAndRecovery();
+  await testCloudflareDuringSave();
   testClientRevisions();
   testDelayedStartRetry();
   console.log('download-lifecycle.test.js: all tests passed');
