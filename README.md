@@ -110,20 +110,18 @@ Mihon fetches new versions automatically whenever a new release is published her
 
 > Note: the manual APK doesn't auto-update. The repo URL in the step-by-step above is the better choice for most people.
 
-### Option B - Kiwi Browser (browser-extension parity)
+### Option B - Vivaldi for Android (browser-extension parity)
 
-If you specifically want the in-page buttons that the desktop extension provides, the WebExtension works as-is on Android via **[Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser)**:
+If you specifically want the in-page buttons that the desktop extension provides, **[Vivaldi for Android](https://play.google.com/store/apps/details?id=com.vivaldi.browser)** (version 8.2 or later) installs Chrome Web Store extensions directly:
 
-**Easiest:** open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp) in Kiwi and tap **Add to Chrome** - Kiwi installs Chrome Web Store extensions directly.
+1. Install or update [Vivaldi](https://play.google.com/store/apps/details?id=com.vivaldi.browser) from the Play Store.
+2. Open the Vivaldi menu and turn on **Desktop site** - Vivaldi needs it on to install from the Chrome Web Store.
+3. Open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp), tap **Add to Vivaldi**, then **Add extension**.
+4. Head to any [comix.to](https://comix.to) title page - buttons appear automatically. To turn it off or remove it, tap the **Extensions** button in the address bar → **Manage Extensions**.
 
-Or load it unpacked:
+A reader reports it works out of the box, including when comix.to is installed as an app (PWA). Vivaldi notes that some desktop extensions may behave differently on mobile, so please open an issue if something looks off.
 
-1. Install [Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser) from the Play Store.
-2. On your phone, download this repo ZIP and extract it.
-3. Open Kiwi → go to `chrome://extensions`.
-4. Toggle **Developer mode** on.
-5. Tap **Load unpacked (zip or folder)** → select the extracted folder.
-6. Head to any [comix.to](https://comix.to) title page - buttons appear automatically.
+> Kiwi Browser, which this section used to recommend, was discontinued in January 2025 and removed from the Play Store. Existing installs still run the extension but no longer receive browser security updates.
 
 ### Option C - Firefox Android add-on
 [![Get the Add-on](https://img.shields.io/badge/Firefox-Get%20the%20Add--on-FF7139?logo=firefox-browser&logoColor=white&style=for-the-badge)](https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/)
