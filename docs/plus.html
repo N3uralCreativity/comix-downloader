@@ -3,31 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comix Downloader Plus - Coming soon</title>
-<meta name="description" content="A preview of Comix Downloader Plus: optional cross-device continuity, reading migration between platforms, external sources and 30-day restore history. In development, not yet available.">
+<title>Comix Downloader Plus - Cloud Library, Release Agenda and Sync</title>
+<meta name="description" content="A preview of Comix Downloader Plus: an encrypted Cloud Library for the chapters you save, a Release Agenda for the series you follow, and sync across your browsers. In private testing, not yet available.">
 <meta name="theme-color" content="#15171b">
 <link rel="canonical" href="https://n3uralcreativity.top/comix-downloader/plus.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Comix Downloader">
-<meta property="og:title" content="Comix Downloader Plus - Coming soon">
-<meta property="og:description" content="A preview of what Plus will be. In development.">
+<meta property="og:title" content="Comix Downloader Plus - Save it once. Read it anywhere.">
+<meta property="og:description" content="An encrypted Cloud Library, a Release Agenda and sync across your browsers. In private testing.">
 <meta property="og:url" content="https://n3uralcreativity.top/comix-downloader/plus.html">
-<meta property="og:image" content="https://n3uralcreativity.top/comix-downloader/assets/plus-dashboard-sync.png">
+<meta property="og:image" content="https://n3uralcreativity.top/comix-downloader/assets/plus-cloud-library.jpg">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="900">
+<meta property="og:image:alt" content="The Comix Downloader Plus Cloud Library showing saved comics as covers">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Comix Downloader Plus - Coming soon">
-<meta name="twitter:description" content="A preview of what Plus will be. In development.">
-<meta name="twitter:image" content="https://n3uralcreativity.top/comix-downloader/assets/plus-dashboard-sync.png">
+<meta name="twitter:title" content="Comix Downloader Plus - Save it once. Read it anywhere.">
+<meta name="twitter:description" content="An encrypted Cloud Library, a Release Agenda and sync across your browsers. In private testing.">
+<meta name="twitter:image" content="https://n3uralcreativity.top/comix-downloader/assets/plus-cloud-library.jpg">
 <link rel="icon" type="image/png" href="assets/icon128.png?v=2">
-<link rel="preload" as="image" href="assets/plus-dashboard-sync.png">
+<link rel="preload" as="image" href="assets/plus-cloud-library.jpg">
 <link rel="stylesheet" href="site.css">
 <style>
-  .plus-page { --plus-max: 1080px; }
+  .plus-page { --plus-max: 1080px; --plus-dark: #15171b; --ok: oklch(58% 0.15 150); --warn: oklch(70% 0.15 75); --late: oklch(58% 0.2 25); }
   .plus-shell { width: min(var(--plus-max), calc(100% - 56px)); margin: 0 auto; }
   .plus-page .footer { margin-top: 40px; }
   .plus-page .footer-inner { max-width: var(--plus-max); }
 
   /* ── dark nav, this page only ── */
-  .plus-page .nav { background: #15171b; border-bottom: 1px solid #2e3239; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .plus-page .nav { background: var(--plus-dark); border-bottom: 1px solid #2e3239; backdrop-filter: none; -webkit-backdrop-filter: none; }
   .plus-page .nav .brand { color: #f8f8fb; white-space: nowrap; }
   .plus-page .nav .cdl-mark .ink { fill: #f8f8fb; }
   .plus-page .nav .cdl-mark .glow { fill: #8b5cf6; }
@@ -41,14 +44,18 @@
   .plus-page .nav-links .nav-signin-soon { color: #bda7ff; background: rgba(139,92,246,.14); border-color: #5b4a7c; }
   .plus-page .nav-burger { color: #f8f8fb; background: #1c1f24; border-color: #464b55; box-shadow: none; }
   .plus-page .nav-burger:hover { background: #25282e; border-color: #626874; }
+  @media (max-width: 720px) {
+    .plus-page .nav-links { background: #1c1f24; border-color: #2e3239; }
+  }
 
   /* ── hero ── */
-  .plus-hero { padding: 74px 0 90px; color: #f8f8fb; background: #15171b; text-align: center; }
+  .plus-hero { padding: 72px 0 150px; color: #f8f8fb; background: var(--plus-dark); text-align: center; }
   .plus-hero-inner { display: flex; flex-direction: column; align-items: center; max-width: 900px; margin: 0 auto; }
   .plus-pill { display: inline-flex; align-items: center; gap: 9px; padding: 6px 12px; border: 1px solid #3b3f47; border-radius: 999px; font: 600 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: #bda7ff; }
   .plus-pill i { display: block; width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6; }
-  .plus-hero h1 { margin-top: 24px; max-width: 20ch; font-size: 56px; line-height: 1.03; letter-spacing: -.035em; font-weight: 800; color: #fff; }
-  .plus-hero .lede { margin-top: 20px; max-width: 56ch; font-size: 17.5px; line-height: 1.6; color: #c8cbd2; }
+  .plus-hero h1 { margin-top: 24px; font-size: 60px; line-height: 1.02; letter-spacing: -.04em; font-weight: 800; color: #fff; }
+  .plus-hero h1 span { display: block; color: #bda7ff; }
+  .plus-hero .lede { margin-top: 22px; max-width: 60ch; font-size: 17.5px; line-height: 1.6; color: #c8cbd2; }
   .plus-hero-cta { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 18px; margin-top: 30px; }
   .plus-hero-cta .btn-soon {
     display: inline-flex; align-items: center; gap: 9px;
@@ -61,57 +68,94 @@
   .plus-offer { display: flex; align-items: baseline; gap: 9px; text-align: left; }
   .plus-offer strong { font-size: 20px; font-weight: 800; color: #9fa4ae; }
   .plus-offer span { font-size: 13px; color: #7f858f; }
-  .plus-offer .strike { text-decoration: none; }
   .plus-fine { margin-top: 14px; font-size: 12px; color: #8b9099; }
   .plus-signin-note { margin-top: 20px; padding-top: 20px; border-top: 1px solid #2e3239; width: min(100%, 460px); font-size: 13.5px; color: #9fa4ae; scroll-margin-top: 90px; }
   .plus-signin-note a { color: #bda7ff; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
   .plus-signin-note a:hover { color: #d3c4ff; }
 
-  /* ── overlapping product window ── */
-  .plus-shot { margin-top: -62px; padding: 0 56px; }
-  .plus-product-window { overflow: hidden; border: 1px solid #3c4149; border-radius: 10px; background: #151719; box-shadow: 0 28px 80px rgba(0,0,0,.38); }
-  .plus-window-bar { height: 40px; display: flex; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid #30343a; background: #1d2024; }
+  /* ── hero devices: desktop library with the phone reader in front ── */
+  .plus-stage { position: relative; width: min(var(--plus-max), calc(100% - 56px)); margin: -104px auto 0; padding-bottom: 72px; }
+  .plus-window { overflow: hidden; border: 1px solid #3c4149; border-radius: 12px; background: #151719; box-shadow: 0 28px 80px rgba(0,0,0,.34); margin-right: 120px; }
+  .plus-window-bar { height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid #30343a; background: #1d2024; }
   .plus-window-bar i { display: block; width: 8px; height: 8px; border-radius: 50%; background: #4e535d; }
-  .plus-window-bar span { margin-left: 9px; color: #9297a0; font: 500 10.5px/1 var(--mono); }
-  .plus-product-window { position: relative; }
-  .plus-product-window img { width: 100%; height: auto; }
-  .plus-preview-tag {
-    position: absolute; right: 14px; top: 54px;
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 6px 10px; border: 1px solid #5b4a7c; border-radius: 999px;
-    background: rgba(21,23,25,.86); backdrop-filter: blur(6px);
-    color: #bda7ff; font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
-  }
-  .plus-shot figcaption { margin-top: 12px; font-size: 12.5px; color: var(--muted); text-align: center; }
+  .plus-window-bar span { margin-left: 9px; color: #9297a0; font: 500 10.5px/1 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .plus-window img { width: 100%; height: auto; }
+  .plus-phone { position: absolute; right: 0; bottom: 0; width: 232px; padding: 9px; border-radius: 34px; background: #0f1113; border: 1px solid #3c4149; box-shadow: 0 30px 70px rgba(0,0,0,.4); }
+  .plus-phone img { width: 100%; height: auto; border-radius: 26px; }
+  .plus-stage figcaption { margin-top: 14px; font-size: 12.5px; color: var(--muted); }
 
-  /* ── three outcomes ── */
-  .plus-outcomes { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); max-width: var(--plus-max); margin: 52px auto 0; padding: 0 28px; }
-  .plus-outcome { padding-right: 28px; }
-  .plus-outcome + .plus-outcome { padding: 0 28px; border-left: 1px solid var(--line); }
-  .plus-outcome + .plus-outcome + .plus-outcome { padding: 0 0 0 28px; }
-  .plus-outcome svg { width: 20px; height: 20px; color: var(--accent); }
-  .plus-outcome h3 { margin-top: 14px; font-size: 16px; font-weight: 750; }
-  .plus-outcome p { margin-top: 6px; font-size: 14px; color: var(--ink-soft); }
+  /* ── the three parts ── */
+  .plus-pillars { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,1fr) minmax(0,1fr); gap: 16px; }
+  .plus-pillar { position: relative; display: flex; flex-direction: column; padding: 24px 24px 22px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); transition: border-color .16s, box-shadow .16s, transform .16s; }
+  .plus-pillar:hover { color: var(--ink); border-color: var(--accent-line); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  .plus-pillar.is-lead { border-color: var(--accent-line); background: var(--accent-wash); }
+  .plus-num { font: 600 12px/1 var(--mono); letter-spacing: .08em; color: var(--muted); }
+  .plus-pillar.is-lead .plus-num { color: var(--accent-deep); }
+  .plus-lead-tag { position: absolute; top: 20px; right: 20px; padding: 4px 8px; border-radius: 999px; background: var(--accent); color: #fff; font: 700 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .plus-pillar h3 { margin-top: 18px; font-size: 20px; line-height: 1.2; font-weight: 800; letter-spacing: -.015em; }
+  .plus-pillar.is-lead h3 { font-size: 24px; }
+  .plus-pillar p { margin-top: 8px; flex: 1; font-size: 14.5px; color: var(--ink-soft); }
+  .plus-more { margin-top: 16px; font-size: 13.5px; font-weight: 700; color: var(--accent); }
 
-  /* ── free band ── */
-  .plus-roadmap { max-width: var(--plus-max); margin: 56px auto 0; padding: 0 28px; }
-  .plus-roadmap h2 { font-size: 22px; font-weight: 750; letter-spacing: -.02em; }
-  .plus-roadmap ol { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0; margin-top: 18px; padding: 0; list-style: none; border-top: 1px solid var(--line-strong); }
-  .plus-roadmap li { padding: 18px 24px 0 0; }
-  .plus-roadmap li + li { padding-left: 24px; border-left: 1px solid var(--line); }
-  .plus-stage { display: flex; align-items: center; gap: 8px; font: 700 10px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
-  .plus-stage i { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); }
-  .plus-stage.now { color: var(--accent-deep); }
-  .plus-stage.now i { background: var(--accent); }
-  .plus-roadmap h3 { margin-top: 12px; font-size: 15.5px; font-weight: 750; }
-  .plus-roadmap p { margin-top: 5px; font-size: 13.5px; color: var(--ink-soft); }
+  /* ── feature sections ── */
+  .plus-feature { width: min(var(--plus-max), calc(100% - 56px)); margin: 0 auto; padding-top: 104px; scroll-margin-top: 40px; }
+  .plus-feature-head { max-width: 720px; }
+  .plus-feature-head .eyebrow { display: inline-block; margin-bottom: 16px; }
+  .plus-feature h2 { font-size: 40px; line-height: 1.06; font-weight: 800; letter-spacing: -.03em; text-wrap: balance; }
+  .plus-hero h1, .plus-toolbar h2 { text-wrap: balance; }
+  .plus-feature-head > p { margin-top: 16px; font-size: 17px; color: var(--ink-soft); }
+  .plus-feature-head > p strong { color: var(--ink); }
 
-  .plus-free-band { margin-top: 56px; padding: 20px 28px; background: var(--accent-wash); border-top: 1px solid var(--accent-line); border-bottom: 1px solid var(--accent-line); }
+  .plus-steps { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 20px; margin-top: 40px; padding: 0; list-style: none; counter-reset: step; }
+  .plus-steps li { display: flex; flex-direction: column; }
+  .plus-steps .shot { flex: none; }
+  .plus-page .shot img { height: auto; }
+  .plus-steps .shot img { aspect-ratio: 16 / 10; object-fit: cover; object-position: top center; }
+  .plus-step-num { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-top: 18px; border-radius: 50%; background: var(--accent); color: #fff; font: 700 12px/1 var(--mono); }
+  .plus-steps h3 { margin-top: 10px; font-size: 17px; font-weight: 750; }
+  .plus-steps p { margin-top: 5px; font-size: 14.5px; color: var(--ink-soft); }
+
+  .plus-caps { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0; margin-top: 52px; padding: 0; list-style: none; border-top: 1px solid var(--line-strong); }
+  .plus-caps li { padding: 22px 24px 22px 0; border-bottom: 1px solid var(--line); }
+  .plus-caps li:nth-child(3n+2), .plus-caps li:nth-child(3n+3) { padding-left: 24px; border-left: 1px solid var(--line); }
+  .plus-caps svg { width: 20px; height: 20px; color: var(--accent); }
+  .plus-caps h3 { margin-top: 12px; font-size: 15.5px; font-weight: 750; }
+  .plus-caps p { margin-top: 4px; font-size: 14px; color: var(--ink-soft); }
+
+  .plus-privacy { display: flex; gap: 16px; margin-top: 36px; padding: 22px 24px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-wash); }
+  .plus-privacy svg { flex: none; width: 24px; height: 24px; color: var(--accent-deep); }
+  .plus-privacy strong { display: block; font-size: 15.5px; color: var(--accent-deep); }
+  .plus-privacy p { margin-top: 4px; font-size: 14.5px; color: var(--ink-soft); }
+
+  .plus-wide { margin-top: 40px; }
+  .plus-states { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 24px; margin-top: 28px; }
+  .plus-states dt { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 750; }
+  .plus-states dt i { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
+  .plus-states div:nth-child(2) dt i { background: transparent; border: 2px dashed var(--warn); }
+  .plus-states div:nth-child(3) dt i { background: var(--late); }
+  .plus-states div:nth-child(4) dt i { background: var(--faint); }
+  .plus-states dd { margin-top: 5px; font-size: 13.5px; color: var(--ink-soft); }
+  .plus-note { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+
+  .plus-split { display: grid; grid-template-columns: minmax(0,0.9fr) minmax(0,1.1fr); gap: 56px; align-items: center; }
+  .plus-split ul { list-style: none; margin-top: 24px; display: grid; gap: 12px; }
+  .plus-split li { position: relative; padding-left: 31px; font-size: 15px; }
+  .plus-split li svg { position: absolute; left: 0; top: 2px; width: 19px; height: 19px; color: var(--accent); }
+  .plus-split .plus-note { border-top: 0; padding-top: 0; margin-top: 20px; }
+  .plus-shot-dark { background: #111416; border-color: #2a2e34; }
+  .plus-shot-dark .shot-chrome { background: #1b1e22; border-color: #2a2e34; }
+
+  .plus-toolbar { display: grid; grid-template-columns: 340px minmax(0,1fr); gap: 48px; align-items: center; width: min(var(--plus-max), calc(100% - 56px)); margin: 96px auto 0; padding: 32px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+  .plus-toolbar img { width: 100%; height: auto; border-radius: var(--radius-sm); border: 1px solid #2a2e34; box-shadow: var(--shadow-md); }
+  .plus-toolbar h2 { font-size: 24px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; }
+  .plus-toolbar p { margin-top: 10px; font-size: 15px; color: var(--ink-soft); }
+
+  /* ── free band, compare, questions, roadmap ── */
+  .plus-free-band { margin-top: 88px; padding: 20px 28px; background: var(--accent-wash); border-top: 1px solid var(--accent-line); border-bottom: 1px solid var(--accent-line); }
   .plus-free-band p { max-width: var(--plus-max); margin: 0 auto; font-size: 14.5px; color: var(--accent-deep); }
 
-  /* ── compare + faq ── */
-  .plus-detail { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 64px; max-width: var(--plus-max); margin: 0 auto; padding: 56px 28px 0; }
-  .plus-detail h2 { font-size: 22px; font-weight: 750; letter-spacing: -.02em; }
+  .plus-detail { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 64px; width: min(var(--plus-max), calc(100% - 56px)); margin: 0 auto; padding-top: 64px; }
+  .plus-detail h2, .plus-roadmap h2 { font-size: 22px; font-weight: 750; letter-spacing: -.02em; }
   .plus-compare { margin-top: 16px; }
   .plus-row { display: grid; grid-template-columns: minmax(0,1.4fr) 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
   .plus-row span:first-child { font-weight: 650; }
@@ -127,38 +171,66 @@
   .plus-faq-item strong { font-size: 14px; font-weight: 700; }
   .plus-faq-item p { margin-top: 4px; font-size: 13.5px; color: var(--ink-soft); }
 
-  .plus-legal { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 32px; max-width: var(--plus-max); margin: 56px auto 0; padding: 0 28px 8px; }
+  .plus-roadmap { width: min(var(--plus-max), calc(100% - 56px)); margin: 64px auto 0; }
+  .plus-roadmap ol { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0; margin-top: 18px; padding: 0; list-style: none; border-top: 1px solid var(--line-strong); }
+  .plus-roadmap li { padding: 18px 24px 0 0; }
+  .plus-roadmap li + li { padding-left: 24px; border-left: 1px solid var(--line); }
+  .plus-stage-tag { display: flex; align-items: center; gap: 8px; font: 700 10px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  .plus-stage-tag i { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); }
+  .plus-stage-tag.now { color: var(--accent-deep); }
+  .plus-stage-tag.now i { background: var(--accent); }
+  .plus-roadmap h3 { margin-top: 12px; font-size: 15.5px; font-weight: 750; }
+  .plus-roadmap p { margin-top: 5px; font-size: 13.5px; color: var(--ink-soft); }
+  .plus-roadmap .plus-later { margin-top: 20px; font-size: 13.5px; color: var(--muted); }
+
+  .plus-legal { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 32px; width: min(var(--plus-max), calc(100% - 56px)); margin: 56px auto 0; padding-bottom: 8px; }
   .plus-legal p { font-size: 12.5px; color: var(--muted); }
   .plus-legal div { display: flex; gap: 14px; font-size: 12px; }
   .plus-legal a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
   .plus-legal a:hover { color: var(--accent); }
 
-  @media (max-width: 900px) {
-    .plus-hero h1 { font-size: 44px; }
-    .plus-shot { padding: 0 28px; }
-    .plus-outcomes { grid-template-columns: 1fr; gap: 26px; }
-    .plus-outcome, .plus-outcome + .plus-outcome, .plus-outcome + .plus-outcome + .plus-outcome { padding: 0; border-left: 0; }
-    .plus-outcome + .plus-outcome { padding-top: 26px; border-top: 1px solid var(--line); }
+  @media (max-width: 960px) {
+    .plus-hero h1 { font-size: 48px; }
+    .plus-window { margin-right: 84px; }
+    .plus-phone { width: 180px; padding: 7px; border-radius: 27px; }
+    .plus-phone img { border-radius: 21px; }
+    .plus-pillars { grid-template-columns: 1fr; }
+    .plus-steps { grid-template-columns: 1fr; gap: 36px; }
+    .plus-steps .shot img { aspect-ratio: auto; }
+    .plus-caps { grid-template-columns: 1fr 1fr; }
+    .plus-caps li:nth-child(n) { padding: 20px 20px 20px 0; border-left: 0; }
+    .plus-caps li:nth-child(2n) { padding-left: 20px; border-left: 1px solid var(--line); }
+    .plus-states { grid-template-columns: 1fr 1fr; }
+    .plus-split { grid-template-columns: 1fr; gap: 32px; }
+    .plus-toolbar { grid-template-columns: 1fr; gap: 24px; }
+    .plus-toolbar img { max-width: 340px; }
+    .plus-detail { grid-template-columns: 1fr; gap: 44px; }
     .plus-roadmap ol { grid-template-columns: 1fr; }
     .plus-roadmap li, .plus-roadmap li + li { padding: 18px 0 0; border-left: 0; }
     .plus-roadmap li + li { border-top: 1px solid var(--line); }
-    .plus-detail { grid-template-columns: 1fr; gap: 44px; }
   }
   @media (max-width: 620px) {
-    .plus-shell { width: calc(100% - 32px); }
-    .plus-hero { padding: 54px 0 74px; }
-    .plus-hero h1 { font-size: 36px; }
+    .plus-shell, .plus-stage, .plus-feature, .plus-toolbar, .plus-detail, .plus-roadmap, .plus-legal { width: calc(100% - 32px); }
+    .plus-hero { padding: 54px 0 118px; }
+    .plus-hero h1 { font-size: 38px; }
     .plus-hero .lede { font-size: 16px; }
     .plus-hero-cta { flex-direction: column; align-items: stretch; }
-    .plus-hero-cta .btn { width: 100%; }
     .plus-offer { justify-content: center; }
-    .plus-shot { margin-top: -46px; padding: 0 16px; }
-    .plus-outcomes, .plus-detail, .plus-legal, .plus-roadmap { padding-left: 20px; padding-right: 20px; }
-    .plus-preview-tag { top: auto; bottom: 12px; right: 12px; }
+    .plus-stage { margin-top: -82px; padding-bottom: 56px; }
+    .plus-window { margin-right: 0; margin-bottom: 150px; }
+    .plus-phone { width: 140px; right: 12px; padding: 6px; border-radius: 22px; }
+    .plus-stage figcaption { padding-right: 168px; }
+    .plus-phone img { border-radius: 17px; }
+    .plus-feature { padding-top: 76px; }
+    .plus-feature h2 { font-size: 30px; }
+    .plus-caps { grid-template-columns: 1fr; }
+    .plus-caps li:nth-child(2n) { padding-left: 0; border-left: 0; }
+    .plus-states { grid-template-columns: 1fr; gap: 16px; }
+    .plus-toolbar { padding: 20px; }
     .plus-row { grid-template-columns: 1fr; gap: 3px; padding: 14px 0; }
     .plus-row-head { display: none; }
-    .plus-row span:nth-child(2)::before { content: "Free — "; color: var(--muted); }
-    .plus-row span:nth-child(3)::before { content: "Plus — "; color: var(--muted); }
+    .plus-row span:nth-child(2)::before { content: "Free: "; color: var(--muted); }
+    .plus-row span:nth-child(3)::before { content: "Plus: "; color: var(--muted); }
   }
   @media (prefers-reduced-motion: reduce) {
     .plus-page *, .plus-page *:before, .plus-page *:after { transition: none !important; animation: none !important; }
@@ -176,9 +248,9 @@
 <main id="main" tabindex="-1">
   <section class="plus-hero" aria-labelledby="plus-title">
     <div class="plus-shell plus-hero-inner">
-      <span class="plus-pill"><i></i>In development &middot; not yet available</span>
-      <h1 id="plus-title">A preview of what Plus will be.</h1>
-      <p class="lede">Plus is an optional subscription we are building alongside the free extension: continuity across the browsers you read from, reading migration between platforms, and external sources. Nothing here is live yet, and the free extension is not waiting on it.</p>
+      <span class="plus-pill"><i></i>In private testing &middot; not yet available</span>
+      <h1 id="plus-title">Save it once. <span>Read it anywhere.</span></h1>
+      <p class="lede">Comix Downloader Plus is the optional subscription we are building alongside the free extension. It keeps the chapters you save in an encrypted Cloud Library you can read on any device, shows when the series you follow are likely to return, and syncs your setup across browsers.</p>
       <div class="plus-hero-cta">
         <button class="btn-soon" type="button" disabled aria-disabled="true"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Start 30-day free trial</button>
         <p class="plus-offer"><strong>Planned: 30 days free</strong><span>then US$1.50/mo + tax</span></p>
@@ -188,56 +260,150 @@
     </div>
   </section>
 
-  <div class="plus-shot">
-    <figure class="plus-product-window">
-      <div class="plus-window-bar" aria-hidden="true"><i></i><i></i><i></i><span>Settings / Sync &amp; Library / Comix Downloader Plus &mdash; work in progress</span></div>
-      <span class="plus-preview-tag">Early build</span>
-      <img src="assets/plus-dashboard-sync.png" width="1600" alt="Early build of the Comix Downloader Plus settings panel showing synchronization categories and account status" fetchpriority="high">
-    </figure>
-    <figcaption class="plus-shell">An early build of the Plus panel. The final interface may differ.</figcaption>
-  </div>
+  <figure class="plus-stage">
+    <div class="plus-window">
+      <div class="plus-window-bar" aria-hidden="true"><i></i><i></i><i></i><span>Cloud Library &mdash; private test build</span></div>
+      <img src="assets/plus-cloud-library.jpg" width="1440" height="900" alt="The Cloud Library on a desktop browser, with saved comics shown as covers in a grid" fetchpriority="high">
+    </div>
+    <div class="plus-phone">
+      <img src="assets/plus-cloud-phone.jpg" width="780" height="1688" alt="A saved chapter open in the Cloud Library reader on a phone">
+    </div>
+    <figcaption>Private test build of the Cloud Library, on a desktop browser and a phone. The final interface may differ.</figcaption>
+  </figure>
 
-  <section class="plus-outcomes" aria-label="What Plus is planned to add">
-    <article class="plus-outcome">
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
-      <h3>Five approved devices</h3>
-      <p>Settings, watched series and reading positions on every browser you approve.</p>
-    </article>
-    <article class="plus-outcome">
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v14"/><path d="m7 11 5 5 5-5"/><path d="M5 22h14"/></svg>
-      <h3>Reading migration</h3>
-      <p>Carry your progress between reading platforms, and read from external sources.</p>
-    </article>
-    <article class="plus-outcome">
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
-      <h3>Thirty days of restore</h3>
-      <p>Roll back a wrong change without losing the state you had before it.</p>
-    </article>
+  <section class="plus-shell plus-pillars" aria-labelledby="pillars-title">
+    <h2 id="pillars-title" class="visually-hidden">What Plus adds</h2>
+    <a class="plus-pillar is-lead" href="#cloud">
+      <span class="plus-num">01</span><span class="plus-lead-tag">Headline feature</span>
+      <h3>Cloud Library</h3>
+      <p>Send chapters straight from Download All into an encrypted library, filed by comic, and read them on your computer or phone.</p>
+      <span class="plus-more">How it works &rarr;</span>
+    </a>
+    <a class="plus-pillar" href="#agenda">
+      <span class="plus-num">02</span>
+      <h3>Release Agenda</h3>
+      <p>A weekly view of when your followed series are likely to get their next chapter, right inside comix.to.</p>
+      <span class="plus-more">See the Agenda &rarr;</span>
+    </a>
+    <a class="plus-pillar" href="#sync">
+      <span class="plus-num">03</span>
+      <h3>Sync</h3>
+      <p>Settings, reading progress and watched series on up to five browsers, with thirty days of restore points.</p>
+      <span class="plus-more">What syncs &rarr;</span>
+    </a>
   </section>
 
-  <section class="plus-roadmap" aria-labelledby="roadmap-title">
-    <h2 id="roadmap-title">Where it stands</h2>
-    <ol>
+  <section class="plus-feature" id="cloud" aria-labelledby="cloud-title">
+    <div class="plus-feature-head">
+      <span class="eyebrow">01 &middot; Cloud Library</span>
+      <h2 id="cloud-title">Your comics, in a library that follows you.</h2>
+      <p>Download All gets a new destination. Choose <strong>PLUS Cloud Library</strong>, or this device and the cloud together, and every chapter uploads into your library, already organized. Open it in any browser you have approved, on a computer or a phone, and pick up where you stopped.</p>
+    </div>
+    <ol class="plus-steps">
       <li>
-        <span class="plus-stage now"><i></i>Now</span>
-        <h3>Building and testing</h3>
-        <p>Sync, devices and restore are running in internal builds. The panel above is one of them.</p>
+        <figure class="shot plus-shot-dark"><div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Download options</span></div><img src="assets/plus-cloud-save.png" width="880" height="1020" alt="The Download All options with Save to set to PLUS Cloud Library and a cloud folder picker" loading="lazy"></figure>
+        <span class="plus-step-num" aria-hidden="true">1</span>
+        <h3>Choose the cloud</h3>
+        <p>In the Download All options, pick PLUS Cloud Library under <em>Save to</em>. Ranges, specific chapters and group filters work exactly as before.</p>
       </li>
       <li>
-        <span class="plus-stage"><i></i>Next</span>
-        <h3>Closed beta</h3>
-        <p>A small group tests migration and external sources on real libraries before anything is charged.</p>
+        <figure class="shot plus-shot-dark"><div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Cloud Library / a comic</span></div><img src="assets/plus-cloud-folder.jpg" width="1440" height="900" alt="A comic's folder in the Cloud Library with its chapters inside" loading="lazy"></figure>
+        <span class="plus-step-num" aria-hidden="true">2</span>
+        <h3>It files itself</h3>
+        <p>Each comic gets a folder with its chapters inside. Prefer your own structure? Save into any folder you created.</p>
       </li>
       <li>
-        <span class="plus-stage"><i></i>Later</span>
-        <h3>Public release</h3>
-        <p>Sign-up opens with the trial. Announced in the changelog and on GitHub releases.</p>
+        <figure class="shot plus-shot-dark"><div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Cloud Library / reader</span></div><img src="assets/plus-cloud-reader.jpg" width="1440" height="900" alt="A chapter open in the Cloud Library reader in vertical scrolling mode" loading="lazy"></figure>
+        <span class="plus-step-num" aria-hidden="true">3</span>
+        <h3>Read anywhere</h3>
+        <p>Open the library on any approved device. The reader scrolls vertically or turns pages, left to right or right to left.</p>
       </li>
     </ol>
+
+    <ul class="plus-caps">
+      <li>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+        <h3>Pick up where you stopped</h3>
+        <p>Your reading position is saved, so another device opens on the same page.</p>
+      </li>
+      <li>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        <h3>Read offline</h3>
+        <p>Keep chapters on a device for flights, commutes and patchy Wi-Fi.</p>
+      </li>
+      <li>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+        <h3>Organize like a drive</h3>
+        <p>Folders in folders, rename, move, search, select several, trash and restore.</p>
+      </li>
+      <li>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+        <h3>Bring your own files</h3>
+        <p>Import CBZ files or folders of images, and export any chapter back to CBZ.</p>
+      </li>
+      <li>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+        <h3>Uploads that resume</h3>
+        <p>An interrupted upload waits in Transfers and continues where it stopped.</p>
+      </li>
+      <li>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
+        <h3>Installs like an app</h3>
+        <p>Add the library to your desktop or home screen on browsers that support it.</p>
+      </li>
+    </ul>
+
+    <aside class="plus-privacy" aria-label="Encryption">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <div>
+        <strong>Encrypted before it leaves your browser.</strong>
+        <p>Pages, titles, folder names, thumbnails and reading positions are encrypted on your device, with a key that stays on your devices. The service can tell how much you store and when it changes, not what it is. The storage included with Plus will be announced before launch.</p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="plus-feature" id="agenda" aria-labelledby="agenda-title">
+    <div class="plus-feature-head">
+      <span class="eyebrow">02 &middot; Release Agenda</span>
+      <h2 id="agenda-title">Know which days your series are likely to return.</h2>
+      <p>The Agenda reads the upload history of each series you follow and places its next chapter on the most likely day of the week. It opens as a page inside comix.to, in the site's own look, one click from the header, with the evidence behind every placement.</p>
+    </div>
+    <figure class="shot plus-shot-dark plus-wide"><div class="shot-chrome"><i></i><i></i><i></i><span class="addr">comix.to/agenda</span></div><img src="assets/plus-agenda.jpg" width="1440" height="1000" alt="The Release Agenda open on comix.to, placing followed series on the days they are likely to get a new chapter" loading="lazy"></figure>
+    <dl class="plus-states">
+      <div><dt><i></i>On schedule</dt><dd>A steady interval across recent chapters. The day follows from it.</dd></div>
+      <div><dt><i></i>Estimated</dt><dd>Worked out from fewer or looser samples, so the day can move.</dd></div>
+      <div><dt><i></i>Late</dt><dd>The expected day has passed and the chapter has not appeared yet.</dd></div>
+      <div><dt><i></i>Unscheduled</dt><dd>Too little or too irregular a history to place a useful date.</dd></div>
+    </dl>
+    <p class="plus-note">Every date is an estimate of availability on comix.to, never an official release date. Agenda history stays on your device and is not part of Sync.</p>
+  </section>
+
+  <section class="plus-feature plus-split" id="sync" aria-labelledby="sync-title">
+    <div>
+      <span class="eyebrow" style="display:inline-block;margin-bottom:16px;">03 &middot; Sync</span>
+      <h2 id="sync-title">Your setup, on every browser you read on.</h2>
+      <p style="margin-top:16px;font-size:17px;color:var(--ink-soft);">Choose exactly what travels between up to five approved browsers. Everything is encrypted on your device before it syncs, and thirty days of restore points undo a change you regret.</p>
+      <ul>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Settings, watched series, reading progress, download markers and stats, each one opt-in</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Approve each browser once, and revoke any of them from the Plus panel</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>AES-256-GCM on your device, plus a recovery code only you hold</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Daily restore points for 30 days, and a safety point before every restore</li>
+      </ul>
+      <p class="plus-note">Comic files never travel through Sync. That is what the Cloud Library is for.</p>
+    </div>
+    <figure class="shot plus-shot-dark"><div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings / Comix Downloader Plus / Sync</span></div><img src="assets/plus-sync.png" width="2176" height="832" alt="The Plus panel's Sync tab, where each category of extension data can be switched on or off" loading="lazy"></figure>
+  </section>
+
+  <section class="plus-toolbar" aria-labelledby="toolbar-title">
+    <img src="assets/plus-popup.png" width="680" height="356" alt="The extension popup with a Plus row that opens Cloud Library and the Release Agenda" loading="lazy">
+    <div>
+      <h2 id="toolbar-title">One click from the toolbar.</h2>
+      <p>Sign in from the extension popup with a one-time code sent to your email. Once you are in, its Plus row opens Cloud Library and the Release Agenda directly, with no trip through the settings.</p>
+    </div>
   </section>
 
   <section class="plus-free-band" aria-label="Free stays free">
-    <p><strong>Free stays free.</strong> Downloads, ZIP, CBZ, subscriptions and reader tools remain accountless and unchanged, before and after Plus ships.</p>
+    <p><strong>Free stays free.</strong> Downloads, ZIP and CBZ, subscriptions and reader tools remain accountless and unchanged, before and after Plus ships.</p>
   </section>
 
   <div class="plus-detail">
@@ -245,25 +411,49 @@
       <h2 id="compare-title">Free today vs Plus as planned</h2>
       <div class="plus-compare">
         <div class="plus-row plus-row-head"><span>Capability</span><span>Free</span><span>Plus (planned)</span></div>
-        <div class="plus-row"><span>Downloads and formats</span><span class="free">Included</span><span class="free">Included</span></div>
+        <div class="plus-row"><span>Downloads, ZIP and CBZ</span><span class="free">Included</span><span class="free">Included</span></div>
         <div class="plus-row"><span>Account</span><span class="free">Not required</span><span class="free">Required</span></div>
-        <div class="plus-row"><span>Cross-device sync</span><span class="free">Local only</span><span class="yes">Five devices</span></div>
+        <div class="plus-row"><span>Cloud Library and reader</span><span class="none">Not available</span><span class="yes">Included</span></div>
+        <div class="plus-row"><span>Release Agenda</span><span class="none">Not available</span><span class="yes">Included</span></div>
+        <div class="plus-row"><span>Cross-device sync</span><span class="free">Local only</span><span class="yes">Five browsers</span></div>
         <div class="plus-row"><span>Restore history</span><span class="free">Manual export</span><span class="yes">30 days</span></div>
-        <div class="plus-row"><span>Reading migration</span><span class="none">Not available</span><span class="yes">Included</span></div>
-        <div class="plus-row"><span>External sources</span><span class="none">Not available</span><span class="yes">Included</span></div>
       </div>
     </section>
 
     <section aria-labelledby="faq-title">
       <h2 id="faq-title">Questions</h2>
       <div class="plus-faq-list">
-        <div class="plus-faq-item"><strong>Can I subscribe or sign in now?</strong><p>Not yet. Plus is in development, so there is no account to sign in to until release.</p></div>
-        <div class="plus-faq-item"><strong>When does it launch?</strong><p>No date is set. It ships when the beta holds up, and it is announced in the changelog.</p></div>
+        <div class="plus-faq-item"><strong>Can I subscribe or sign in now?</strong><p>Not yet. Plus is in private testing, so accounts are not open to the public.</p></div>
+        <div class="plus-faq-item"><strong>How much cloud storage will it include?</strong><p>That is being sized during testing and will be announced before launch.</p></div>
+        <div class="plus-faq-item"><strong>Can the service read my comics?</strong><p>No. Pages and names are encrypted on your device before upload, so the service stores data it cannot read.</p></div>
+        <div class="plus-faq-item"><strong>Do I need the extension to read on my phone?</strong><p>No. Saving from comix.to uses the extension, but reading happens in the Cloud Library in any browser you have approved.</p></div>
         <div class="plus-faq-item"><strong>Will the free extension change?</strong><p>No. Nothing that works today moves behind an account.</p></div>
         <div class="plus-faq-item"><strong>Is the price final?</strong><p>US$1.50/month with a 30-day trial is the current plan. It can still change before release.</p></div>
       </div>
     </section>
   </div>
+
+  <section class="plus-roadmap" aria-labelledby="roadmap-title">
+    <h2 id="roadmap-title">Where it stands</h2>
+    <ol>
+      <li>
+        <span class="plus-stage-tag now"><i></i>Now</span>
+        <h3>Private testing</h3>
+        <p>Cloud Library, the Release Agenda and Sync run in private test builds on real accounts.</p>
+      </li>
+      <li>
+        <span class="plus-stage-tag"><i></i>Next</span>
+        <h3>Closed beta</h3>
+        <p>A small group tries it on real libraries before anything is charged.</p>
+      </li>
+      <li>
+        <span class="plus-stage-tag"><i></i>Later</span>
+        <h3>Public release</h3>
+        <p>Sign-up opens with the trial, announced in the changelog and on GitHub releases.</p>
+      </li>
+    </ol>
+    <p class="plus-later">Also planned: moving a reading library between platforms.</p>
+  </section>
 
   <div class="plus-legal">
     <p>Everything on this page describes work in progress. Features, pricing and timing may change before release.</p>
