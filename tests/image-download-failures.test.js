@@ -48,7 +48,7 @@ function extractFunction(name) {
 
 const helperContext = {};
 vm.createContext(helperContext);
-vm.runInContext(`${extractFunction('formatImageDownloadFailure')}; globalThis.formatFailure = formatImageDownloadFailure;`, helperContext);
+vm.runInContext(`${extractFunction('imageRequestStatus')}; ${extractFunction('formatImageDownloadFailure')}; globalThis.formatFailure = formatImageDownloadFailure;`, helperContext);
 check('zero-image chapters get an explicit error',
   helperContext.formatFailure(0, 0, null) === 'No images were found for this chapter.');
 check('complete CDN rejection reports saved/total and HTTP status', (() => {
@@ -57,6 +57,11 @@ check('complete CDN rejection reports saved/total and HTTP status', (() => {
 })());
 check('partial image failure reports the incomplete count',
   helperContext.formatFailure(89, 88, new Error('HTTP 503')).includes('Only 88 of 89 images'));
+check('a server-error failure names comix as the cause instead of asking for a reload', (() => {
+  const message = helperContext.formatFailure(12, 11, Object.assign(new Error('HTTP 503'), { status: 503 }));
+  return message.includes('HTTP 503') && message.includes("comix's image server kept failing for the missing page ") &&
+    message.includes('try this chapter again later') && !message.includes('Reload the Comix page');
+})());
 
 const retryContext = {
   Date, Math, Number, String,
@@ -70,16 +75,19 @@ const retryContext = {
 vm.createContext(retryContext);
 vm.runInContext(`
   const IMAGE_TRANSIENT_MIN_RETRIES = 3;
+  const IMAGE_SERVER_ERROR_MIN_RETRIES = 5;
   ${extractFunction('imageRequestStatus')}
   ${extractFunction('isRetryableImageRequestError')}
   ${extractFunction('imageRetryLimit')}
   ${extractFunction('parseRetryAfterMs')}
   ${extractFunction('isCloudflareAccessError')}
+  ${extractFunction('cacheBustedImageUrl')}
   ${extractFunction('fetchImageWithRetry')}
   globalThis.retryApi = {
     isRetryableImageRequestError,
     imageRetryLimit,
     parseRetryAfterMs,
+    cacheBustedImageUrl,
     fetchImageWithRetry,
   };
 `, retryContext);
@@ -95,9 +103,13 @@ check('permanent image errors do not gain automatic retries',
   !retryContext.retryApi.isRetryableImageRequestError(new Error('HTTP 403')) &&
   !retryContext.retryApi.isRetryableImageRequestError(new Error('HTTP 404')));
 check('transient image failures receive at least three retries',
-  retryContext.retryApi.imageRetryLimit(1, new Error('HTTP 521')) === 3);
+  retryContext.retryApi.imageRetryLimit(1, Object.assign(new Error('timeout'), { name: 'AbortError' })) === 3 &&
+  retryContext.retryApi.imageRetryLimit(1, Object.assign(new Error('HTTP 429'), { status: 429 })) === 3);
+check("server errors receive the five retries comix's reader makes",
+  retryContext.retryApi.imageRetryLimit(1, new Error('HTTP 521')) === 5 &&
+  retryContext.retryApi.imageRetryLimit(1, Object.assign(new Error('HTTP 503'), { status: 503 })) === 5);
 check('a larger user retry setting is preserved',
-  retryContext.retryApi.imageRetryLimit(5, new Error('HTTP 520')) === 5);
+  retryContext.retryApi.imageRetryLimit(7, new Error('HTTP 520')) === 7);
 check('Retry-After seconds are converted to milliseconds',
   retryContext.retryApi.parseRetryAfterMs('2') === 2000);
 
@@ -349,6 +361,7 @@ const allContext = {
 };
 vm.createContext(allContext);
 vm.runInContext(`
+  ${extractFunction('imageRequestStatus')}
   ${extractFunction('formatImageDownloadFailure')}
   ${extractFunction('downloadAllResumeSlug')}
   ${extractFunction('isArchiveDeliveryAccepted')}
@@ -426,7 +439,7 @@ async function run() {
     (retry) => visibleRetries.push(`${retry.retryAttempt}/${retry.retryLimit}:${retry.status}`)
   );
   check('each image retry exposes its attempt, limit, and HTTP status',
-    visibleRetries.join(',') === '1/3:520,2/3:520');
+    visibleRetries.join(',') === '1/5:520,2/5:520');
 
   retryContext.fetchCalls = 0;
   retryContext.cooldowns.length = 0;
@@ -437,6 +450,45 @@ async function run() {
   try { await retryContext.retryApi.fetchImageWithRetry('https://wowpic.example/page.webp', {}, 1); } catch (_) {}
   check('a permanent image error keeps the configured retry budget',
     retryContext.fetchCalls === 2 && retryContext.cooldowns.length === 0);
+
+  // comix's origin 503 is cached by the edge for the same URL, so retries must use fresh URLs.
+  const requested = [];
+  retryContext.fetchImageForZip = async (src) => {
+    requested.push(src);
+    if (requested.length < 4) throw Object.assign(new Error('HTTP 503'), { status: 503 });
+    return { buffer: new ArrayBuffer(1), ext: 'webp' };
+  };
+  await retryContext.retryApi.fetchImageWithRetry('https://wowpic.example/i5/page', {}, 1);
+  check("after a server error every retry uses a new r= URL, like comix's reader",
+    requested.length === 4 &&
+    requested[0] === 'https://wowpic.example/i5/page' &&
+    /^https:\/\/wowpic\.example\/i5\/page\?r=1[a-z0-9]+$/.test(requested[1]) &&
+    /^https:\/\/wowpic\.example\/i5\/page\?r=2[a-z0-9]+$/.test(requested[2]) &&
+    /^https:\/\/wowpic\.example\/i5\/page\?r=3[a-z0-9]+$/.test(requested[3]) &&
+    new Set(requested).size === 4);
+  check('the fresh URL keeps an existing comix query such as ?8',
+    /^https:\/\/wowpic\.example\/i5\/page\?8&r=\w+$/.test(retryContext.retryApi.cacheBustedImageUrl('https://wowpic.example/i5/page?8', 1)));
+
+  requested.length = 0;
+  retryContext.fetchImageForZip = async (src) => {
+    requested.push(src);
+    if (requested.length === 1) throw Object.assign(new Error('HTTP 503'), { status: 503 });
+    if (requested.length === 2) throw Object.assign(new Error('timeout'), { name: 'AbortError' });
+    return { buffer: new ArrayBuffer(1), ext: 'webp' };
+  };
+  await retryContext.retryApi.fetchImageWithRetry('https://wowpic.example/i5/page', {}, 1);
+  check('once the edge holds an error, a later timeout still retries on a fresh URL',
+    requested.length === 3 && requested.slice(1).every((src) => /\?r=\w+$/.test(src)));
+
+  requested.length = 0;
+  retryContext.fetchImageForZip = async (src) => {
+    requested.push(src);
+    if (requested.length < 3) throw Object.assign(new Error('HTTP 429'), { status: 429 });
+    return { buffer: new ArrayBuffer(1), ext: 'webp' };
+  };
+  await retryContext.retryApi.fetchImageWithRetry('https://wowpic.example/i5/page', {}, 1);
+  check('rate-limit retries keep requesting the original URL',
+    requested.length === 3 && requested.every((src) => src === 'https://wowpic.example/i5/page'));
 
   resetAllEvents();
   fetchMode = 'fail';

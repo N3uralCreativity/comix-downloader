@@ -3212,6 +3212,8 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
 }
 
 const IMAGE_TRANSIENT_MIN_RETRIES = 3;
+// comix's own reader retries a failed page five times before showing "Tap to retry".
+const IMAGE_SERVER_ERROR_MIN_RETRIES = 5;
 const IMAGE_RETRY_BASE_MS = 650;
 const IMAGE_RETRY_MAX_MS = 5000;
 const IMAGE_RETRY_AFTER_MAX_MS = 15000;
@@ -3237,9 +3239,9 @@ function isRetryableImageRequestError(error) {
 
 function imageRetryLimit(configuredRetries, error) {
   const configured = Math.max(0, Math.floor(Number(configuredRetries) || 0));
-  return isRetryableImageRequestError(error)
-    ? Math.max(configured, IMAGE_TRANSIENT_MIN_RETRIES)
-    : configured;
+  if (!isRetryableImageRequestError(error)) return configured;
+  const minimum = imageRequestStatus(error) >= 500 ? IMAGE_SERVER_ERROR_MIN_RETRIES : IMAGE_TRANSIENT_MIN_RETRIES;
+  return Math.max(configured, minimum);
 }
 
 function parseRetryAfterMs(value, now = Date.now()) {
@@ -3314,19 +3316,35 @@ async function waitForChapterRecovery(retryNumber, errors = []) {
   await new Promise((resolve) => setTimeout(resolve, chapterRecoveryDelayMs(retryNumber, errors)));
 }
 
+// comix's image origin intermittently answers 503, and that error carries
+// "Cache-Control: public, max-age=14400", so the Cloudflare edge replays it for the
+// same URL for up to four hours. comix's own reader never re-requests a failed URL:
+// each retry appends a new "r=<n>" query so it reaches the origin again. Server-error
+// retries here do the same, with a unique value so no cached error is shared.
+function cacheBustedImageUrl(src, attempt) {
+  const token = `${attempt}${Math.random().toString(36).slice(2, 8)}`;
+  const hashAt = src.indexOf('#');
+  const base = hashAt === -1 ? src : src.slice(0, hashAt);
+  const hash = hashAt === -1 ? '' : src.slice(hashAt);
+  return `${base}${base.includes('?') ? '&' : '?'}r=${token}${hash}`;
+}
+
 async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal, sourceUrl, access = null) {
   let retryLimit = Math.max(0, Math.floor(Number(configuredRetries) || 0));
   let lastError = null;
+  let edgeHoldsError = false;
   for (let attempt = 0; attempt <= retryLimit; attempt++) {
     await waitForImageHostCooldown(src, signal);
     if (signal && signal.aborted) throw makeDownloadAllStoppedError();
     try {
-      const request = () => fetchImageForZip(src, cfg, signal, sourceUrl);
+      const requestSrc = edgeHoldsError ? cacheBustedImageUrl(src, attempt) : src;
+      const request = () => fetchImageForZip(requestSrc, cfg, signal, sourceUrl);
       return await (access ? access.run(request, { chapterUrl: sourceUrl }) : request());
     } catch (error) {
       if (signal && signal.aborted) throw makeDownloadAllStoppedError();
       if (isCloudflareAccessError(error)) throw error;
       lastError = error;
+      if (imageRequestStatus(error) >= 500) edgeHoldsError = true;
       retryLimit = Math.max(retryLimit, imageRetryLimit(configuredRetries, error));
       if (attempt >= retryLimit) break;
       let retryDelayMs = 0;
@@ -3388,6 +3406,11 @@ function formatImageDownloadFailure(total, saved, error) {
   const count = saved === 0
     ? `No images could be downloaded (0/${total}${reason})`
     : `Only ${saved} of ${total} images could be downloaded${reason}`;
+  if (imageRequestStatus(error) >= 500) {
+    return `${count}. comix's image server kept failing for the missing ` +
+      `page${total - saved === 1 ? '' : 's'} after several fresh attempts. This is a problem on ` +
+      'comix\'s side (its reader usually shows "Tap to retry" on the same pages); try this chapter again later.';
+  }
   return `${count}. Reload the Comix page and try again.`;
 }
 
