@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Comix Downloader Plus - Cloud Library, Release Agenda and Sync</title>
-<meta name="description" content="A preview of Comix Downloader Plus: an encrypted Cloud Library for the chapters you save, a Release Agenda for the series you follow, and sync across your browsers. In private testing, not yet available.">
+<meta name="description" content="A preview of Comix Downloader Plus: an encrypted Cloud Library for the chapters you save, a Release Agenda for the series you follow, and sync across your browsers. Now in closed beta.">
 <meta name="theme-color" content="#15171b">
 <link rel="canonical" href="https://n3uralcreativity.top/comix-downloader/plus.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Comix Downloader">
 <meta property="og:title" content="Comix Downloader Plus - Save it once. Read it anywhere.">
-<meta property="og:description" content="An encrypted Cloud Library, a Release Agenda and sync across your browsers. In private testing.">
+<meta property="og:description" content="An encrypted Cloud Library, a Release Agenda and sync across your browsers. Now in closed beta.">
 <meta property="og:url" content="https://n3uralcreativity.top/comix-downloader/plus.html">
 <meta property="og:image" content="https://n3uralcreativity.top/comix-downloader/assets/plus-cloud-library.jpg">
 <meta property="og:image:width" content="1440">
@@ -18,7 +18,7 @@
 <meta property="og:image:alt" content="The Comix Downloader Plus Cloud Library showing saved comics as covers">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Comix Downloader Plus - Save it once. Read it anywhere.">
-<meta name="twitter:description" content="An encrypted Cloud Library, a Release Agenda and sync across your browsers. In private testing.">
+<meta name="twitter:description" content="An encrypted Cloud Library, a Release Agenda and sync across your browsers. Now in closed beta.">
 <meta name="twitter:image" content="https://n3uralcreativity.top/comix-downloader/assets/plus-cloud-library.jpg">
 <link rel="icon" type="image/png" href="assets/icon128.png?v=2">
 <link rel="preload" as="image" href="assets/plus-cloud-library.jpg">
@@ -179,6 +179,8 @@
   .plus-stage-tag i { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); }
   .plus-stage-tag.now { color: var(--accent-deep); }
   .plus-stage-tag.now i { background: var(--accent); }
+.plus-stage-tag.done { color: var(--ink-soft); }
+.plus-stage-tag.done i { background: var(--ink-soft); }
   .plus-roadmap h3 { margin-top: 12px; font-size: 15.5px; font-weight: 750; }
   .plus-roadmap p { margin-top: 5px; font-size: 13.5px; color: var(--ink-soft); }
   .plus-roadmap .plus-later { margin-top: 20px; font-size: 13.5px; color: var(--muted); }
@@ -248,7 +250,7 @@
 <main id="main" tabindex="-1">
   <section class="plus-hero" aria-labelledby="plus-title">
     <div class="plus-shell plus-hero-inner">
-      <span class="plus-pill"><i></i>In private testing &middot; not yet available</span>
+      <span class="plus-pill"><i></i>Closed beta &middot; invite only</span>
       <h1 id="plus-title">Save it once. <span>Read it anywhere.</span></h1>
       <p class="lede">Comix Downloader Plus is the optional subscription we are building alongside the free extension. It keeps the chapters you save in an encrypted Cloud Library you can read on any device, shows when the series you follow are likely to return, and syncs your setup across browsers.</p>
       <div class="plus-hero-cta">
@@ -262,13 +264,13 @@
 
   <figure class="plus-stage">
     <div class="plus-window">
-      <div class="plus-window-bar" aria-hidden="true"><i></i><i></i><i></i><span>Cloud Library &mdash; private test build</span></div>
+      <div class="plus-window-bar" aria-hidden="true"><i></i><i></i><i></i><span>Cloud Library &mdash; closed beta build</span></div>
       <img src="assets/plus-cloud-library.jpg" width="1440" height="900" alt="The Cloud Library on a desktop browser, with saved comics shown as covers in a grid" fetchpriority="high">
     </div>
     <div class="plus-phone">
       <img src="assets/plus-cloud-phone.jpg" width="780" height="1688" alt="A saved chapter open in the Cloud Library reader on a phone">
     </div>
-    <figcaption>Private test build of the Cloud Library, on a desktop browser and a phone. The final interface may differ.</figcaption>
+    <figcaption>Closed beta build of the Cloud Library, on a desktop browser and a phone. The final interface may differ.</figcaption>
   </figure>
 
   <section class="plus-shell plus-pillars" aria-labelledby="pillars-title">
@@ -423,7 +425,7 @@
     <section aria-labelledby="faq-title">
       <h2 id="faq-title">Questions</h2>
       <div class="plus-faq-list">
-        <div class="plus-faq-item"><strong>Can I subscribe or sign in now?</strong><p>Not yet. Plus is in private testing, so accounts are not open to the public.</p></div>
+        <div class="plus-faq-item"><strong>Can I subscribe or sign in now?</strong><p>Plus is in closed beta: a small invited group uses it on real libraries before anything is charged. Public sign-up opens with the release, announced in the changelog and on GitHub releases.</p></div>
         <div class="plus-faq-item"><strong>How much cloud storage will it include?</strong><p>That is being sized during testing and will be announced before launch.</p></div>
         <div class="plus-faq-item"><strong>Can the service read my comics?</strong><p>Pages and names are encrypted on your device before upload. The service keeps a protected copy of your key so an email code can unlock a new device, which means it could technically open your data. It does not, except where the law requires.</p></div>
         <div class="plus-faq-item"><strong>Do I need the extension to read on my phone?</strong><p>No. Saving from comix.to uses the extension, but reading happens in the Cloud Library in any browser where you sign in with your email.</p></div>
@@ -437,14 +439,14 @@
     <h2 id="roadmap-title">Where it stands</h2>
     <ol>
       <li>
-        <span class="plus-stage-tag now"><i></i>Now</span>
+        <span class="plus-stage-tag done"><i></i>Done</span>
         <h3>Private testing</h3>
-        <p>Cloud Library, the Release Agenda and Sync run in private test builds on real accounts.</p>
+        <p>Cloud Library, the Release Agenda and Sync ran in private test builds on real accounts.</p>
       </li>
       <li>
-        <span class="plus-stage-tag"><i></i>Next</span>
+        <span class="plus-stage-tag now"><i></i>Now</span>
         <h3>Closed beta</h3>
-        <p>A small group tries it on real libraries before anything is charged.</p>
+        <p>A small invited group uses it on real libraries before anything is charged.</p>
       </li>
       <li>
         <span class="plus-stage-tag"><i></i>Later</span>
