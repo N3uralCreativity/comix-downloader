@@ -158,6 +158,17 @@ check('features.flagBrokenPages default false + in DEFAULTS', S.validate({})['fe
 check('features.blockAds is enabled by default + in schema', S.validate({})['features.blockAds'] === true && S.SCHEMA['features.blockAds'].type === 'bool');
 check('features.blockAds can be disabled', S.validate({ 'features.blockAds': false })['features.blockAds'] === false);
 check('features.crowdFlags is NOT a setting (mandatory feature)', !('features.crowdFlags' in S.DEFAULTS) && !S.SCHEMA['features.crowdFlags']);
+check('features.plusAnnouncements is on by default outside Firefox', S.validate({})['features.plusAnnouncements'] === true && S.SCHEMA['features.plusAnnouncements'].type === 'bool');
+check('features.plusAnnouncements can be turned off', S.validate({ 'features.plusAnnouncements': false })['features.plusAnnouncements'] === false);
+check('features.plusAnnouncements is listed with the Additional Features', S.TABS.find((tab) => tab.id === 'features').keys.includes('features.plusAnnouncements'));
+{
+  // Firefox policy: features outside the main purpose must be opt-in.
+  const vm = require('vm');
+  const sandbox = { chrome: { runtime: { getURL: () => 'moz-extension://0000/' } } };
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(require('fs').readFileSync(require('path').join(__dirname, '..', 'core', 'settings.js'), 'utf8'), sandbox);
+  check('features.plusAnnouncements is opt-in on Firefox', sandbox.CDLSettings.validate({})['features.plusAnnouncements'] === false);
+}
 
 // 5c. home.sections (sectionList) normalization
 const SECT = (v) => S.validate({ 'home.sections': v })['home.sections'];

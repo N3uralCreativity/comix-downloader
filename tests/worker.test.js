@@ -396,6 +396,60 @@ async function loadWorker() {
     assert.equal(oversized.status, 413);
   });
 
+  await test('promotions are accepted with built-in text, a phase and a destination override', async () => {
+    const env = environment();
+    const response = await worker.fetch(
+      request('/v1/notices', 'PUT', {
+        notices: [
+          { id: 'plus-announcement', type: 'promotion', active: true, phase: 'launch', ctaUrl: 'https://plus.example.test/account?mode=create' },
+          { id: 'odd-phase', type: 'promotion', active: false, phase: 'toString', ctaLabel: 'Ignored' },
+        ],
+      }, { Authorization: 'Bearer test-admin-token' }),
+      env,
+    );
+    const data = await body(response);
+    assert.equal(response.status, 200);
+    assert.equal(data.notices[0].type, 'promotion');
+    assert.equal(data.notices[0].phase, 'launch');
+    assert.equal(data.notices[0].title, 'Comix Downloader Plus');
+    assert.ok(data.notices[0].message.length > 0);
+    assert.equal(data.notices[0].ctaUrl, 'https://plus.example.test/account?mode=create');
+    assert.equal(data.notices[0].ctaLabel, undefined);
+    assert.equal(data.notices[1].phase, 'soon');
+    assert.equal(data.notices[1].ctaLabel, undefined);
+
+    const publicResponse = await worker.fetch(request('/v1/notices'), env);
+    const publicData = await body(publicResponse);
+    assert.deepEqual(publicData.notices.map((notice) => notice.id), ['plus-announcement']);
+  });
+
+  await test('changing a promotion phase starts a new revision', async () => {
+    const oldState = {
+      updatedAt: '2026-01-03T00:00:00.000Z',
+      notices: [{
+        id: 'plus-announcement', type: 'promotion', active: true, phase: 'soon',
+        title: 'Comix Downloader Plus', message: 'Plus', updatedAt: '2026-01-01T00:00:00.000Z',
+      }],
+    };
+    const env = environment({ BADGES: new FakeKV({ 'notices:v1': JSON.stringify(oldState) }) });
+    const same = await worker.fetch(
+      request('/v1/notices', 'PUT', {
+        notices: [{ id: 'plus-announcement', type: 'promotion', active: true, phase: 'soon', title: 'Comix Downloader Plus', message: 'Plus' }],
+      }, { Authorization: 'Bearer test-admin-token' }),
+      env,
+    );
+    assert.equal((await body(same)).notices[0].updatedAt, '2026-01-01T00:00:00.000Z');
+    const flipped = await worker.fetch(
+      request('/v1/notices', 'PUT', {
+        notices: [{ id: 'plus-announcement', type: 'promotion', active: true, phase: 'launch', title: 'Comix Downloader Plus', message: 'Plus' }],
+      }, { Authorization: 'Bearer test-admin-token' }),
+      env,
+    );
+    const flippedData = await body(flipped);
+    assert.equal(flippedData.notices[0].phase, 'launch');
+    assert.notEqual(flippedData.notices[0].updatedAt, '2026-01-01T00:00:00.000Z');
+  });
+
   await test('chapter flags are counted once per user and chapter', async () => {
     const env = environment();
     const first = await worker.fetch(

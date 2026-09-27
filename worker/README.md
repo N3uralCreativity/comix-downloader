@@ -4,7 +4,7 @@ This Cloudflare Worker supports three extension features while storing only opaq
 
 - first-seen dates for the profile tenure badge;
 - deduplicated chapter quality flags;
-- admin-controlled extension notices.
+- admin-controlled extension notices, including the Plus announcement.
 
 D1 stores first-seen records and chapter flags. KV stores the small notice document. No raw comix.to user or chapter identifiers are sent to the service.
 
@@ -80,6 +80,18 @@ wrangler dev
 ```
 
 The local-only notice dashboard is `notices-admin.html`. Open it from disk, enter the deployed Worker URL and admin token, then load or save notices. The token is stored only when the dashboard's remember option is enabled.
+
+## Notice types
+
+| Type | What readers see |
+| --- | --- |
+| `warning` | A blocking card over comix.to until it is dismissed. |
+| `notification` | A small card in the top-right corner until it is dismissed. |
+| `promotion` | The Comix Downloader Plus announcement. The extension draws it: full screen the first time, then a small phone in the bottom-right corner while the notice stays active. |
+
+A promotion has no title or message of its own; the layout and text ship with the extension (`content/content_plus_announce.js`, from v4.2.38). Its `phase` is `soon` (links to the Plus page) or `launch` (starts the free trial), and `ctaUrl` can override the button destination. Changing the phase, or disabling and re-enabling the notice, starts a new revision, so everyone sees the full screen once more. The extension never shows it in the reader, while the Download All panel is open, to Plus members, or to readers who turned off **Show Plus announcements** (off by default on Firefox). Older extension versions ignore promotions.
+
+To run it from the dashboard: **Add Plus Announcement**, **Save All**, then **Enable**. Switch **Phase** to **Launch (Plus is out)** and **Save All** on launch day; **Disable** ends the campaign.
 
 ## Continuous validation and deployment
 

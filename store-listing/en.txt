@@ -14,6 +14,7 @@ Key features:
 - Configurable filenames, chapter folders, format-specific archive splitting, and ComicInfo metadata
 - Blocking for Comix's intrusive click ads, popunders, and transparent overlays, enabled by default and configurable in Settings
 - Optional reading statistics, resume tools, subscriptions, and push-to-library support
+- Occasional announcements about Comix Downloader Plus on comix.to (full screen once, then a small corner button), which you can turn off in Settings. On Firefox they stay off unless you turn them on
 
 Core downloads, settings, history, and reading statistics are processed locally in your browser. Built-in profile badges, community chapter flags, and extension notices contact the project's Cloudflare service using hashed identifiers or the extension version. Push-to-library sends files only to the server you configure. See the privacy policy for complete details.
 

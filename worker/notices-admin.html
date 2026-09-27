@@ -17,6 +17,7 @@
       --danger: #b91c1c;
       --warn: #b45309;
       --ok: #047857;
+      --plus: #7c3aed;
     }
     * { box-sizing: border-box; }
     body {
@@ -129,6 +130,15 @@
     }
     .notice.warning { border-left-color: var(--warn); }
     .notice.notification { border-left-color: var(--accent); }
+    .notice.promotion { border-left-color: var(--plus); }
+    .promotion-only { display: none !important; }
+    .notice.promotion .promotion-only { display: grid !important; }
+    .notice.promotion .standard-only { display: none !important; }
+    .hint {
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 13px;
+    }
     .notice-head {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -218,6 +228,7 @@
       <div class="row">
         <button id="reloadBtn" class="secondary" type="button">Reload</button>
         <button id="addNoticeBtn" class="secondary" type="button">Add Notice</button>
+        <button id="addPlusBtn" class="secondary" type="button">Add Plus Announcement</button>
         <button id="saveAllBtn" type="button">Save All</button>
       </div>
     </header>
@@ -268,25 +279,35 @@
           <select class="type-input">
             <option value="warning">warning</option>
             <option value="notification">notification</option>
+            <option value="promotion">Plus announcement</option>
           </select>
         </label>
         <label>
           ID
           <input class="id-input" type="text" spellcheck="false">
         </label>
-        <label>
+        <label class="standard-only">
           Button label
           <input class="cta-label-input" type="text">
         </label>
+        <label class="promotion-only">
+          Phase
+          <select class="phase-input">
+            <option value="soon">Coming soon</option>
+            <option value="launch">Launch (Plus is out)</option>
+          </select>
+        </label>
         <label>
-          Button URL
+          <span class="standard-only">Button URL</span>
+          <span class="promotion-only">Button URL (optional, leave empty for the default)</span>
           <input class="cta-url-input" type="url" spellcheck="false">
         </label>
-        <label class="wide">
+        <p class="wide hint promotion-only">The extension draws this announcement itself: full screen once, then a small phone in the bottom-right corner of comix.to until you disable it. Coming soon links to the Plus page; Launch starts the free trial. Changing the phase shows the full screen once more to everyone. Plus members and readers who turned announcements off never see it.</p>
+        <label class="wide standard-only">
           Title
           <input class="title-input" type="text">
         </label>
-        <label class="wide">
+        <label class="wide standard-only">
           Message
           <textarea class="message-input"></textarea>
         </label>
@@ -433,16 +454,45 @@
         setStatus('Added a local notice draft. Edit it, then click Save All.');
       }
 
+      function addPlusAnnouncement() {
+        notices = collectNotices();
+        if (notices.some((notice) => notice.type === 'promotion')) {
+          setStatus('A Plus announcement already exists. Change its phase or enable it instead.', 'error');
+          return;
+        }
+        notices.push({
+          id: 'plus-announcement',
+          type: 'promotion',
+          phase: 'soon',
+          active: false,
+          title: 'Comix Downloader Plus',
+          message: '',
+          ctaUrl: '',
+        });
+        render();
+        setStatus('Added the Plus announcement (inactive). Click Save All, then Enable when you want it live.');
+      }
+
       function collectNotices() {
-        return Array.from(noticeList.querySelectorAll('.notice')).map((node) => ({
-          id: node.querySelector('.id-input').value.trim(),
-          type: node.querySelector('.type-input').value,
-          active: node.querySelector('.active-input').checked,
-          title: node.querySelector('.title-input').value.trim(),
-          message: node.querySelector('.message-input').value.trim(),
-          ctaLabel: node.querySelector('.cta-label-input').value.trim(),
-          ctaUrl: node.querySelector('.cta-url-input').value.trim(),
-        })).filter((notice) => notice.id && notice.type && notice.title && notice.message);
+        return Array.from(noticeList.querySelectorAll('.notice')).map((node) => {
+          const notice = {
+            id: node.querySelector('.id-input').value.trim(),
+            type: node.querySelector('.type-input').value,
+            active: node.querySelector('.active-input').checked,
+            title: node.querySelector('.title-input').value.trim(),
+            message: node.querySelector('.message-input').value.trim(),
+            ctaLabel: node.querySelector('.cta-label-input').value.trim(),
+            ctaUrl: node.querySelector('.cta-url-input').value.trim(),
+          };
+          if (notice.type === 'promotion') notice.phase = node.querySelector('.phase-input').value;
+          return notice;
+        }).filter((notice) => notice.id && notice.type && (notice.type === 'promotion' || (notice.title && notice.message)));
+      }
+
+      function applyTypeView(node) {
+        const type = node.querySelector('.type-input').value;
+        node.classList.remove('warning', 'notification', 'promotion');
+        node.classList.add(type === 'warning' || type === 'promotion' ? type : 'notification');
       }
 
       function render() {
@@ -459,9 +509,11 @@
 
       function renderNotice(notice) {
         const node = template.content.firstElementChild.cloneNode(true);
-        node.classList.add(notice.type === 'warning' ? 'warning' : 'notification');
+        const promotion = notice.type === 'promotion';
         node.querySelector('.notice-title').textContent = notice.title || notice.id;
-        node.querySelector('.notice-type').textContent = notice.type;
+        node.querySelector('.notice-type').textContent = promotion
+          ? 'Plus announcement · ' + (notice.phase === 'launch' ? 'launch' : 'coming soon')
+          : notice.type;
         const state = node.querySelector('.notice-state');
         state.textContent = notice.active ? 'active' : 'inactive';
         state.classList.add(notice.active ? 'on' : 'off');
@@ -473,6 +525,9 @@
         node.querySelector('.message-input').value = notice.message || '';
         node.querySelector('.cta-label-input').value = notice.ctaLabel || '';
         node.querySelector('.cta-url-input').value = notice.ctaUrl || '';
+        node.querySelector('.phase-input').value = notice.phase === 'launch' ? 'launch' : 'soon';
+        applyTypeView(node);
+        node.querySelector('.type-input').addEventListener('change', () => applyTypeView(node));
         const toggleBtn = node.querySelector('.toggle-one');
         toggleBtn.textContent = notice.active ? 'Disable' : 'Enable';
         toggleBtn.addEventListener('click', () => run(() => toggleNotice(notice.id, !notice.active)));
@@ -496,6 +551,7 @@
 
       document.getElementById('reloadBtn').addEventListener('click', () => run(loadNotices));
       document.getElementById('addNoticeBtn').addEventListener('click', addNotice);
+      document.getElementById('addPlusBtn').addEventListener('click', addPlusAnnouncement);
       document.getElementById('saveAllBtn').addEventListener('click', () => run(saveAll));
       document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
       rememberTokenEl.addEventListener('change', saveSettings);

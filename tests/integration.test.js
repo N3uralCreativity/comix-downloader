@@ -237,7 +237,7 @@ check('manifest metadata uses WebExtension localization',
   mf.name === '__MSG_extensionName__' &&
   mf.description === '__MSG_extensionDescription__');
 const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/content_title.js'));
-check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['core/settings.js', 'content/content_notices.js', 'core/cdl-features-core.js', 'core/cdl-home-core.js', 'core/cdl-badge-core.js', 'content/content_title.js', 'content/content_features.js', 'content/content_home.js', 'content/content_profile.js']));
+check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['core/settings.js', 'content/content_notices.js', 'content/content_plus_announce.js', 'core/cdl-features-core.js', 'core/cdl-home-core.js', 'core/cdl-badge-core.js', 'content/content_title.js', 'content/content_features.js', 'content/content_home.js', 'content/content_profile.js']));
 // The title/features bundle must match ALL of both Comix domains (not just
 // /title/*) so it
 // is present when a Next.js soft-navigation lands on a title page — otherwise the
@@ -245,6 +245,12 @@ check('content_scripts load in dependency order', mainCs && JSON.stringify(mainC
 check('title content scripts match both Comix domains (SPA soft-nav)', !!mainCs &&
   ['*://comix.to/*', '*://comix.ws/*'].every((pattern) => mainCs.matches.includes(pattern)));
 check('remote notices content script is registered', !!mainCs && mainCs.js.indexOf('content/content_notices.js') !== -1);
+check('Plus announcement loads with settings, after the notices script', !!mainCs &&
+  mainCs.js.indexOf('content/content_plus_announce.js') > mainCs.js.indexOf('content/content_notices.js') &&
+  mainCs.js.indexOf('core/settings.js') < mainCs.js.indexOf('content/content_plus_announce.js'));
+check('Plus announcement images are exposed to Comix pages only', (mf.web_accessible_resources || []).some((entry) =>
+  ['assets/plus-announce/cloud-library.jpg', 'assets/plus-announce/cloud-phone.jpg'].every((file) => entry.resources.includes(file)) &&
+  entry.matches.every((pattern) => /^\*:\/\/comix\.(to|ws)\/\*$/.test(pattern))));
 const bridgeCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/extract-bridge.js'));
 check('extract-bridge runs at document_start in the MAIN world', !!bridgeCs && bridgeCs.run_at === 'document_start' && bridgeCs.world === 'MAIN');
 check('ad blocker loads before the bridge in MAIN world', !!bridgeCs && JSON.stringify(bridgeCs.js) === JSON.stringify(['content/adblock-main.js', 'content/extract-bridge.js']));

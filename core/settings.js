@@ -25,6 +25,15 @@
   };
   if (PDF_OUTPUT_VISIBLE) OUTPUT_FORMAT_OPTIONS.pdf = 'PDF (one document per chapter)';
 
+  // Firefox add-on policy makes features outside the main purpose opt-in, so the Plus
+  // announcement starts off there and on elsewhere. Firefox extension URLs use moz-extension://.
+  var IS_FIREFOX = (function () {
+    try {
+      return typeof chrome !== 'undefined' && !!chrome.runtime && typeof chrome.runtime.getURL === 'function' &&
+        chrome.runtime.getURL('').indexOf('moz-extension://') === 0;
+    } catch (e) { return false; }
+  })();
+
   // chrome.* is present in every extension context; Firefox also exposes browser.*.
   var storage = (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local)
     ? chrome.storage.local
@@ -116,6 +125,7 @@
     'features.recapOnReturn': false,       // on a series page, recap where you left off + what's next
     'features.readingStats': false,        // track reading time/chapters locally + show a Home stats section
     'features.catchupEstimate': false,     // on a series page, estimate time to catch up at your pace
+    'features.plusAnnouncements': !IS_FIREFOX, // Plus announcement on comix.to (opt-in on Firefox)
     // Community chapter flags (v3.0.0) are a built-in, always-on feature — intentionally NOT a
     // setting (like the profile tenure badge). See content_features.js.
 
@@ -326,6 +336,8 @@
       label: 'Reading stats', help: 'Quietly tracks how much you actually read (active time and chapters finished, on this device only) and shows a "Your Reading" section on the custom Home page: this week’s chapters, your streak, hours read and top series. Nothing is sent anywhere; turn it off to stop tracking.' },
     'features.catchupEstimate': { type: 'bool', risk: 'none',
       label: 'Catch-up time estimate', help: 'On a series page, shows how many chapters you have left and roughly how long they’ll take at your measured reading pace (falls back to ~4 min per chapter until it has learned your speed). All measured and stored on this device only.' },
+    'features.plusAnnouncements': { type: 'bool', risk: 'none',
+      label: 'Show Plus announcements', help: 'Lets Comix Downloader show its own Plus announcement on comix.to: full screen once, then a small phone in the bottom-right corner while the announcement runs. It never appears in the reader, during a download, or for Plus members. Turn it off to hide it completely.' },
 
     'home.customLayout': { type: 'bool', risk: 'glitchy',
       label: 'Custom Home page', help: 'Replace the Comix Home page with a focused, larger layout built from the sections you choose below. Everything else (announcements, banners, sidebar) is hidden.',
@@ -378,7 +390,7 @@
     { id: 'advanced', label: 'Advanced', icon: 'warn',
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
     { id: 'features', label: 'Additional Features', icon: 'sparkles',
-      keys: ['features.blockAds', 'features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'features.prefetchNext', 'features.resumeScroll', 'features.recapOnReturn', 'features.readingStats', 'features.catchupEstimate', 'reader.keyboardShortcuts'] },
+      keys: ['features.blockAds', 'features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'features.prefetchNext', 'features.resumeScroll', 'features.recapOnReturn', 'features.readingStats', 'features.catchupEstimate', 'reader.keyboardShortcuts', 'features.plusAnnouncements'] },
     { id: 'home', label: 'Home', icon: 'sparkles',
       keys: ['home.customLayout', 'home.sections', 'home.hero', 'home.heroSource', 'home.heroSkipRead',
         'home.cardStyle', 'home.rows', 'home.density', 'home.showProgress', 'home.itemsPerSection',

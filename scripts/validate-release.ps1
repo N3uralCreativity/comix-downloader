@@ -98,13 +98,15 @@ function Assert-ChromiumManifest($Manifest, [string]$Target, [string]$ExpectedVe
     'assets/settings-outro/dance-man.gif',
     'assets/settings-outro/dance-shaggy.gif',
     'assets/settings-outro/dance-flamingo.gif',
-    'assets/settings-outro/outro.mp3'
+    'assets/settings-outro/outro.mp3',
+    'assets/plus-announce/cloud-library.jpg',
+    'assets/plus-announce/cloud-phone.jpg'
   )
   $accessible = @($Manifest.web_accessible_resources | ForEach-Object { $_.resources })
-  Assert-Release ((($accessible | Sort-Object) -join "`n") -eq (($outroResources | Sort-Object) -join "`n")) "$target has the wrong settings-outro resources."
-  $outroMatches = @($Manifest.web_accessible_resources | ForEach-Object { $_.matches })
+  Assert-Release ((($accessible | Sort-Object) -join "`n") -eq (($outroResources | Sort-Object) -join "`n")) "$target has the wrong web-accessible resources."
+  $outroMatches = @($Manifest.web_accessible_resources | ForEach-Object { $_.matches } | Sort-Object -Unique)
   $expectedOutroMatches = @('*://comix.to/*', '*://comix.ws/*')
-  Assert-Release ((($outroMatches | Sort-Object) -join ',') -eq (($expectedOutroMatches | Sort-Object) -join ',')) "$target exposes settings-outro resources beyond supported Comix sites."
+  Assert-Release ((($outroMatches | Sort-Object) -join ',') -eq (($expectedOutroMatches | Sort-Object) -join ',')) "$target exposes web-accessible resources beyond supported Comix sites."
 }
 
 $rootManifest = Get-Content -LiteralPath (Join-Path $Root 'manifest.json') -Raw | ConvertFrom-Json
@@ -141,6 +143,9 @@ $expectedOutroFiles = @(
 )
 foreach ($file in $expectedOutroFiles) {
   Assert-Release ($referenceMap.Contains("assets/settings-outro/$file")) "Chrome package is missing settings outro asset $file."
+}
+foreach ($path in @('content/content_plus_announce.js', 'assets/plus-announce/cloud-library.jpg', 'assets/plus-announce/cloud-phone.jpg')) {
+  Assert-Release ($referenceMap.Contains($path)) "Chrome package is missing Plus announcement file $path."
 }
 
 foreach ($target in $chromiumTargets) {

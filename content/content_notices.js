@@ -4,7 +4,8 @@
  * GET /v1/notices returns admin-controlled notice definitions from the worker.
  * Warnings block the page until the user clicks a Close text button. Closed
  * notices stay dismissed in extension storage until the admin changes that
- * notice revision.
+ * notice revision. A "promotion" notice is the Plus announcement; it is handed
+ * to content_plus_announce.js, which draws it and keeps its own state.
  */
 (function () {
   'use strict';
@@ -48,9 +49,11 @@
     const type = asText(raw.type, 20).toLowerCase();
     const title = asText(raw.title, 120);
     const message = asText(raw.message, 1200);
-    if (!id || !/^(warning|notification)$/.test(type) || !title || !message) return null;
+    if (!id || !/^(warning|notification|promotion)$/.test(type)) return null;
+    // A promotion carries no text: content_plus_announce.js draws the Plus announcement.
+    if (type !== 'promotion' && (!title || !message)) return null;
 
-    return {
+    const notice = {
       id,
       type,
       title,
@@ -59,6 +62,8 @@
       ctaLabel: asText(raw.ctaLabel || (raw.button && raw.button.label), 80),
       ctaUrl: safeUrl(raw.ctaUrl || (raw.button && raw.button.url)),
     };
+    if (type === 'promotion') notice.phase = asText(raw.phase, 20).toLowerCase() === 'launch' ? 'launch' : 'soon';
+    return notice;
   }
 
   function noticeRevisionKey(notice) {
@@ -187,7 +192,8 @@
       .slice(0, MAX_NOTICES)
       .map((notice) => cleanNotice(notice, fallbackUpdatedAt))
       .filter(Boolean)
-      .filter((notice) => !dismissed.has(noticeRevisionKey(notice)));
+      // Closing a promotion only moves it to its corner, so it keeps its own state.
+      .filter((notice) => notice.type === 'promotion' || !dismissed.has(noticeRevisionKey(notice)));
   }
 
   function root() {
@@ -696,9 +702,19 @@
 
   function render(notices) {
     if (!notices.length || !document.documentElement) return;
-    const shadow = root();
-    renderWarnings(shadow, notices.filter((notice) => notice.type === 'warning'));
-    renderNotifications(shadow, notices.filter((notice) => notice.type === 'notification'));
+    const warnings = notices.filter((notice) => notice.type === 'warning');
+    const notifications = notices.filter((notice) => notice.type === 'notification');
+    const promotion = notices.find((notice) => notice.type === 'promotion');
+    if (warnings.length || notifications.length) {
+      const shadow = root();
+      renderWarnings(shadow, warnings);
+      renderNotifications(shadow, notifications);
+    }
+    // A warning always wins: the announcement then waits in its corner until a later page load.
+    const announce = window.__cdlPlusAnnounce;
+    if (promotion && announce && typeof announce.show === 'function') {
+      announce.show(promotion, { warningShown: warnings.length > 0 });
+    }
   }
 
   function boot() {

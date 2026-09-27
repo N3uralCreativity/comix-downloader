@@ -68,6 +68,7 @@ assert.ok(source.includes("window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const declaredResources = manifest.web_accessible_resources
   .flatMap((entry) => entry.resources || [])
+  .filter((resource) => resource.startsWith('assets/settings-outro/'))
   .map((resource) => path.basename(resource))
   .sort();
 assert.deepStrictEqual(declaredResources, expectedFiles.slice().sort());

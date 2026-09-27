@@ -30,7 +30,12 @@ const RATE_LIMIT_SECONDS = 60;
 const MAX_AUTH_TOKEN_LENGTH = 512;
 const NOTICE_KV_KEY = 'notices:v1';
 const NOTICE_ID_RE = /^[a-z0-9][a-z0-9_.:-]{0,80}$/i;
-const NOTICE_TYPES = new Set(['warning', 'notification']);
+const NOTICE_TYPES = new Set(['warning', 'notification', 'promotion']);
+// A promotion is the Plus announcement drawn by the extension itself. Its layout and
+// text ship with the extension; the phase picks the "coming soon" or "launch" copy.
+const PROMOTION_PHASES = new Set(['soon', 'launch']);
+const PROMOTION_TITLE = 'Comix Downloader Plus';
+const PROMOTION_MESSAGE = 'Plus announcement on comix.to. Its layout and text are built into the extension.';
 const DEFAULT_NOTICES = [
   {
     id: 'scramble-regression-2026-07',
@@ -142,15 +147,23 @@ function sanitizeNotice(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const id = stringValue(raw.id, 81);
   const type = stringValue(raw.type, 20).toLowerCase();
-  const title = stringValue(raw.title, 120);
-  const message = stringValue(raw.message, 1200);
+  const promotion = type === 'promotion';
+  const title = stringValue(raw.title, 120) || (promotion ? PROMOTION_TITLE : '');
+  const message = stringValue(raw.message, 1200) || (promotion ? PROMOTION_MESSAGE : '');
   if (!NOTICE_ID_RE.test(id) || !NOTICE_TYPES.has(type) || !title || !message) return null;
   const notice = { id, type, active: raw.active === true, title, message };
+  if (promotion) {
+    const phase = stringValue(raw.phase, 20).toLowerCase();
+    notice.phase = PROMOTION_PHASES.has(phase) ? phase : 'soon';
+  }
   const updatedAt = isoValue(raw.updatedAt);
   if (updatedAt) notice.updatedAt = updatedAt;
   const ctaLabel = stringValue(raw.ctaLabel || (raw.button && raw.button.label), 80);
   const ctaUrl = cleanUrl(raw.ctaUrl || (raw.button && raw.button.url));
-  if (ctaLabel && ctaUrl) {
+  if (promotion) {
+    // The extension supplies the button text; only a destination override is kept.
+    if (ctaUrl) notice.ctaUrl = ctaUrl;
+  } else if (ctaLabel && ctaUrl) {
     notice.ctaLabel = ctaLabel;
     notice.ctaUrl = ctaUrl;
   }
@@ -196,6 +209,7 @@ function noticeRevisionFields(notice) {
     message: notice.message,
     ctaLabel: notice.ctaLabel || '',
     ctaUrl: notice.ctaUrl || '',
+    phase: notice.phase || '',
   });
 }
 
