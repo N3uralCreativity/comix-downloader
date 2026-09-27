@@ -8,6 +8,10 @@ kv_namespaces = [
   { binding = "BADGES", id = "8eebf9a8f2734ebab0efb54b7d94ea36" }
 ]
 
+# Smart Placement is enabled on the deployed Worker; keep it so deploys don't turn it off.
+[placement]
+mode = "smart"
+
 [[d1_databases]]
 binding = "FLAGS_DB"
 database_name = "comix-downloader-community"
