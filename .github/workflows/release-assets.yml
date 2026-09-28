@@ -72,7 +72,8 @@ jobs:
 
   mihon:
     name: Package Mihon APK
-    runs-on: ubuntu-latest
+    # Pinned: a runner image update broke the Mihon build for three releases. Move it deliberately.
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
@@ -180,7 +181,8 @@ jobs:
 
   mihon-repo:
     name: Publish Mihon extension repo
-    runs-on: ubuntu-latest
+    # Pinned: a runner image update broke the Mihon build for three releases. Move it deliberately.
+    runs-on: ubuntu-24.04
     needs: mihon
     if: ${{ !contains(github.event.release.tag_name || inputs.tag, '-') }}
     permissions:
