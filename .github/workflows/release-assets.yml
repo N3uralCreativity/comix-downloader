@@ -3,6 +3,16 @@ name: Build release assets
 on:
   release:
     types: [published]
+  # Rebuild the Mihon APK and the Mihon extension repo for a release that already
+  # exists, for example after a failed Mihon job. A release event always runs the
+  # workflow file from its tagged commit, so re-running an old run cannot pick up
+  # a fix. Browser ZIPs and the version sync run only for newly published releases.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild the Mihon APK for (for example v4.2.38)
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -10,6 +20,7 @@ permissions:
 jobs:
   browser:
     name: Package and validate browser ZIPs
+    if: ${{ github.event_name == 'release' }}
     runs-on: windows-latest
 
     steps:
@@ -62,12 +73,14 @@ jobs:
   mihon:
     name: Package Mihon APK
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
     steps:
       - name: Check out release tag
         uses: actions/checkout@v6.0.2
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -75,8 +88,36 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # v3 installed the legacy "tools" package by default, which newer runner
+      # images no longer have ("Failed to find package 'tools'"). v4 does not.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Stamp the release version for Mihon
+        # The APK's versionCode comes from manifest.json (4.2.38 -> 4023800), which the
+        # tagged commit still carries at the previous version (sync-version bumps it after
+        # the build). Use the tag, as the browser build does, so Mihon sees every release
+        # as an update. A prerelease (v4.3.0-beta) builds one code below its final
+        # release, so installing the final release later is still an update.
+        run: |
+          version="$(echo "$RELEASE_TAG" | grep -oE '[0-9]+(\.[0-9]+){1,3}' | head -n1)"
+          if [ -z "$version" ]; then
+            echo "::error::No version number in release tag $RELEASE_TAG."
+            exit 1
+          fi
+          IFS=. read -r major minor patch build <<< "$version"
+          code=$(( ${major:-0} * 1000000 + ${minor:-0} * 10000 + ${patch:-0} * 100 + ${build:-0} ))
+          stamp="$version"
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            code=$(( code - 1 ))
+            stamp="$(( code / 1000000 )).$(( code / 10000 % 100 )).$(( code / 100 % 100 )).$(( code % 100 ))"
+          fi
+          sed -i -E "0,/\"version\"[[:space:]]*:[[:space:]]*\"[^\"]+\"/s//\"version\": \"${stamp}\"/" manifest.json
+          grep -q "\"version\": \"${stamp}\"" manifest.json || { echo "::error::Could not stamp ${stamp} into manifest.json."; exit 1; }
+          echo "MIHON_VERSION_CODE=${code}" >> "$GITHUB_ENV"
+          echo "Building the Mihon APK for ${RELEASE_TAG} as ${stamp} (versionCode ${code})"
 
       - name: Install Android platform
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
@@ -111,8 +152,6 @@ jobs:
 
       - name: Stage Mihon APK
         shell: bash
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           version="$(echo "$RELEASE_TAG" | grep -oE '[0-9]+(\.[0-9]+){1,3}' | head -n1)"
           suffix=""
@@ -125,27 +164,39 @@ jobs:
             echo "No Mihon APK was generated." >&2
             exit 1
           fi
+          # Mihon only offers an update when versionCode goes up; make sure it matches the tag.
+          actual="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -oE "versionCode='[0-9]+'" | grep -oE '[0-9]+')"
+          echo "Mihon APK versionCode: ${actual} (expected ${MIHON_VERSION_CODE} for ${RELEASE_TAG})"
+          if [ "$actual" != "$MIHON_VERSION_CODE" ]; then
+            echo "::error::The Mihon APK has versionCode ${actual}, expected ${MIHON_VERSION_CODE} for ${RELEASE_TAG}."
+            exit 1
+          fi
           cp "$apk" "dist/release/comix-mihon-v${version}${suffix}.apk"
 
       - name: Upload Mihon APK to release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: gh release upload "$RELEASE_TAG" dist/release/comix-mihon-v*.apk --clobber
 
   mihon-repo:
     name: Publish Mihon extension repo
     runs-on: ubuntu-latest
     needs: mihon
-    if: ${{ !contains(github.event.release.tag_name, '-') }}
+    if: ${{ !contains(github.event.release.tag_name || inputs.tag, '-') }}
     permissions:
       contents: write
+    # Every run force-pushes the repo branch; run them one at a time.
+    concurrency:
+      group: mihon-repo-branch
+      cancel-in-progress: false
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
     steps:
       - name: Check out release tag
         uses: actions/checkout@v6.0.2
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -154,7 +205,9 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android build-tools
         run: sdkmanager "build-tools;35.0.0"
@@ -165,7 +218,6 @@ jobs:
       - name: Download Mihon APK from release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           mkdir -p downloaded
           gh release download "$RELEASE_TAG" \
@@ -198,9 +250,27 @@ jobs:
             --apk "${{ steps.pickapk.outputs.apk }}" \
             --out repo-staging
 
-      - name: Publish to repo branch
+      # A manual run for an older release (for example to attach a missing APK) must not
+      # roll the Mihon repo back: Mihon users would then never be offered the newer APK.
+      - name: Check the published Mihon repo is not newer
+        id: guard
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          new_code="$(python3 -c 'import json; print(json.load(open("repo-staging/index.min.json"))[0]["code"])')"
+          live="$(gh api "repos/${GITHUB_REPOSITORY}/contents/index.min.json?ref=repo" -H 'Accept: application/vnd.github.raw' 2>/dev/null)" || live='[]'
+          live_code="$(printf '%s' "$live" | python3 -c 'import json, sys; d = json.load(sys.stdin); print(d[0]["code"] if d else 0)')"
+          echo "Published Mihon repo versionCode: ${live_code}; this build: ${new_code}"
+          if [ "$new_code" -lt "$live_code" ]; then
+            echo "::warning::${RELEASE_TAG} (versionCode ${new_code}) is older than the published Mihon repo (${live_code}). The APK is on the release; the repo branch was left unchanged."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to repo branch
+        if: ${{ steps.guard.outputs.publish == 'true' }}
+        env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Move staged tree out of the source checkout so we can re-init.
@@ -219,8 +289,8 @@ jobs:
   sync-version:
     name: Sync committed version + docs site
     runs-on: ubuntu-latest
-    # Only full releases (no prerelease suffix) update the committed repo + Pages site.
-    if: ${{ !contains(github.event.release.tag_name, '-') }}
+    # Only newly published full releases (no prerelease suffix) update the committed repo + Pages site.
+    if: ${{ github.event_name == 'release' && !contains(github.event.release.tag_name, '-') }}
     permissions:
       contents: write
 

@@ -48,7 +48,7 @@ If Android reports that another Comix source extension is already installed, uni
 
 ## Build requirements
 
-- JDK 17+
+- A full JDK 17+ (a JRE is not enough: Gradle needs `javac`)
 - Android SDK with API 35 + `build-tools;35.0.0`
 - Network access for Gradle dependencies
 
@@ -73,6 +73,10 @@ src/en/comix/build/outputs/apk/release/
 ```
 
 The release workflow renames the APK to `comix-mihon-vX.Y.Z.apk` and attaches it to the GitHub release.
+
+The APK's `versionCode` comes from the extension version in the repository's `manifest.json` (`4.2.38` becomes `4023800`). A release tag's commit still carries the previous version, because the committed version is bumped after the release is built, so the workflow stamps the tag's version into `manifest.json` first and then checks the built APK with `aapt`. Mihon only offers an update when `versionCode` goes up.
+
+If the Mihon jobs fail for a release, fix the cause on `master`, then run **Build release assets** from the Actions tab (Run workflow) with that release's tag. A manual run rebuilds and uploads the APK and republishes the Mihon repo for that tag; browser packages and the version sync are left alone. Re-running the old failed run would not help, because a release run always uses the workflow file from the tagged commit. For an older release a manual run only attaches the APK: the Mihon repo is left alone when it already serves a newer version, so Mihon users are never rolled back. Prerelease tags (`v4.3.0-beta`) build one `versionCode` below their final release and are never published to the Mihon repo.
 
 ## Publish the Mihon repo
 
@@ -111,7 +115,7 @@ For a stable release pipeline:
 4. Decode `SIGNING_KEYSTORE_B64` to `signingkey.jks` inside the workflow before `gradlew assembleRelease` (a single `echo "$SECRET" | base64 -d > signingkey.jks` step).
 5. Keep the keystore offline. **Never commit it.**
 
-Until that's in place, every fresh release published to the `repo` branch will force users to uninstall and reinstall manually.
+The release workflow does step 4 and refuses to build without `SIGNING_KEYSTORE_B64`, so a debug-signed APK never reaches the `repo` branch.
 
 ## Windows SSL note
 
