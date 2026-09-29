@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plus settings visual fixture</title>
+<link rel="icon" href="data:,">
+<style>
+  * { box-sizing: border-box; }
+  :root { color-scheme: dark; --panel: #202326; --muted: #9297a0; }
+  body { margin: 0; min-height: 100vh; background: #151719; color: #f2f3f5; font: 14px/1.5 Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  button, input { letter-spacing: 0; }
+  .settings { width: min(1680px, calc(100% - 32px)); margin: 28px auto; display: grid; grid-template-columns: 218px minmax(0, 1fr); border: 1px solid #30343a; background: #1b1e21; }
+  .sidebar { padding: 20px 12px; border-right: 1px solid #30343a; background: #181a1d; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 9px 18px; border-bottom: 1px solid #30343a; font-weight: 750; }
+  .mark { display: grid; place-items: center; width: 28px; height: 28px; color: #fff; background: #7753d7; font-size: 15px; }
+  .nav { display: grid; gap: 3px; margin-top: 16px; }
+  .nav span { padding: 9px 10px; color: #969ba4; font-size: 12.5px; }
+  .nav .active { color: #fff; background: #29243a; border-left: 3px solid #8b5cf6; padding-left: 7px; }
+  .main { min-width: 0; padding: 30px 34px 36px; }
+  .crumb { color: #8b5cf6; font: 700 10px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; }
+  h1 { margin: 8px 0 3px; font-size: 23px; line-height: 1.2; letter-spacing: 0; }
+  .intro { margin: 0 0 25px; color: #9297a0; font-size: 13px; }
+  #mount { border-top: 1px solid #34383e; padding-top: 22px; }
+  #mount > .section { margin: 0; }
+  @media (max-width: 720px) {
+    .settings { width: 100%; margin: 0; grid-template-columns: 1fr; border-width: 0; }
+    .sidebar { display: none; }
+    .main { padding: 24px 18px 30px; }
+  }
+</style>
+<script>
+  (function () {
+    var categories = [
+      { id: 'settings', label: 'Settings and presets', description: 'Extension settings and per-series presets.' },
+      { id: 'subscriptions', label: 'Watched series', description: 'Series watched for new chapters.' },
+      { id: 'progress', label: 'Reading progress', description: 'Resume chapters and reader positions.' },
+      { id: 'downloads', label: 'Downloaded chapters', description: 'Downloaded-chapter markers only, never files.' },
+      { id: 'stats', label: 'Reading statistics', description: 'Per-device reading totals combined locally.' }
+    ];
+    var view = {
+      ok: true,
+      signedIn: true,
+      encryptionReady: true,
+      pendingRecoveryCode: null,
+      categories: categories,
+      recommendedCategories: categories.map(function (item) { return item.id; }),
+      state: {
+        setupStarted: true,
+        selectedCategories: ['settings', 'subscriptions', 'progress', 'downloads', 'stats'],
+        lastSyncAt: '2026-08-17T14:22:00.000Z',
+        lastError: null,
+        account: {
+          state: 'trial',
+          trialEnd: '2026-09-16T14:00:00.000Z',
+          deviceCount: 2,
+          deviceLimit: 5,
+          storageBytes: 286720,
+          encryptionInitialized: true,
+          device: { id: 'dev_preview', name: 'Chrome on Windows', approved: true }
+        }
+      }
+    };
+    var mode = new URLSearchParams(location.search).get('mode');
+    if (mode === 'signed-out') {
+      view.signedIn = false;
+      view.encryptionReady = false;
+      view.state.setupStarted = false;
+      view.state.account = null;
+    } else if (mode === 'unapproved') {
+      view.encryptionReady = false;
+      view.state.account.device.approved = false;
+    } else if (mode === 'key-recovery') {
+      view.encryptionReady = false;
+    }
+    var snapshots = [
+      { id: 'latest', kind: 'latest', createdAt: '2026-08-17T14:22:00.000Z', sizeBytes: 286720, revision: 18 },
+      { id: 'daily', kind: 'daily', createdAt: '2026-08-16T08:15:00.000Z', sizeBytes: 274432, revision: 15 }
+    ];
+    window.chrome = {
+      runtime: {
+        lastError: null,
+        sendMessage: function (message, callback) {
+          var response = view;
+          if (message.action === 'plusListSnapshots') response = { ok: true, snapshots: snapshots };
+          else if (message.action === 'plusListDevices') response = { ok: true, devices: [
+            { id: 'dev_preview', name: 'Chrome on Windows', current: true, approved: true, revoked: false, lastSeenAt: '2026-08-17T14:22:00.000Z' },
+            { id: 'dev_phone', name: 'Firefox Android', current: false, approved: true, revoked: false, lastSeenAt: '2026-08-17T13:48:00.000Z' }
+          ] };
+          else if (message.action !== 'plusGetState' && message.action !== 'plusRefreshAccount') response = { ok: true };
+          setTimeout(function () { callback(response); }, 0);
+        }
+      },
+      permissions: {
+        getAll: function (callback) { callback({ origins: [], data_collection: [] }); },
+        request: function (_request, callback) { callback(true); }
+      }
+    };
+  })();
+</script>
+<script src="../../core/plus-ui.js"></script>
+</head>
+<body>
+  <div class="settings">
+    <aside class="sidebar">
+      <div class="brand"><span class="mark">C</span><span>Comix Downloader</span></div>
+      <div class="nav"><span>Download &amp; ZIP</span><span>Output &amp; Library</span><span>Performance</span><span>Naming</span><span>Appearance</span><span>Sync &amp; Library</span><span class="active">Comix Downloader Plus</span><span>About &amp; Backup</span></div>
+    </aside>
+    <main class="main">
+      <div class="crumb">Settings / Comix Downloader Plus</div>
+      <h1>Comix Downloader Plus</h1>
+      <p class="intro">Manage your optional account, encrypted synchronization, devices, restore history, and billing.</p>
+      <div id="mount"></div>
+    </main>
+  </div>
+<script>
+  document.getElementById('mount').appendChild(CDLPlusUI.createSection({ variant: 'standalone', dedicated: true, hideHeader: true }));
+</script>
+</body>
+</html>

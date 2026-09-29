@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#171a1c" />
+    <title>Cloud Library - Comix Downloader Plus</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="../icons/icon128.png" />
+    <link rel="stylesheet" href="./library.css" />
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="./"
+        ><img src="../icons/icon128.png" alt="" width="30" height="30" />COMIX
+        DOWNLOADER <b>PLUS</b></a
+      ><span class="test" id="test-label" hidden>TESTING</span>
+      <div class="spacer"></div>
+      <button id="theme" title="Change theme" aria-label="Change theme">
+        <i data-lucide="sun"></i></button
+      ><a class="button" href="/account" title="Account and billing"
+        ><i data-lucide="user-round"></i></a
+      ><button id="signout" title="Sign out" aria-label="Sign out" hidden>
+        <i data-lucide="log-out"></i>
+      </button>
+    </header>
+    <div id="notice" role="status" hidden></div>
+    <main id="auth" hidden>
+      <section class="auth-panel">
+        <p class="eyebrow">COMIX DOWNLOADER PLUS</p>
+        <h1>Cloud Library</h1>
+        <div id="site-signin" hidden>
+          <p class="auth-lede">
+            Sign in with your Plus account to read your Cloud Library in this
+            browser. Comix Downloader here signs in with you.
+          </p>
+          <div class="auth-actions">
+            <a class="button primary" href="/account?mode=login&amp;next=/library/"
+              ><i data-lucide="log-in"></i>Sign in</a
+            ><a class="button" href="/account?mode=create"
+              ><i data-lucide="user-plus"></i>Create account</a
+            >
+          </div>
+        </div>
+        <form id="login">
+          <label
+            >Email address<input
+              id="email"
+              type="email"
+              autocomplete="email"
+              required /></label
+          ><button class="primary" type="submit">
+            <i data-lucide="mail"></i>Send sign-in code
+          </button>
+        </form>
+        <form id="verify" hidden>
+          <label
+            >Verification code<input
+              id="code"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              pattern="[0-9]{6}"
+              required /></label
+          ><label
+            >Device name<input
+              id="device-name"
+              value="Cloud Library browser"
+              maxlength="80"
+              required /></label
+          ><button class="primary">Sign in</button>
+        </form>
+        <div id="unlock" hidden>
+          <h2>Opening your library</h2>
+          <p id="unlock-message">
+            You are signed in. Your library opens as soon as it is unlocked on
+            this browser.
+          </p>
+          <button id="retry-unlock" class="primary">Try again</button
+          ><button id="create-key" hidden>Set up encryption</button>
+          <details id="legacy-recovery" hidden>
+            <summary>Account set up with a recovery code?</summary>
+            <p>
+              Open Plus once on a browser that already shows your library and
+              this account switches to email sign-in, or enter the old code.
+            </p>
+            <form id="recovery">
+              <label
+                >Recovery code<input
+                  id="recovery-code"
+                  autocomplete="off"
+                  required /></label
+              ><button class="primary">Unlock</button>
+            </form>
+          </details>
+        </div>
+        <div id="setup" hidden>
+          <h2>Cloud Library setup pending</h2>
+          <p id="setup-message"></p>
+          <button id="retry-setup">
+            <i data-lucide="refresh-cw"></i>Retry
+          </button>
+        </div>
+      </section>
+    </main>
+    <main id="workspace" hidden>
+      <aside>
+        <h1>Cloud Library</h1>
+        <nav>
+          <button class="nav active" data-view="library">
+            <i data-lucide="library-big"></i>My library</button
+          ><button class="nav" data-view="transfers">
+            <i data-lucide="arrow-up-from-line"></i>Transfers</button
+          ><button class="nav" data-view="trash">
+            <i data-lucide="trash-2"></i>Trash
+          </button>
+        </nav>
+        <div class="storage">
+          <span id="storage-label"></span
+          ><progress id="storage-bar" max="1" value="0"></progress
+          ><button id="clear-offline">
+            <i data-lucide="hard-drive"></i>Clear offline pages
+          </button>
+        </div>
+      </aside>
+      <section class="library-main">
+        <div class="toolbar">
+          <div id="breadcrumbs"></div>
+          <div class="spacer"></div>
+          <input
+            id="search"
+            type="search"
+            aria-label="Search library"
+            placeholder="Search library"
+          /><select id="sort" aria-label="Sort library">
+            <option value="name">Name</option>
+            <option value="recent">Recently added</option></select
+          ><button id="layout" title="Switch layout" aria-label="Switch layout">
+            <i data-lucide="layout-grid"></i></button
+          ><button
+            id="refresh"
+            title="Refresh library"
+            aria-label="Refresh library"
+          >
+            <i data-lucide="refresh-cw"></i></button
+          ><button id="new-folder" title="New folder" aria-label="New folder">
+            <i data-lucide="folder-plus"></i></button
+          ><button id="import" class="primary">
+            <i data-lucide="upload"></i>Import chapter</button
+          ><input
+            id="files"
+            type="file"
+            accept=".cbz,.zip,.jpg,.jpeg,.png,.webp,.avif"
+            multiple
+            hidden
+          />
+        </div>
+        <div id="bulk" hidden>
+          <span id="selection-count"></span
+          ><button id="move-selected">
+            <i data-lucide="folder-input"></i>Move</button
+          ><button id="trash-selected">
+            <i data-lucide="trash-2"></i>Delete</button
+          ><button id="clear-selected">Clear selection</button>
+        </div>
+        <div id="items" class="grid"></div>
+        <div id="empty" hidden>
+          <i data-lucide="library-big"></i>
+          <h2>Your library is empty</h2>
+        </div>
+        <div id="transfers" hidden></div>
+      </section>
+    </main>
+    <main id="reader" hidden>
+      <div class="reader-tools">
+        <button
+          id="close-reader"
+          title="Back to library"
+          aria-label="Back to library"
+        >
+          <i data-lucide="arrow-left"></i></button
+        ><strong id="reader-title"></strong>
+        <div class="spacer"></div>
+        <select id="reading-mode" aria-label="Reading mode">
+          <option value="scroll">Vertical</option>
+          <option value="ltr">Pages: left to right</option>
+          <option value="rtl">Pages: right to left</option></select
+        ><label class="zoom"
+          ><i data-lucide="zoom-in"></i
+          ><input
+            id="zoom"
+            type="range"
+            min="50"
+            max="160"
+            value="100"
+            aria-label="Page width" /></label
+        ><button
+          id="offline"
+          title="Save chapter offline"
+          aria-label="Save chapter offline"
+        >
+          <i data-lucide="download"></i></button
+        ><button id="export" title="Export CBZ" aria-label="Export CBZ">
+          <i data-lucide="file-down"></i>
+        </button>
+      </div>
+      <div id="pages"></div>
+      <div class="page-tools">
+        <button id="prev-page" aria-label="Previous page" title="Previous page">
+          <i data-lucide="chevron-left"></i></button
+        ><label
+          >Page
+          <input id="page-number" type="number" min="1" value="1" /></label
+        ><span id="page-total"></span
+        ><button id="next-page" aria-label="Next page" title="Next page">
+          <i data-lucide="chevron-right"></i></button
+        ><button id="next-chapter">
+          Next chapter<i data-lucide="skip-forward"></i>
+        </button>
+      </div>
+    </main>
+    <dialog id="editor">
+      <form method="dialog" id="editor-form">
+        <h2 id="editor-title"></h2>
+        <label id="name-label"
+          >Name<input id="edit-name" maxlength="160" /></label
+        ><label id="parent-label"
+          >Folder<select id="edit-parent"></select
+        ></label>
+        <p id="editor-copy"></p>
+        <div class="dialog-actions">
+          <button value="cancel" formnovalidate>Cancel</button
+          ><button class="primary" id="editor-submit" value="save">Save</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="../lib/lucide.min.js"></script>
+    <script src="../lib/jszip.min.js"></script>
+    <script src="../core/cloud-library.js"></script>
+    <script src="../core/plus-core.js"></script>
+    <script src="./library.js"></script>
+  </body>
+</html>

@@ -64,6 +64,20 @@ Multiple chapter downloads can run at the same time. The **Chapters at once** se
 
 ---
 
+## Comix Downloader Plus (optional)
+
+Everything above stays free and needs no account. Plus is an optional subscription that adds:
+
+- **Cloud Library**: save chapters to an encrypted library and read them on any device, phones included.
+- **Release Agenda**: a week view on comix.to of when the series you follow are likely to return. These are estimates, never official dates.
+- **Sync**: settings, reading progress and watched series across up to five browsers, with 30 days of restore points.
+
+30 days free, then US$1.50/month. Sign in with a code sent to your email; the website and the extension stay signed in together. [See what Plus includes](https://n3uralcreativity.top/comix-downloader/plus.html).
+
+![Cloud Library in the browser](docs/assets/plus-cloud-library.jpg)
+
+---
+
 ## Mobile support (Android & iOS)
 
 ### Option A - Mihon (recommended for offline reading)

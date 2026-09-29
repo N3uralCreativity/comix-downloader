@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Comix Downloader</title>
+  <title>Comix Downloader TESTING</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -44,8 +44,10 @@
       overflow: hidden;
     }
     html.firefox-android .header,
+    html.firefox-android .account-panel,
     html.firefox-android .update-panel,
     html.firefox-android .btn-row,
+    html.firefox-android .plus-row,
     html.firefox-android .review-prompt,
     html.firefox-android .logs-header,
     html.firefox-android .footer {
@@ -109,6 +111,60 @@
     .header-update-check.is-checking svg { animation: update-check-spin .85s linear infinite; }
     @keyframes update-check-spin { to { transform: rotate(360deg); } }
 
+    .account-panel { padding: 12px 16px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+    .account-panel[hidden] { display: none; }
+    .account-head { display: flex; align-items: center; gap: 10px; }
+    .account-avatar {
+      width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; border-radius: 50%;
+      color: var(--accent); background: var(--accent-bg); border: 1px solid var(--accent-line);
+      font-size: 12px; font-weight: 800;
+    }
+    .account-id { min-width: 0; }
+    .account-title { color: var(--fg-strong); font-size: 12.5px; font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .account-sub { color: var(--muted); font-size: 11px; line-height: 1.35; margin-top: 1px; }
+    .account-copy { color: var(--muted); font-size: 11px; line-height: 1.45; margin-top: 8px; }
+    .account-copy strong { color: var(--fg-strong); font-weight: 650; }
+    .account-form { display: flex; gap: 6px; margin-top: 10px; }
+    .account-input {
+      flex: 1; min-width: 0; height: 30px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: 7px;
+      background: var(--bg); color: var(--fg-strong); font: inherit; font-size: 12px;
+    }
+    .account-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+    .account-input.is-code { letter-spacing: .28em; font-variant-numeric: tabular-nums; }
+    .account-btn {
+      height: 30px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 7px; white-space: nowrap;
+      background: rgba(255,255,255,.05); color: var(--fg); font: inherit; font-size: 11.5px; font-weight: 650; cursor: pointer;
+    }
+    .account-btn:hover { background: rgba(255,255,255,.1); }
+    .account-btn.primary { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+    .account-btn.primary:hover { filter: brightness(1.1); }
+    .account-btn:disabled { opacity: .6; cursor: wait; }
+    .account-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 10px; }
+    .account-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
+    .account-link:hover { text-decoration: underline; }
+    .account-link.is-muted { color: var(--muted); }
+    .account-link:disabled { opacity: .6; cursor: wait; }
+    .account-error { margin-top: 8px; color: var(--err); font-size: 11px; line-height: 1.4; }
+    .account-error:empty { display: none; }
+
+    .plus-row {
+      display: flex; align-items: center; gap: 8px; padding: 9px 16px;
+      background: color-mix(in srgb, var(--accent) 6%, var(--bg)); border-bottom: 1px solid var(--line);
+    }
+    .plus-row[hidden] { display: none; }
+    .plus-tag {
+      flex: 0 0 auto; padding: 2px 5px; border: 1px solid var(--accent-line); border-radius: 4px;
+      color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .08em;
+    }
+    .plus-action {
+      flex: 1; min-width: 0; height: 30px; display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 0 8px; border: 1px solid var(--accent-line); border-radius: 8px; background: var(--accent-bg);
+      color: var(--fg-strong); font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap;
+    }
+    .plus-action:hover { border-color: var(--accent); }
+    .plus-action:disabled { opacity: .6; cursor: wait; }
+    .plus-action svg { flex: 0 0 auto; color: var(--accent); }
+
     /* ── Browser-ready extension update ── */
     .update-panel {
       display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px;
@@ -151,6 +207,20 @@
     .btn-ghost:hover { background: rgba(255,255,255,0.1); }
     .pill-new { font-size: 9px; font-weight: 800; letter-spacing: .04em; color: #07101f; background: #fff; padding: 1px 5px; border-radius: 4px; }
     .pill-new[hidden] { display: none; }
+
+    /* ── Plus account: one quiet icon button until the reader signs in ── */
+    .btn-account { position: relative; flex: 0 0 38px; padding: 0; color: var(--muted); font: inherit; }
+    .btn-account[hidden] { display: none; }
+    .btn-account:hover, .btn-account[aria-expanded="true"] { color: var(--accent); border-color: var(--accent-line); }
+    .btn-account:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .btn-account[data-state="ready"] { color: var(--accent); border-color: var(--accent-line); background: var(--accent-bg); }
+    .btn-account[data-state="setup"]::after,
+    .btn-account[data-state="expired"]::after {
+      content: ""; position: absolute; top: -2px; right: -2px; width: 8px; height: 8px;
+      border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--bg);
+    }
+    .btn-account-initial { font-size: 12px; font-weight: 800; line-height: 1; }
+    .btn-account-initial[hidden], .btn-account svg[hidden] { display: none; }
 
     /* ── One-time review request ── */
     .review-prompt {
@@ -244,7 +314,7 @@
         <path d="m4 13 2.4 4.6A7 7 0 0 0 17.9 15"/>
       </svg>
     </button>
-    <span class="header-version" id="ext-version">v4.2.40</span>
+    <span class="header-version" id="ext-version">v4.3.0</span>
   </div>
 
   <section class="update-panel" id="update-panel" aria-labelledby="update-title" hidden>
@@ -288,6 +358,33 @@
       </svg>
       GitHub
     </a>
+    <button class="btn btn-ghost btn-account" id="btn-account" type="button" title="Sign in to Comix Downloader Plus" aria-label="Sign in to Comix Downloader Plus" aria-expanded="false" aria-controls="account-panel" data-state="signed-out" hidden>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="4"/>
+        <path d="M4 21a8 8 0 0 1 16 0"/>
+      </svg>
+      <span class="btn-account-initial" id="account-initial" aria-hidden="true" hidden></span>
+    </button>
+  </div>
+
+  <section class="account-panel" id="account-panel" aria-label="Comix Downloader Plus account" hidden></section>
+
+  <div class="plus-row" id="plus-row" hidden>
+    <span class="plus-tag">PLUS</span>
+    <button class="plus-action" id="btn-cloud-library" type="button">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M17.5 19H8a6 6 0 1 1 5.66-8h.84a4.5 4.5 0 0 1 3 7.86"/>
+      </svg>
+      Cloud Library
+    </button>
+    <button class="plus-action" id="btn-agenda" type="button">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 2v4M16 2v4"/>
+        <rect width="18" height="18" x="3" y="4" rx="2"/>
+        <path d="M3 10h18"/>
+      </svg>
+      Release Agenda
+    </button>
   </div>
 
   <section class="review-prompt" id="review-prompt" aria-labelledby="review-title" hidden>
@@ -333,6 +430,7 @@
     </span>
   </div>
 
+  <script src="../core/plus-ui.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

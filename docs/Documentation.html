@@ -245,7 +245,7 @@
     <a class="brand" href="index.html">
       <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
       Comix Downloader
-      <span class="ver">v4.2.40</span>
+      <span class="ver">v4.3.0</span>
     </a>
     <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -256,7 +256,7 @@
       <a href="plus.html">Plus</a>
       <a href="privacy.html">Privacy</a>
       <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
-    <a class="nav-signin" href="plus.html#notify"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in<span class="nav-signin-soon">Soon</span></a></nav>
+    <a class="nav-signin" href="https://plus.n3uralcreativity.top/account?mode=login"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in</a></nav>
   </div>
 </header>
 
@@ -280,7 +280,11 @@
       <a href="#whats-new-stats" class="sub">— Reading stats</a>
       <a href="#whats-new-flags" class="sub">— Community flags</a>
       <a href="#settings">Settings</a>
-      <a href="#plus">Plus closed beta</a>
+      <a href="#plus">Plus</a>
+      <a href="#plus-sign-in" class="sub">— Sign-in</a>
+      <a href="#plus-cloud" class="sub">— Cloud Library</a>
+      <a href="#plus-agenda" class="sub">— Release Agenda</a>
+      <a href="#plus-account" class="sub">— Billing &amp; devices</a>
       <a href="#library">Output, library &amp; sync</a>
       <a href="#push-library" class="sub">— Push to library</a>
       <a href="#warning">The background-tab warning</a>
@@ -456,14 +460,14 @@
         </div>
       </div>
 
-      <p><strong>Option B — Vivaldi for Android</strong> if you specifically want the same in-page buttons as desktop. Vivaldi 8.2 and later installs Chrome Web Store extensions directly:</p>
+      <p><strong>Option B — Kiwi Browser</strong> if you specifically want the same in-page buttons as desktop. Kiwi installs Chrome Web Store extensions directly, so the easiest route is to open the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome Web Store listing</a> in Kiwi and tap <strong>Add to Chrome</strong>. Or load it unpacked:</p>
       <ol class="steps">
-        <li>Install or update <a href="https://play.google.com/store/apps/details?id=com.vivaldi.browser" target="_blank" rel="noopener"><strong>Vivaldi</strong></a> from the Play Store.</li>
-        <li>Open the Vivaldi menu and turn on <strong>Desktop site</strong> — Vivaldi needs it on to install from the Chrome Web Store.</li>
-        <li>Open the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome Web Store listing</a>, tap <strong>Add to Vivaldi</strong>, then <strong>Add extension</strong>.</li>
-        <li>Open a title page on comix.to or comix.ws — buttons appear automatically. To turn it off or remove it, tap the <strong>Extensions</strong> button in the address bar → <strong>Manage Extensions</strong>.</li>
+        <li>Install <a href="https://play.google.com/store/apps/details?id=com.kiwibrowser.browser" target="_blank" rel="noopener"><strong>Kiwi Browser</strong></a> from the Play Store.</li>
+        <li>Download this repo ZIP on your phone and extract it.</li>
+        <li>Open Kiwi → go to <code>chrome://extensions</code> → toggle <strong>Developer mode</strong> on.</li>
+        <li>Tap <strong>Load unpacked</strong> and select the extracted folder.</li>
+        <li>Open a title page on comix.to or comix.ws — buttons appear automatically.</li>
       </ol>
-      <p style="font-size:13.5px;color:var(--muted);">A reader reports it works out of the box, including when comix.to is installed as an app (PWA). Vivaldi notes that some desktop extensions may behave differently on mobile, so please open an issue if something looks off. Kiwi Browser, recommended here before, was discontinued in January 2025 and removed from the Play Store; existing installs still run the extension but no longer receive browser security updates.</p>
 
       <p><strong>Option C — Firefox for Android.</strong> The signed add-on also runs on <strong>Firefox for Android</strong> — the same one-click install as desktop, with the in-page buttons working natively on your phone.</p>
       <ol class="steps">
@@ -580,6 +584,7 @@
         <li><strong>Appearance</strong> — the on-page buttons and the progress panel.</li>
         <li><strong>Advanced</strong> — riskier options like image re-encoding and scramble handling.</li>
         <li><strong>Sync &amp; Library</strong> — watch series for new chapters and push finished CBZs to your own server.</li>
+        <li><strong>Comix Downloader Plus</strong> — a dedicated optional workspace for account, encrypted sync, devices, restores, and billing.</li>
         <li><strong>About &amp; Backup</strong> — export/import settings, and reset to defaults.</li>
       </ul>
 
@@ -615,20 +620,53 @@
 
     <!-- optional Plus service -->
     <section class="doc-sec" id="plus">
-      <h2>Comix Downloader Plus (closed beta)</h2>
-      <p><strong>Plus is optional and now in closed beta,</strong> its second testing stage: a small invited group uses it on real libraries. It adds three things: an encrypted Cloud Library for the chapters you save, readable in any browser you sign in to with your email; a Release Agenda that estimates when your followed series are likely to get their next chapter; and encrypted synchronization across up to five browsers, with a rolling 30-day restore history. Plus is not part of the current public extension, and sign-up is not open to the public yet.</p>
+      <h2>Comix Downloader Plus</h2>
+      <p><strong>Plus is optional.</strong> It adds a Cloud Library to read saved chapters on any device, a Release Agenda for the series you follow, encrypted sync on up to five browsers, and a rolling 30-day restore history. It is free for 30 days, then US$1.50/month plus tax where it applies. Plus does not unlock downloads or replace any feature: the free extension keeps working without an account.</p>
 
-      <h3>Current status</h3>
-      <p>The interface below is from the closed beta build and may change before release. When Plus is ready, availability will be announced in the changelog and on <a href="https://github.com/N3uralCreativity/comix-downloader/releases" target="_blank" rel="noopener">GitHub Releases</a>. The planned service will not move downloads or any existing extension feature behind an account.</p>
+      <h3 id="plus-start">Create an account</h3>
+      <ol class="steps">
+        <li>Open <a href="https://plus.n3uralcreativity.top/account?mode=create">Create account</a> and enter your email. There is no password: every sign-in uses a six-digit code sent to that address.</li>
+        <li>Enter the code. New accounts continue to Stripe's secure checkout to start the 30-day free trial. A payment method is required; nothing is charged before the trial ends, and we email a reminder seven days before it does.</li>
+        <li>Your account page opens with your plan, Cloud Library storage, the browsers signed in, and billing. Come back to it any time with <a href="https://plus.n3uralcreativity.top/account?mode=login">Sign in</a>.</li>
+      </ol>
+
+      <h3 id="plus-sign-in">One sign-in for the website and the extension</h3>
+      <p>In the same browser, the website and Comix Downloader share one sign-in. Sign in on the website and the extension signs in too; sign in from the extension and the open website follows within a second. Signing out on either side signs both out.</p>
+      <ul class="plain">
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>First time in a browser:</strong> sign in once from the extension popup or <strong>Settings &rarr; Comix Downloader Plus</strong>. The browser asks you to allow access to the Plus service; after that, sign-ins follow on their own.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>On another device:</strong> sign in with your email and a new code. Your data opens there too, with no recovery code to keep.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Different account in the extension:</strong> the account page says so and offers <strong>Use this account in the extension</strong>.</li>
+      </ul>
+
+      <h3 id="plus-cloud">Cloud Library</h3>
+      <p>On a comix.to title page, click <strong>Download All</strong> (or pick chapters) and set <strong>Save to</strong> to <strong>PLUS Cloud Library</strong>, or to <strong>This device and PLUS Cloud Library</strong>. Pages are encrypted in your browser before upload. Read them from <strong>Cloud Library</strong> in the extension popup, or on any device in the <a href="https://plus.n3uralcreativity.top/library/">web library</a>. Each account includes 1 GB, and the account page shows how much you use. Nothing is uploaded unless you choose to save a chapter.</p>
+
+      <h3 id="plus-agenda">Release Agenda</h3>
+      <p>Choose <strong>Release Agenda</strong> in the extension popup to open a week view on comix.to of the series you follow. Each entry is an estimate built from the chapter history your browser has seen, never an official release date. Agenda history stays in the browser and is never sent to Plus.</p>
+
+      <h3 id="plus-sync">Encrypted sync and restore</h3>
+      <ol class="steps">
+        <li>Open <strong>Settings &rarr; Comix Downloader Plus &rarr; Sync</strong> and pick what to synchronize: settings and presets, watched series, reading progress, downloaded-chapter markers, and reading statistics. Every category starts unchecked; <strong>Select recommended</strong> is only a shortcut.</li>
+        <li>Choose <strong>Save categories</strong>. Changes then synchronize after a short delay, at browser startup, and every 15 minutes while the browser runs.</li>
+        <li>Under <strong>Restore</strong>, bring the selected categories back to a point from the last 30 days. A <em>Before restore</em> point is saved first, so a restore can be undone.</li>
+      </ol>
 
       <div class="shot" style="margin-top:16px;">
         <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Settings &mdash; Comix Downloader Plus &mdash; Sync</span></div>
-        <img src="assets/plus-sync.png" alt="The Plus panel's Sync tab, with account status, device count, and the categories that can be synchronized">
+        <img src="assets/plus-sync.png" alt="Comix Downloader Plus settings: subscription status, renewal date, two of five devices, last sync, and the synchronized categories" loading="lazy">
       </div>
+
+      <h3 id="plus-account">Devices, billing and cancelling</h3>
+      <ul class="plain">
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Devices:</strong> up to five browsers. <strong>Remove</strong> one on the account page, or <strong>Revoke</strong> it under <strong>Devices</strong> in the extension, and that browser is signed out.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Billing:</strong> <strong>Manage billing</strong> on the account page or in the extension settings opens Stripe to change the card, download invoices, or cancel.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Cancelling:</strong> Plus stays active to the end of the trial or paid period. Your Cloud Library and sync data then stay read-only for 90 days so you can read, export, or delete them. Local extension data is never affected. See the <a href="refund.html">refund policy</a>.</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> <strong>Keep your email secure:</strong> a code sent to it is all it takes to sign in.</li>
+      </ul>
 
       <div class="callout">
         <svg aria-hidden="true" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        <div><strong>Plus is not active in the public extension.</strong><p style="margin-top:8px;">The current release makes no Plus API request and requires no account. Planned synchronization will carry only the encrypted categories you select, never comic images, archives, activity logs, active downloads, library credentials, cookies, CAPTCHA data, notice state, or review state. Comic files will reach the service only when you choose the Cloud Library as a download destination, encrypted on your device first. See the <a href="plus.html">Plus preview</a> and <a href="privacy.html#plus">privacy policy</a>.</p></div>
+        <div><strong>Plus stays separate from free use.</strong><p style="margin-top:8px;">A free installation makes no Plus request. Sync carries only the categories you pick, and never comic images, archives, activity logs, active downloads, library credentials, cookies, CAPTCHA data, notice state, or review state. Chapter pages leave your device only when you save them to the Cloud Library, encrypted first. See the <a href="plus.html">Plus page</a> and the <a href="privacy.html#plus">privacy policy</a>.</p></div>
       </div>
     </section>
 

@@ -25,6 +25,9 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font);
@@ -303,13 +306,17 @@ a.sub-name:hover { text-decoration: underline; }
 
 /* ── Responsive ──────────────────────────────────────────────────────── */
 @media (max-width: 720px) {
-  .layout { flex-direction: column; }
+  .layout { width: 100%; min-width: 0; flex-direction: column; }
   .sidebar {
-    width: 100%; flex-direction: row; overflow-x: auto; position: sticky; top: 0;
+    width: 100%; max-width: 100%; min-width: 0; flex: 0 0 auto;
+    flex-direction: row; overflow-x: auto; overflow-y: hidden; position: sticky; top: 0;
     border-right: none; border-bottom: 1px solid var(--line); padding: 10px;
+    overscroll-behavior-x: contain;
   }
-  .nav-item { white-space: nowrap; }
-  .content { padding: 20px 18px 120px; }
+  .nav-item { width: auto; flex: 0 0 auto; white-space: nowrap; }
+  .content { width: 100%; max-width: 100%; min-width: 0; padding: 20px 18px 120px; }
+  .panel { min-width: 0; }
+  input[type="text"], input[type="password"], select { max-width: 100%; }
   .topbar-note { display: none; }
   .settings-update-panel { grid-template-columns: 32px minmax(0,1fr); padding: 11px 18px; }
   .settings-update-action { grid-column: 2; grid-row: auto; width: fit-content; }

@@ -19,7 +19,8 @@
     "condition": {
       "regexFilter": "^https://[^/]+\\.wowpic[1-9]\\.store/",
       "resourceTypes": [
-        "xmlhttprequest"
+        "xmlhttprequest",
+        "image"
       ]
     }
   }

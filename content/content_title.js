@@ -46,6 +46,21 @@ const ICON_ERROR = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="1
   <line x1="6" y1="6" x2="18" y2="18"/>
 </svg>`;
 
+// Download All "Save to" tiles: this device, Cloud Library, or both.
+const ICON_DEST_DEVICE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="4" y="4.5" width="18" height="11.5" rx="1.5"/><path d="M2 19.5h22"/><path d="M13 7.5v5.2"/><path d="m10.4 10.4 2.6 2.6 2.6-2.6"/>
+</svg>`;
+const ICON_DEST_CLOUD = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M18.5 19H10a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="M13 16.8v-5"/><path d="m10.6 14 2.4-2.4 2.4 2.4"/>
+</svg>`;
+const ICON_DEST_BOTH = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="1.5" y="10.5" width="11.5" height="7.5" rx="1.2"/><path d="M.5 21h13.5"/>
+  <path d="M23.1 12.4H18a4.2 4.2 0 1 1 4.03-5.4h1.07a2.7 2.7 0 1 1 0 5.4Z"/><path d="M15.5 16.5h3.5a2 2 0 0 0 2-2"/>
+</svg>`;
+const ICON_DEST_LOCK = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+</svg>`;
+
 // ── User settings (loaded async; v1.1.2 defaults until then) ────────────────────
 let CFG = (typeof CDLSettings !== 'undefined') ? Object.assign({}, CDLSettings.DEFAULTS) : {};
 const PDF_OUTPUT_VISIBLE = typeof CDLSettings !== 'undefined' && CDLSettings.PDF_OUTPUT_VISIBLE === true;
@@ -2455,6 +2470,7 @@ function createSpecificChapterPickerFocus(section) {
   const layer = document.createElement('div');
   layer.id = 'cdl-specific-picker-focus';
   layer.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
+  layer.style.setProperty('--cdl-accent', getAccent());
   layer.setAttribute('aria-hidden', 'true');
   _setHTML(layer, `
     <div class="cdl-specific-focus-shade" data-edge="top"></div>
@@ -2591,6 +2607,7 @@ function openSpecificChapterPicker({ backdrop, rows, allowedChapters, allowAllSo
   const toolbar = document.createElement('div');
   toolbar.id = 'cdl-specific-picker-toolbar';
   toolbar.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
+  toolbar.style.setProperty('--cdl-accent', getAccent());
   _setHTML(toolbar, `
     <div class="cdl-specific-picker-title">
       <strong><i aria-hidden="true"></i>Selecting chapters</strong>
@@ -3026,12 +3043,39 @@ function injectOptsStyles() {
     .cdl-op-card.sel { border-color:var(--cdl-accent); background:var(--cdl-accent-bg); }
     .cdl-op-card .t { font-weight:600; color:var(--cdl-text-strong); font-size:13px; }
     .cdl-op-card .d { color:var(--cdl-muted); font-size:11px; margin-top:3px; line-height:1.35; overflow-wrap:anywhere; }
+    .cdl-op-dest { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+    .cdl-op-dest-tile { position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:2px; min-width:0;
+      padding:11px 11px 10px; border:1.5px solid var(--cdl-border); border-radius:10px; background:transparent; color:var(--cdl-text);
+      font:inherit; text-align:left; cursor:pointer; transition:border-color .12s, background .12s; }
+    .cdl-op-dest-tile:hover { background:var(--cdl-hover); }
+    .cdl-op-dest-tile:focus-visible { outline:2px solid var(--cdl-accent); outline-offset:2px; }
+    .cdl-op-dest-tile.sel { border-color:var(--cdl-accent); background:var(--cdl-accent-bg); }
+    .cdl-op-dest-ico { display:block; width:30px; height:28px; margin-bottom:6px; color:var(--cdl-muted); }
+    .cdl-op-dest-ico svg { display:block; width:100%; height:100%; }
+    .cdl-op-dest-tile.sel .cdl-op-dest-ico { color:var(--cdl-accent); }
+    .cdl-op-dest-tile .t { font-weight:600; font-size:13px; color:var(--cdl-text-strong); }
+    .cdl-op-dest-tile .d { font-size:11px; line-height:1.35; color:var(--cdl-muted); overflow-wrap:anywhere; }
+    .cdl-op-dest-tag { position:absolute; top:8px; right:8px; display:inline-flex; align-items:center; gap:3px; padding:3px 5px;
+      border-radius:4px; background:#8b5cf6; color:#fff; font:800 9px/1 ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:.08em; }
+    .cdl-op-dest-tag svg { display:none; width:9px; height:9px; }
+    .cdl-op-dest-tile.locked { border-style:dashed; }
+    .cdl-op-dest-tile.locked:hover { background:rgba(139,92,246,.07); }
+    .cdl-op-dest-tile.locked .cdl-op-dest-ico, .cdl-op-dest-tile.locked .t, .cdl-op-dest-tile.locked .d { opacity:.5; }
+    .cdl-op-dest-tile.locked .cdl-op-dest-tag { background:transparent; color:#b69cff; box-shadow:inset 0 0 0 1px rgba(139,92,246,.65); }
+    #cdl-opts-panel[data-cdl-theme="light"] .cdl-op-dest-tile.locked .cdl-op-dest-tag { color:#6d28d9; }
+    .cdl-op-dest-tile.locked .cdl-op-dest-tag svg { display:block; }
+    .cdl-op-dest-note { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:9px; padding:9px 10px;
+      border:1px solid rgba(139,92,246,.45); border-radius:8px; background:rgba(139,92,246,.10); color:var(--cdl-text); font-size:12px; line-height:1.45; }
+    .cdl-op-dest-note .cdl-op-btn { flex:none; padding:6px 11px; }
+    @media (max-width:420px) { .cdl-op-dest { gap:6px; } .cdl-op-dest-tile { padding:9px 8px; } .cdl-op-dest-tile .d { display:none; } .cdl-op-dest-note { flex-direction:column; align-items:flex-start; } }
     .cdl-op-row { display:flex; align-items:center; gap:9px; }
     .cdl-op-check { display:flex; align-items:flex-start; gap:9px; cursor:pointer; }
     .cdl-op-check input { margin-top:2px; accent-color:var(--cdl-accent); width:15px; height:15px; flex-shrink:0; }
     .cdl-op-check .t { color:var(--cdl-text); font-size:12.5px; }
     .cdl-op-check .d { color:var(--cdl-faint); font-size:11px; }
     .cdl-op-direct-cbz[hidden] { display:none; }
+    #cdl-opts-panel [hidden] { display:none !important; }
+    #cdl-op-local-options { display:grid; gap:14px; }
     .cdl-op-field { min-width:0; display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .cdl-op-field label { color:var(--cdl-text); font-size:12.5px; }
     .cdl-op-field select { min-width:0; max-width:68%; }
@@ -3061,8 +3105,8 @@ function injectOptsStyles() {
     #cdl-specific-picker-focus { position:fixed; inset:0; z-index:2147483645; pointer-events:none; }
     .cdl-specific-focus-shade { position:fixed; pointer-events:auto; cursor:default; background:rgba(5,8,11,.46); }
     #cdl-specific-picker-focus[data-cdl-theme="light"] .cdl-specific-focus-shade { background:rgba(17,20,32,.28); }
-    .cdl-specific-focus-frame { position:fixed; box-sizing:border-box; pointer-events:none; border:1px solid rgba(102,232,250,.82);
-      border-radius:8px; box-shadow:0 0 0 3px rgba(102,232,250,.11),0 10px 32px rgba(0,0,0,.18); }
+    .cdl-specific-focus-frame { position:fixed; box-sizing:border-box; pointer-events:none; border:1px solid var(--cdl-accent);
+      border-radius:8px; box-shadow:0 0 0 3px color-mix(in srgb,var(--cdl-accent) 14%,transparent),0 10px 32px rgba(0,0,0,.18); }
     #cdl-specific-picker-toolbar {
       --cdl-bg:var(--surface,#2a3134); --cdl-header-bg:var(--surface-2,#323a3e); --cdl-text:var(--text,#cdd5d6);
       --cdl-text-strong:var(--text-emphasis,#ecf4f5); --cdl-muted:var(--text-2,#9da4a5); --cdl-border:rgba(255,255,255,0.12);
@@ -3077,7 +3121,7 @@ function injectOptsStyles() {
     .cdl-specific-picker-title { min-width:120px; display:flex; flex-direction:column; gap:2px; }
     .cdl-specific-picker-title strong { display:flex; align-items:center; gap:7px; color:var(--cdl-text-strong); font-size:13px; }
     .cdl-specific-picker-title strong i { width:7px; height:7px; flex:0 0 7px; border-radius:50%; background:var(--cdl-accent);
-      box-shadow:0 0 0 3px rgba(102,232,250,.13); }
+      box-shadow:0 0 0 3px color-mix(in srgb,var(--cdl-accent) 16%,transparent); }
     .cdl-specific-picker-title span { color:var(--cdl-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
     .cdl-specific-picker-controls { flex:1; display:grid; grid-template-columns:minmax(130px,1fr) auto auto auto; align-items:center; gap:7px; }
     #cdl-specific-picker-search { min-width:0; width:100%; box-sizing:border-box; padding:7px 9px; border:1px solid var(--cdl-border);
@@ -3101,10 +3145,49 @@ function injectOptsStyles() {
   document.head.appendChild(style);
 }
 
+// Cloud saves need an account that can still write to Cloud Library.
+const PLUS_CLOUD_SAVE_STATES = new Set(['trial', 'active', 'grace', 'cancelled_active']);
+const PLUS_CLOUD_LOCKED_COPY = {
+  'signed-out': 'Cloud Library is part of Plus. Sign in with the account icon in the extension popup, or open the Plus settings.',
+  expired: 'Your Plus trial or subscription has ended, so new chapters can’t be saved to Cloud Library. Everything you already saved stays readable.',
+  inactive: 'Start your free Plus trial to save chapters to Cloud Library.',
+  unavailable: 'Plus isn’t available in this version of the extension.',
+};
+
+function readPlusCloudAccess() {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => { if (!settled) { settled = true; resolve(value); } };
+    const timer = setTimeout(() => done({ allowed: false, reason: 'unavailable' }), 2500);
+    try {
+      chrome.runtime.sendMessage({ action: 'plusGetState' }, (response) => {
+        clearTimeout(timer);
+        if (chrome.runtime.lastError || !response || !response.ok) { done({ allowed: false, reason: 'unavailable' }); return; }
+        const account = response.signedIn && response.state && response.state.account;
+        if (!account) { done({ allowed: false, reason: 'signed-out' }); return; }
+        if (!PLUS_CLOUD_SAVE_STATES.has(account.state)) { done({ allowed: false, reason: account.state === 'expired' ? 'expired' : 'inactive' }); return; }
+        done({ allowed: true, reason: '' });
+      });
+    } catch (_) {
+      clearTimeout(timer);
+      done({ allowed: false, reason: 'unavailable' });
+    }
+  });
+}
+
+function destinationTile(value, title, description, icon, plus) {
+  return `<button type="button" class="cdl-op-dest-tile${value === 'local' ? ' sel' : ''}" data-dest="${value}" aria-pressed="${value === 'local'}"${plus ? ' data-plus' : ''}>
+    ${plus ? `<span class="cdl-op-dest-tag">${ICON_DEST_LOCK}PLUS</span>` : ''}
+    <span class="cdl-op-dest-ico">${icon}</span>
+    <span class="t">${title}</span>
+    <span class="d">${description}</span>
+  </button>`;
+}
+
 async function showDownloadAllOptionsPanel(mangaName, rows) {
   injectOptsStyles();
   const meta = scrapeSeriesMeta();
-  const [prefs, downloaded] = await Promise.all([getSeriesPrefs(), getDownloadedKeySet()]);
+  const [prefs, downloaded, plusAccess] = await Promise.all([getSeriesPrefs(), getDownloadedKeySet(), readPlusCloudAccess()]);
 
   // Defaults: settings, overlaid with this series' remembered choices.
   const def = {
@@ -3156,7 +3239,19 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
     <div class="cdl-op-body">
       <div class="cdl-ap-manga-name" style="color:var(--cdl-muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(mangaName)}</div>
       <div>
-        <div class="cdl-op-sec-label">Format</div>
+        <div class="cdl-op-sec-label" id="cdl-op-dest-label">Save to</div>
+        <div class="cdl-op-dest" role="group" aria-labelledby="cdl-op-dest-label">
+          ${destinationTile('local', 'This device', 'ZIP or CBZ files in your downloads', ICON_DEST_DEVICE, false)}
+          ${destinationTile('cloud', 'Cloud Library', 'Read on any device, even offline', ICON_DEST_CLOUD, true)}
+          ${destinationTile('both', 'Both', 'Files here and a copy in the cloud', ICON_DEST_BOTH, true)}
+        </div>
+        <div class="cdl-op-dest-note" id="cdl-op-dest-note" role="status" hidden><span id="cdl-op-dest-note-text"></span><button type="button" class="cdl-op-btn" id="cdl-op-dest-open">Open Plus settings</button></div>
+        <input type="hidden" id="cdl-op-destination" value="local">
+      </div>
+      <div class="cdl-op-field" id="cdl-op-cloud-folder-row" hidden><label for="cdl-op-cloud-folder">Cloud folder</label><select id="cdl-op-cloud-folder"><option value="">Create comic folder automatically</option></select></div>
+      <div id="cdl-op-local-options">
+      <div>
+        <div class="cdl-op-sec-label" id="cdl-op-format-label">Format</div>
         <div class="cdl-op-cards">
           <div class="cdl-op-card" data-fmt="zip"><div class="t">ZIP</div><div class="d">Plain folders of images.</div></div>
           <div class="cdl-op-card" data-fmt="cbz"><div class="t">CBZ</div><div class="d">One comic file per chapter — opens in Komga, Kavita, Mihon, YACReader…</div></div>
@@ -3172,6 +3267,7 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
           <option value="default">Default (Ch0001)</option>
           <option value="kavita">Kavita / Komga (Series / Series - Chapter 0001)</option>
         </select>
+      </div>
       </div>
       ${hasGroups ? `
       <div class="cdl-op-field">
@@ -3214,6 +3310,69 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
   const visibleFormats = PDF_OUTPUT_VISIBLE ? ['zip', 'cbz', 'pdf'] : ['zip', 'cbz'];
   let format = visibleFormats.includes(def.format) ? def.format : 'zip';
   const q = (id) => panel.querySelector(id);
+  let cloudReady = true, cloudRequest = 0;
+  const syncDestination = () => {
+    const destination = q('#cdl-op-destination').value;
+    q('#cdl-op-cloud-folder-row').hidden = destination === 'local';
+    q('#cdl-op-cloud-folder').disabled = !cloudReady;
+    q('#cdl-op-local-options').hidden = destination === 'cloud';
+    q('#cdl-op-format-label').textContent = destination === 'both' ? 'Local format' : 'Format';
+    updateEstimate();
+  };
+  const destTiles = [...panel.querySelectorAll('.cdl-op-dest-tile')];
+  const destNote = q('#cdl-op-dest-note');
+  const showDestNote = (text, canOpenSettings) => {
+    q('#cdl-op-dest-note-text').textContent = text || '';
+    q('#cdl-op-dest-open').hidden = !canOpenSettings;
+    destNote.hidden = !text;
+  };
+  const markDestination = (value) => {
+    q('#cdl-op-destination').value = value;
+    destTiles.forEach((tile) => {
+      const on = tile.dataset.dest === value;
+      tile.classList.toggle('sel', on);
+      tile.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  };
+  // Cloud tiles stay visible but locked until Plus can save to Cloud Library.
+  destTiles.forEach((tile) => {
+    if (!tile.hasAttribute('data-plus') || plusAccess.allowed) return;
+    tile.classList.add('locked');
+    tile.setAttribute('aria-disabled', 'true');
+    tile.title = 'Part of Plus';
+  });
+  const chooseDestination = (value) => {
+    const tile = destTiles.find((candidate) => candidate.dataset.dest === value);
+    if (tile && tile.classList.contains('locked')) {
+      showDestNote(PLUS_CLOUD_LOCKED_COPY[plusAccess.reason] || PLUS_CLOUD_LOCKED_COPY.inactive, plusAccess.reason !== 'unavailable');
+      return;
+    }
+    showDestNote('');
+    markDestination(value);
+    const isCloud = value !== 'local';
+    const generation = ++cloudRequest;
+    cloudReady = !isCloud;
+    syncDestination();
+    if (!isCloud) return;
+    chrome.runtime.sendMessage({ action: 'plusLibraryFolders' }, (response) => {
+      if (!panel.isConnected || generation !== cloudRequest) return;
+      const error = chrome.runtime.lastError;
+      cloudReady = true;
+      if (error || !response?.ok) {
+        markDestination('local'); syncDestination();
+        showDestNote(response?.error?.message || 'Cloud Library isn’t ready yet. Open the Plus settings to finish setting it up.', true);
+        return;
+      }
+      const select = q('#cdl-op-cloud-folder');
+      select.replaceChildren(new Option('Create comic folder automatically', ''));
+      for (const folder of response.folders) select.add(new Option(folder.name, folder.id));
+      syncDestination();
+    });
+  };
+  destTiles.forEach((tile) => tile.addEventListener('click', () => chooseDestination(tile.dataset.dest)));
+  q('#cdl-op-dest-open').addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: 'cdlOpenComixSettings', pageUrl: location.href, view: 'plus' }, () => void chrome.runtime.lastError);
+  });
   const cards = [...panel.querySelectorAll('.cdl-op-card')];
   const directCbzInput = q('#cdl-op-direct-cbz');
   const directCbzRow = q('#cdl-op-direct-cbz-row');
@@ -3308,8 +3467,11 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
       const unit = format === 'cbz' ? 'CBZ files' : format === 'pdf' ? 'PDF files' : 'chapter folders';
       packaging = `up to ${count} ${unit} or ${size} MB per ZIP part, whichever comes first`;
     }
-    q('#cdl-op-estimate').textContent = `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title) · ${packaging}${lib}${pdf}`;
-    q('#cdl-op-start').disabled = n === 0;
+    const cloudOnly = q('#cdl-op-destination').value === 'cloud';
+    q('#cdl-op-estimate').textContent = cloudOnly
+      ? `${n} chapter${n === 1 ? '' : 's'} selected · Cloud Library · rough estimate ~${mb} MB`
+      : `${n} chapter${n === 1 ? '' : 's'} selected · rough estimate ~${mb} MB (varies a lot by title) · ${packaging}${lib}${pdf}`;
+    q('#cdl-op-start').disabled = n === 0 || !cloudReady;
   };
 
   directCbzInput.addEventListener('change', () => {
@@ -3406,6 +3568,8 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
 
   const buildOptions = () => ({
     format,
+    destination: q('#cdl-op-destination').value,
+    cloudFolder: q('#cdl-op-cloud-folder').value || null,
     directCbz: format === 'cbz' && directCbzInput.checked,
     includeComicInfo: q('#cdl-op-comicinfo').checked,
     includeSeriesMeta: !(format === 'cbz' && directCbzInput.checked) && seriesMetaInput.checked,
@@ -4309,6 +4473,9 @@ function updateDownloadAllPopup(msg) {
     _dlAllSetChapterProgress(completed, totalChapters);
     _dlAllAddLog(chapterLabel, 'skipped', `— ${chapterLabel} — skipped`, msg.diagnostic);
 
+  } else if (phase === 'uploadingCloud') {
+    status.textContent = `Saving ${msg.chapterLabel || 'chapter'} to Cloud Library`;
+    el('cdl-ap-img-status').textContent = `${msg.imagesDone || 0} / ${msg.imagesTotal || 0} encrypted pages uploaded`;
   } else if (phase === 'buildingPdf') {
     const current = Math.max(0, Number(msg.pdfCurrent) || 0);
     const total = Math.max(1, Number(msg.pdfTotal) || 1);
@@ -4755,6 +4922,66 @@ function restoreDownloadAllPopupFromBackground(attempt = 0) {
 // ── Subscribe toggle (watch this series for new chapters) ─────────────────────
 function _cdlSlug() { return (location.pathname.match(/\/title\/([^/]+)/) || [])[1] || ''; }
 
+let _cdlAgendaSnapshotTimer = null;
+let _cdlAgendaSnapshotSignature = '';
+
+function collectAgendaTitleSnapshot() {
+  if (!isTitleOverviewPage()) return null;
+  const slug = _cdlSlug();
+  if (!slug) return null;
+  const prefix = `/title/${slug}/`;
+  const rows = Array.from(document.querySelectorAll('.mchap-list .mchap-item')).map((item) => {
+    const primary = item.querySelector('a.mchap-row__primary[href*="-chapter-"]');
+    const href = primary?.getAttribute('href') || '';
+    let chapterUrl = '';
+    try { chapterUrl = new URL(href, location.origin).pathname; } catch (_) { return null; }
+    if (!chapterUrl.startsWith(prefix)) return null;
+    const group = item.querySelector('a.mchap-row__group');
+    const groupHref = group?.getAttribute('href') || '';
+    const groupMatch = groupHref.match(/\/groups\/(\d+)/i);
+    return {
+      chapterUrl,
+      chapterLabel: (primary?.textContent || '').trim(),
+      createdAtFormatted: (item.querySelector('.mchap-row__time')?.textContent || '').trim(),
+      groupId: groupMatch ? groupMatch[1] : '',
+      group: (group?.textContent || '').trim(),
+    };
+  }).filter(Boolean).slice(0, 80);
+  const meta = scrapeSeriesMeta();
+  return {
+    slug,
+    mangaName: meta.title || getMangaName(),
+    coverUrl: meta.coverUrl || '',
+    capturedAt: Date.now(),
+    rows,
+  };
+}
+
+function schedulePassiveAgendaSnapshot(delay = 450, force = false) {
+  clearTimeout(_cdlAgendaSnapshotTimer);
+  _cdlAgendaSnapshotTimer = setTimeout(() => {
+    _cdlAgendaSnapshotTimer = null;
+    if (!chrome?.runtime?.id) return;
+    const snapshot = collectAgendaTitleSnapshot();
+    if (!snapshot || (!snapshot.rows.length && !snapshot.coverUrl)) return;
+    const signature = JSON.stringify([
+      snapshot.slug,
+      snapshot.coverUrl,
+      snapshot.rows.map((row) => [row.chapterUrl, row.createdAtFormatted, row.groupId]),
+    ]);
+    if (!force && signature === _cdlAgendaSnapshotSignature) return;
+    _cdlAgendaSnapshotSignature = signature;
+    try {
+      chrome.runtime.sendMessage({
+        action: 'agendaObserveTitle',
+        slug: snapshot.slug,
+        mangaName: snapshot.mangaName,
+        snapshot,
+      }, () => { void chrome.runtime.lastError; });
+    } catch (_) {}
+  }, Math.max(0, Number(delay) || 0));
+}
+
 // Small transient toast at the bottom of the page (subscribe feedback, etc.).
 let _cdlToastTimer = null;
 function cdlToast(msg) {
@@ -4807,18 +5034,27 @@ function injectSubscribeButton() {
     e.stopPropagation();
     if (!chrome?.runtime?.id) return;
     const subscribed = btn.dataset.sub === '1';
+    const agendaSnapshot = subscribed ? null : collectAgendaTitleSnapshot();
     render(!subscribed); // optimistic
     try {
       chrome.runtime.sendMessage(
         subscribed
           ? { action: 'unsubscribe', slug }
-          : { action: 'subscribe', slug, mangaName: getMangaName(), sourceUrl: location.href },
+          : {
+              action: 'subscribe',
+              slug,
+              sourceUrl: location.href,
+              mangaName: agendaSnapshot?.mangaName || getMangaName(),
+              coverUrl: agendaSnapshot?.coverUrl || scrapeSeriesMeta().coverUrl,
+              agendaSnapshot,
+            },
         () => {
           if (chrome.runtime.lastError) { render(subscribed); cdlToast('Could not update the subscription — try again'); return; }
           if (subscribed) { cdlToast('Unsubscribed — no more checks for this series'); return; }
           const mins = parseInt(CFG['subscribe.intervalMinutes'], 10) || 360;
           const every = mins >= 60 ? `${Math.round((mins / 60) * 10) / 10}h` : `${mins}min`;
           cdlToast(`Subscribed — checking every ${every} for new chapters`);
+          schedulePassiveAgendaSnapshot(0, true);
         }
       );
     } catch (_) { render(subscribed); }
@@ -4835,6 +5071,7 @@ function scanAndInject() {
   injectSubscribeButton();
   markDownloadedButtons();
   syncSpecificChapterPickerRows();
+  schedulePassiveAgendaSnapshot();
 }
 
 let _cdlBodyObserver = null;
@@ -4850,6 +5087,7 @@ function refreshTitleActionsOnResize() {
 function observeDOM() {
   if (_cdlBodyObserver) return; // already watching — keep a single observer
   const observer = new MutationObserver((mutations) => {
+    schedulePassiveAgendaSnapshot();
     let shouldScan = false;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
@@ -4901,6 +5139,8 @@ function disconnectDOM() {
   _chapterListCollectionControl = null;
   document.querySelector('#cdl-all-popup[data-view="chapter-list"]')?.remove();
   closeSpecificChapterPicker(false);
+  clearTimeout(_cdlAgendaSnapshotTimer);
+  _cdlAgendaSnapshotTimer = null;
 }
 
 // ── Point d'entrée ────────────────────────────────────────────────────────────

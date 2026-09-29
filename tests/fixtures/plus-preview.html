@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comix Downloader Plus — pane states</title>
+<!--
+  Design harness for the Plus settings pane.
+
+  Open this file directly (file:// works) to step through every state the pane
+  can reach, at the widths that matter, driven by the real core/plus-ui.js.
+  The pane renders inside an iframe so its viewport media queries fire the way
+  they do in the browser rather than following a narrow container.
+
+  Playwright screenshots target plus-preview-frame.html directly; this page is
+  for looking at the states by hand.
+-->
+<style>
+  :root {
+    --hbg:#0b0d0e; --hpanel:#15181a; --hline:#23292d; --hline-hi:#394248;
+    --htext:#e8edee; --hmuted:#8d969b; --haccent:#8b5cf6;
+    --hmono: ui-monospace, SFMono-Regular, 'JetBrains Mono', Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--hbg); color:var(--htext);
+    font:13px/1.5 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+  .app { display:grid; grid-template-columns:240px minmax(0,1fr); height:100%; }
+
+  .rail { border-right:1px solid var(--hline); background:var(--hpanel); overflow-y:auto; padding-bottom:24px; }
+  .rail h1 { margin:0; padding:16px 16px 4px; font-size:13px; font-weight:800; letter-spacing:.02em; }
+  .rail h1 small { display:block; margin-top:3px; color:var(--hmuted); font:500 11px/1.4 var(--hmono); }
+  .rail h2 { margin:18px 0 6px; padding:0 16px; color:var(--hmuted);
+    font:700 10px/1 var(--hmono); letter-spacing:.14em; text-transform:uppercase; }
+  .rail button { display:block; width:100%; padding:7px 16px; border:0; background:transparent;
+    color:var(--hmuted); font:600 12px/1.4 inherit; text-align:left; cursor:pointer; }
+  .rail button:hover { color:var(--htext); background:#1c2124; }
+  .rail button[aria-current="true"] { color:#fff; background:var(--haccent); }
+
+  .stage { display:flex; flex-direction:column; min-width:0; }
+  .bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:10px 16px; border-bottom:1px solid var(--hline); background:var(--hpanel); }
+  .bar .group { display:inline-grid; grid-auto-flow:column; border:1px solid var(--hline-hi); }
+  .bar .group button { min-height:28px; padding:0 11px; border:0; background:transparent;
+    color:var(--hmuted); font:700 11px/1 var(--hmono); cursor:pointer; }
+  .bar .group button + button { border-left:1px solid var(--hline-hi); }
+  .bar .group button[aria-pressed="true"] { background:var(--haccent); color:#fff; }
+  .bar label { display:inline-flex; align-items:center; gap:6px; color:var(--hmuted);
+    font:700 10px/1 var(--hmono); letter-spacing:.1em; text-transform:uppercase; }
+  .bar input[type="color"] { width:30px; height:28px; padding:0; border:1px solid var(--hline-hi); background:none; cursor:pointer; }
+  .bar .spacer { flex:1 1 auto; }
+  .bar code { color:var(--hmuted); font:11px var(--hmono); }
+
+  .canvas { flex:1 1 auto; overflow:auto; padding:20px; background:
+    repeating-conic-gradient(#0e1113 0% 25%, #0b0d0e 0% 50%) 50%/16px 16px; }
+  .frameWrap { margin:0 auto; box-shadow:0 0 0 1px var(--hline); background:#111416; transition:width .16s ease; }
+  .frameWrap header { display:flex; justify-content:space-between; padding:5px 9px;
+    border-bottom:1px solid var(--hline); color:var(--hmuted); font:700 10px/1.4 var(--hmono); letter-spacing:.08em; }
+  iframe { display:block; width:100%; height:var(--frame-h, 760px); border:0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <h1>Plus pane states<small>core/plus-ui.js</small></h1>
+    <h2>Onboarding</h2>
+    <div data-group="onboarding"></div>
+    <h2>Dashboard</h2>
+    <div data-group="dashboard"></div>
+    <h2>Edge states</h2>
+    <div data-group="edge"></div>
+  </nav>
+
+  <div class="stage">
+    <div class="bar">
+      <div class="group" id="widths"></div>
+      <div class="group" id="headers">
+        <button type="button" data-header="off" aria-pressed="true">DEDICATED</button>
+        <button type="button" data-header="on" aria-pressed="false">WITH HEADER</button>
+      </div>
+      <label>Theme <input type="color" id="theme" value="#8b5cf6"></label>
+      <button type="button" class="group" id="reset" style="padding:0 11px;min-height:28px;color:var(--hmuted);font:700 11px/1 var(--hmono);background:transparent;cursor:pointer">RESET</button>
+      <span class="spacer"></span>
+      <code id="readout"></code>
+    </div>
+    <div class="canvas">
+      <div class="frameWrap" id="wrap">
+        <header><span id="label">dashboard-trial</span><span id="dims">1440 x 760</span></header>
+        <iframe id="frame" title="Plus pane"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var GROUPS = {
+    onboarding: [
+      ['signed-out', 'Signed out'],
+      ['device-approval', 'Device approval'],
+      ['pending-checkout', 'Checkout required'],
+      ['encryption-setup', 'Encryption setup'],
+      ['recovery-code', 'Recovery code'],
+      ['existing-key-recovery', 'Key recovery']
+    ],
+    dashboard: [
+      ['dashboard-trial', 'Trial'],
+      ['dashboard-active', 'Active'],
+      ['dashboard-all-on', 'All categories on'],
+      ['dashboard-nothing-on', 'Nothing selected']
+    ],
+    edge: [
+      ['dashboard-grace', 'Payment grace'],
+      ['dashboard-cancelled', 'Cancelled'],
+      ['dashboard-error', 'Sync error'],
+      ['expired', 'Expired']
+    ]
+  };
+
+  var WIDTHS = [['1440', 1440, 760], ['1024', 1024, 760], ['768', 768, 820], ['390', 390, 844]];
+
+  var state = { name: 'dashboard-trial', width: 1440, height: 760, header: 'off', theme: '#8b5cf6' };
+
+  var frame = document.getElementById('frame');
+  var wrap = document.getElementById('wrap');
+  var label = document.getElementById('label');
+  var dims = document.getElementById('dims');
+  var readout = document.getElementById('readout');
+
+  Object.keys(GROUPS).forEach(function (group) {
+    var host = document.querySelector('[data-group="' + group + '"]');
+    GROUPS[group].forEach(function (entry) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = entry[1];
+      button.dataset.state = entry[0];
+      button.addEventListener('click', function () { state.name = entry[0]; apply(); });
+      host.appendChild(button);
+    });
+  });
+
+  var widths = document.getElementById('widths');
+  WIDTHS.forEach(function (entry) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = entry[0];
+    button.dataset.width = String(entry[1]);
+    button.addEventListener('click', function () { state.width = entry[1]; state.height = entry[2]; apply(); });
+    widths.appendChild(button);
+  });
+
+  document.querySelectorAll('[data-header]').forEach(function (button) {
+    button.addEventListener('click', function () { state.header = button.dataset.header; apply(); });
+  });
+  document.getElementById('theme').addEventListener('input', function (event) {
+    state.theme = event.target.value; apply();
+  });
+  document.getElementById('reset').addEventListener('click', function () {
+    state.theme = '#8b5cf6'; document.getElementById('theme').value = '#8b5cf6'; apply();
+  });
+
+  function apply() {
+    var url = 'plus-preview-frame.html?state=' + encodeURIComponent(state.name)
+      + '&header=' + state.header
+      + '&theme=' + encodeURIComponent(state.theme);
+    frame.src = url;
+
+    wrap.style.width = state.width + 'px';
+    wrap.style.setProperty('--frame-h', state.height + 'px');
+    label.textContent = state.name;
+    dims.textContent = state.width + ' x ' + state.height;
+    readout.textContent = url;
+
+    document.querySelectorAll('[data-state]').forEach(function (button) {
+      button.setAttribute('aria-current', button.dataset.state === state.name ? 'true' : 'false');
+    });
+    document.querySelectorAll('[data-width]').forEach(function (button) {
+      button.setAttribute('aria-pressed', Number(button.dataset.width) === state.width ? 'true' : 'false');
+    });
+    document.querySelectorAll('[data-header]').forEach(function (button) {
+      button.setAttribute('aria-pressed', button.dataset.header === state.header ? 'true' : 'false');
+    });
+
+    try { history.replaceState(null, '', '#' + state.name); } catch (_) {}
+  }
+
+  if (location.hash) {
+    var wanted = location.hash.slice(1);
+    var known = Object.keys(GROUPS).some(function (g) {
+      return GROUPS[g].some(function (e) { return e[0] === wanted; });
+    });
+    if (known) state.name = wanted;
+  }
+  apply();
+})();
+</script>
+</body>
+</html>

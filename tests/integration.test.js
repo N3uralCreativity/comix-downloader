@@ -275,10 +275,10 @@ check('image CDN request rule is registered and enabled',
   !!imageRuleResource && imageRuleResource.enabled === true && imageRuleResource.path === 'rules/comix-image-headers.json');
 const imageRules = JSON.parse(read('rules/comix-image-headers.json'));
 const imageRule = imageRules.find((rule) => rule.id === 1);
-check('image CDN rule only modifies extension fetches to wowpic hosts',
+check('image CDN rule supports archive fetches and Agenda cover images from wowpic hosts',
   !!imageRule && imageRule.action.type === 'modifyHeaders' &&
   imageRule.condition.regexFilter.includes('wowpic[1-9]') &&
-  JSON.stringify(imageRule.condition.resourceTypes) === JSON.stringify(['xmlhttprequest']));
+  JSON.stringify(imageRule.condition.resourceTypes) === JSON.stringify(['xmlhttprequest', 'image']));
 check('image CDN rule removes Origin and supplies the comix.to referrer', (() => {
   const headers = imageRule && imageRule.action.requestHeaders || [];
   return headers.some((header) => header.header.toLowerCase() === 'origin' && header.operation === 'remove') &&

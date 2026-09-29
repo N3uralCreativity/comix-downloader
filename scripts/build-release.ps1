@@ -40,10 +40,12 @@ function Copy-ReleaseFiles([string]$Destination) {
     "content/content_features.js",
     "content/content_home.js",
     "content/content_profile.js",
+    "content/content_agenda.js",
     "content/cdl-embed-settings.js",
     "content/adblock-main.js",
     "content/adblock-control.js",
     "content/extract-bridge.js",
+    "content/plus-bridge.js",
     "core/settings.js",
     "core/cdl-features-core.js",
     "core/cdl-home-core.js",
@@ -53,6 +55,13 @@ function Copy-ReleaseFiles([string]$Destination) {
     "core/cdl-download-url.js",
     "core/review-prompt.js",
     "core/update-state.js",
+    "core/plus-core.js",
+    "core/cloud-library.js",
+    "cloud-library",
+    "core/cdl-agenda-core.js",
+    "core/cdl-agenda-view.js",
+    "core/plus-tokens.js",
+    "core/plus-ui.js",
     "_locales",
     "manifest.json",
     "popup/popup.html",
@@ -113,6 +122,16 @@ if (-not ($version -match '^\d+(\.\d+){1,3}$')) {
 # Stamp the effective version onto the in-memory manifest so every staged copy inherits it.
 $manifest.version = $version
 
+# Public releases (three-part versions) talk to the production Plus service; private test
+# builds (four parts) keep the testing service. core/plus-core.js applies the same rule at run time.
+$testingPlusOrigin = "https://plus.n3uralcreativity.top/*"
+$productionPlusOrigin = "https://plus.n3uralcreativity.top/*"
+if ($version -match '^\d+\.\d+\.\d+$') {
+  $manifest.optional_host_permissions = @($manifest.optional_host_permissions | ForEach-Object {
+    if ($_ -eq $testingPlusOrigin) { $productionPlusOrigin } else { $_ }
+  })
+}
+
 $outputFull = Reset-Directory $OutputDir
 $stagingFull = Reset-Directory "dist/package-work"
 
@@ -150,14 +169,19 @@ $firefoxManifest.background = [ordered]@{
     "core/cdl-download-url.js",
     "core/review-prompt.js",
     "core/update-state.js",
+    "core/cloud-library.js",
+    "core/plus-core.js",
+    "core/cdl-agenda-core.js",
     "background.js"
   )
 }
 $firefoxManifest | Add-Member -NotePropertyName browser_specific_settings -NotePropertyValue ([ordered]@{
   gecko = [ordered]@{
     id = "comix-downloader@n3uralcreativity.github.io"
+    strict_min_version = "140.0"
     data_collection_permissions = [ordered]@{
       required = @("none")
+      optional = @("personallyIdentifyingInfo", "authenticationInfo", "browsingActivity", "websiteContent", "technicalAndInteraction")
     }
   }
   gecko_android = [ordered]@{

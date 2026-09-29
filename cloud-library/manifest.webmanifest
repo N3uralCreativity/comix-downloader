@@ -1,0 +1,18 @@
+{
+  "name": "Comix Downloader Plus Cloud Library",
+  "short_name": "Comix Library",
+  "id": "/library/",
+  "start_url": "/library/",
+  "scope": "/library/",
+  "display": "standalone",
+  "background_color": "#171a1c",
+  "theme_color": "#171a1c",
+  "icons": [
+    {
+      "src": "../icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

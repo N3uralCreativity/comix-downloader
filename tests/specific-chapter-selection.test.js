@@ -94,6 +94,12 @@ check('chapter picker focuses the real list and blocks outside misclicks',
   source.includes("chapterSection.addEventListener('click', picker.onChapterClick, true)") &&
   source.includes('picker.focus = createSpecificChapterPickerFocus(chapterSection)'));
 
+check('focused selection colors follow the active site or custom accent',
+  source.includes("layer.style.setProperty('--cdl-accent', getAccent())") &&
+  source.includes("toolbar.style.setProperty('--cdl-accent', getAccent())") &&
+  source.includes('border:1px solid var(--cdl-accent)') &&
+  source.includes('color-mix(in srgb,var(--cdl-accent) 14%,transparent)'));
+
 check('specific selections feed the existing Download All subset',
   source.includes("if (scope === 'specific') return orderedSpecificChapters();") &&
   source.includes('_lastDlAllParams = { chapters: subset, mangaName, zipName, options };'));

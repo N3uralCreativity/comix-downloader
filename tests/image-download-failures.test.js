@@ -369,6 +369,8 @@ vm.runInContext(`
   ${extractFunction('downloadAllPartitionPolicy')}
   ${extractFunction('downloadAllPartSplitReason')}
   ${extractFunction('downloadAllProjectedPartSplitReason')}
+  ${extractFunction('ensureCloudUploadConsent')}
+  ${extractFunction('fetchCloudSeriesCover')}
   ${extractFunction('forEachPageInPool')}
   ${extractFunction('handleDownloadAllRequest')}
   ${extractFunction('createCloudflarePauseControl')}
@@ -840,6 +842,51 @@ async function run() {
     allEvents.progress.some((event) => event.phase === 'buildingPdf' && event.pdfFinalizing === false) &&
     allEvents.progress.some((event) => event.phase === 'buildingPdf' && event.pdfFinalizing === true) &&
     allEvents.done.length === 1 && allEvents.errors.length === 0);
+
+  const cloudCalls = [];
+  let cloudFailure = false, cancelCloud = false;
+  allContext.cdlPlusService = {
+    handleMessage: async () => {},
+    library: {
+      list: async () => ({}), pause() {},
+      saveChapter: async (chapter, progress) => {
+        cloudCalls.push(chapter);
+        if (cloudFailure) throw new Error('Upload connection interrupted');
+        progress({ completed: 1, total: chapter.files.length });
+        if (cancelCloud && cloudCalls.length === 2) {
+          requestDownloadAllStop();
+          throw new Error('Upload paused');
+        }
+      },
+    },
+  };
+  const cloudChapters = stressChapters.slice(0, 2);
+  resetAllEvents();
+  fetchMode = 'pass';
+  await allContext.handleDownloadAllRequest(cloudChapters, 'Series', 'series.zip', 7, { destination: 'cloud' });
+  check('cloud-only saves original pages without producing local archives or download markers',
+    cloudCalls.length === 2 && cloudCalls.every(c => c.files.length === 2 && c.source.startsWith('comix/')) &&
+    allEvents.saves.length === 0 && allEvents.recorded.length === 0 && allEvents.done.length === 1);
+  check('cloud-only advances resume checkpoints only after successful chapter uploads',
+    allEvents.checkpoints.at(-1)?.checkpointIndex === 2 && allEvents.errors.length === 0);
+
+  resetAllEvents(); cloudCalls.length = 0; outputFormat = 'pdf';
+  await allContext.handleDownloadAllRequest(cloudChapters, 'Series', 'series.zip', 7, { destination: 'both' });
+  check('both destinations upload image pages and retain the local PDF output pipeline',
+    cloudCalls.length === 2 && allEvents.packed.length === 2 && allEvents.packed.every(c => c.hasPdf) &&
+    allEvents.saves.length > 0 && allEvents.done.length === 1 && allEvents.errors.length === 0);
+
+  resetAllEvents(); cloudCalls.length = 0; cloudFailure = true;
+  await allContext.handleDownloadAllRequest(cloudChapters, 'Series', 'series.zip', 7, { destination: 'cloud' });
+  check('failed cloud upload reports the resumable transfer without claiming completion',
+    allEvents.errors.some(e => e.error.includes('Transfers')) && allEvents.done.length === 0 &&
+    allEvents.checkpoints.length === 0 && allEvents.saves.length === 0);
+
+  resetAllEvents(); cloudCalls.length = 0; cloudFailure = false; cancelCloud = true;
+  await allContext.handleDownloadAllRequest(cloudChapters, 'Series', 'series.zip', 7, { destination: 'cloud' });
+  check('cancelling a cloud upload preserves confirmed chapters and clears the download UI',
+    allEvents.cancelled.length === 1 && allEvents.cancelled[0].savedChapters === 1 &&
+    allEvents.checkpoints.at(-1)?.checkpointIndex === 1 && allEvents.done.length === 0 && allEvents.errors.length === 0);
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);

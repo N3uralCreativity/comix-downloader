@@ -169,7 +169,7 @@ foreach ($path in $referenceMap.Keys) {
 }
 
 $firefoxManifest = Get-Content -LiteralPath (Join-Path $firefoxDir 'manifest.json') -Raw | ConvertFrom-Json
-$expectedFirefoxScripts = @('lib/jszip.min.js', 'lib/pdf-lib.min.js', 'core/settings.js', 'core/cdl-features-core.js', 'core/cdl-comicinfo.js', 'core/cdl-pdf.js', 'core/cdl-download-url.js', 'core/review-prompt.js', 'core/update-state.js', 'background.js')
+$expectedFirefoxScripts = @('lib/jszip.min.js', 'lib/pdf-lib.min.js', 'core/settings.js', 'core/cdl-features-core.js', 'core/cdl-comicinfo.js', 'core/cdl-pdf.js', 'core/cdl-download-url.js', 'core/review-prompt.js', 'core/update-state.js', 'core/cloud-library.js', 'core/plus-core.js', 'core/cdl-agenda-core.js', 'background.js')
 Assert-Release ($firefoxManifest.permissions -notcontains 'offscreen') "Firefox must not request Chromium's offscreen permission."
 Assert-Release ($firefoxManifest.manifest_version -eq 3) "Firefox must use Manifest V3."
 Assert-Release ($firefoxManifest.version -eq $Version) "Firefox manifest has the wrong version."
@@ -178,7 +178,18 @@ Assert-Release ($firefoxManifest.name -eq '__MSG_extensionName__') "Firefox name
 Assert-Release ($firefoxManifest.description -eq '__MSG_extensionDescription__') "Firefox description must use localized metadata."
 Assert-Release ((@($firefoxManifest.background.scripts) -join "`n") -eq ($expectedFirefoxScripts -join "`n")) "Firefox background script order is incorrect."
 Assert-Release ($firefoxManifest.browser_specific_settings.gecko.id -eq 'comix-downloader@n3uralcreativity.github.io') "Firefox extension ID is missing or incorrect."
-Assert-Release ((@($firefoxManifest.browser_specific_settings.gecko.data_collection_permissions.required) -join ',') -eq 'none') "Firefox data collection declaration must be required: none."
+
+# Public releases must ask for the production Plus service only; private builds for the testing one.
+$expectedPlusOrigin = if ($Version -match '^\d+\.\d+\.\d+$') { 'https://plus.n3uralcreativity.top/*' } else { 'https://plus.n3uralcreativity.top/*' }
+foreach ($target in @($chromiumTargets + 'firefox')) {
+  $plusManifest = Get-Content -LiteralPath (Join-Path (Join-Path $stagingFull $target) 'manifest.json') -Raw | ConvertFrom-Json
+  $plusOrigins = @($plusManifest.optional_host_permissions | Where-Object { $_ -like '*plus*' })
+  Assert-Release (($plusOrigins -join "`n") -eq $expectedPlusOrigin) "$target must request only $expectedPlusOrigin for Plus; found: $($plusOrigins -join ', ')."
+}
+Assert-Release ($firefoxManifest.browser_specific_settings.gecko.strict_min_version -eq '140.0') "Firefox desktop minimum version must support built-in optional data consent."
+Assert-Release ((@($firefoxManifest.browser_specific_settings.gecko.data_collection_permissions.required) -join "`n") -eq 'none') "Firefox must declare that free use requires no data collection."
+$expectedOptionalData = @('personallyIdentifyingInfo', 'authenticationInfo', 'browsingActivity', 'websiteContent', 'technicalAndInteraction')
+Assert-Release ((@($firefoxManifest.browser_specific_settings.gecko.data_collection_permissions.optional) -join "`n") -eq ($expectedOptionalData -join "`n")) "Firefox Plus optional data declarations are incorrect."
 Assert-Release ($firefoxManifest.browser_specific_settings.gecko_android.strict_min_version -eq '142.0') "Firefox Android minimum version changed unexpectedly."
 
 foreach ($target in $allTargets) {

@@ -397,6 +397,7 @@
         'home.openInNewTab', 'home.greeting', 'home.hoverPreview'] },
     { id: 'sync', label: 'Sync & Library', icon: 'repeat',
       keys: ['subscribe.enabled', 'subscribe.intervalMinutes', 'subscribe.notify', 'subscribe.autoDownload'] },
+    { id: 'plus', label: 'Comix Downloader Plus', icon: 'sparkles', keys: [] },
     { id: 'about', label: 'About & Backup', icon: 'info',
       keys: ['logs.maxEntries'] }
   ];

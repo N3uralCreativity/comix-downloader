@@ -71,6 +71,11 @@ async function run() {
     inspect({ text: 'Verify you are human before proceeding. Ray ID: 123' }).challenged === true);
   check('reader content prevents an unrelated embedded widget from pausing downloads',
     inspect({ selectors: ['img.rpage-page__img', '.cf-turnstile'] }).challenged === false);
+  const titlePage = inspect({
+    title: 'Series title', selectors: ['.mchap-list'], url: 'https://comix.to/title/series',
+  });
+  check('a ready title page is not treated as a challenge',
+    titlePage.challenged === false && titlePage.titleReady === true);
 
   let inspected = 0;
   let currentUrl = chapterUrl;
@@ -111,6 +116,18 @@ async function run() {
 
   await waitContext.waitForClear(9, Date.now() + 1000, { expectedChapterUrl: chapterUrl });
   check('verification waits for an actual ready chapter reader', inspected === 2);
+
+  inspected = 0;
+  currentUrl = 'https://comix.to/title/series';
+  waitContext.inspectCloudflareChallengeTab = async () => {
+    inspected++;
+    return { challenged: false, readerReady: false, titleReady: inspected >= 2, url: currentUrl };
+  };
+  await waitContext.waitForClear(9, Date.now() + 1000, {
+    expectedChapterUrl: currentUrl,
+    expectedPageKind: 'title',
+  });
+  check('Agenda verification waits for a ready title page', inspected === 2);
 
   inspected = 0;
   reloads = 0;

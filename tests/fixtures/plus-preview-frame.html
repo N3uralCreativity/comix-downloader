@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plus pane render target</title>
+<!--
+  Render target for tests/fixtures/plus-preview.html.
+
+  Loads the real core/plus-ui.js with an injected transport so every Plus
+  state can be rendered without a Worker, an account, or a signed-in browser.
+  Nothing here re-implements the pane: if it looks wrong here it is wrong in
+  the extension. Reads ?state= and ?theme= from the query string.
+-->
+<style>
+  /* Stand-in for the settings chrome the pane is embedded in. These are the
+     variables legacy/options.html and the comix.to embed already provide. */
+  :root { --accent:#8b5cf6; --accent-bg:rgba(139,92,246,.12); --panel:#1b1f22; --muted:#8d969b; }
+  html, body { margin:0; background:#111416; color:#edf1f2; }
+  body {
+    font: 14px/1.5 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    padding: 24px;
+  }
+  @media (max-width: 720px) { body { padding: 16px; } }
+  #target { max-width: 1040px; }
+</style>
+</head>
+<body>
+<div id="target"></div>
+
+<script src="../../core/plus-tokens.js"></script>
+<script src="../../core/plus-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var params = new URLSearchParams(location.search);
+  var day = 86400000;
+  var NOW = Date.parse('2026-09-02T14:22:00Z');
+
+  var CATEGORIES = [
+    { id:'settings',      label:'Settings and presets',  description:'Extension settings and per-series presets.' },
+    { id:'subscriptions', label:'Watched series',        description:'Series watched for new chapters.' },
+    { id:'progress',      label:'Reading progress',      description:'Resume chapters and reader positions.' },
+    { id:'downloads',     label:'Downloaded chapters',   description:'Downloaded-chapter markers only, never files.' },
+    { id:'stats',         label:'Reading statistics',    description:'Per-device reading totals combined locally.' }
+  ];
+  var RECOMMENDED = ['settings', 'subscriptions', 'progress'];
+  var ALL = CATEGORIES.map(function (c) { return c.id; });
+
+  var DEVICES = [
+    { id:'d1', name:'Windows - Chrome',  approved:true,  revoked:false, current:true,  lastSeenAt: NOW - 4 * 60000 },
+    { id:'d2', name:'Android - Firefox', approved:true,  revoked:false, current:false, lastSeenAt: NOW - 2 * day },
+    { id:'d3', name:'Windows - Opera',   approved:false, revoked:false, current:false, lastSeenAt: NOW - 11 * 60000, publicKeyJwk:{ kty:'EC' } },
+    { id:'d4', name:'macOS - Chrome',    approved:true,  revoked:true,  current:false, lastSeenAt: NOW - 26 * day }
+  ];
+  var SNAPSHOTS = [
+    { id:'s1', kind:'latest',         createdAt: NOW - 90 * 60000, sizeBytes: 286720, revision: 412 },
+    { id:'s2', kind:'daily',          createdAt: NOW - 1 * day,    sizeBytes: 284310, revision: 405 },
+    { id:'s3', kind:'before_restore', createdAt: NOW - 3 * day,    sizeBytes: 271044, revision: 388 },
+    { id:'s4', kind:'daily',          createdAt: NOW - 9 * day,    sizeBytes: 240118, revision: 351 }
+  ];
+  var agendaWeek = new Date();
+  agendaWeek.setHours(0, 0, 0, 0);
+  agendaWeek.setDate(agendaWeek.getDate() - ((agendaWeek.getDay() + 6) % 7));
+  function agendaStamp(dayOffset, hour) {
+    var value = new Date(agendaWeek.getTime());
+    value.setDate(value.getDate() + dayOffset);
+    value.setHours(hour == null ? 12 : hour, 0, 0, 0);
+    return value.toISOString();
+  }
+  var AGENDA = {
+    generatedAt: new Date().toISOString(), timeZone: 'Europe/Paris', pollIntervalMinutes: 360,
+    subscriptionCount: 6, readyCount: 4, unscheduledCount: 2, needsBackfill: [],
+    entries: [
+      { slug:'monday-series', mangaName:'The Monday Return', titleUrl:'https://comix.to/title/monday-series', lastChapterLabel:'Ch.91', expectedChapterLabel:'Ch.92', lastReleaseAt:Date.now()-7*day, cadenceClass:'weekly', cadenceDays:7, confidence:84, eventCount:9, rawEventCount:12, observedCount:4, droppedBackfill:0, evidencePrecision:'day', historyStatus:'ok', historyError:'', lastBackfillAt:Date.now(), pagesScanned:3, prediction:{ level:'on-schedule', baseLevel:'on-schedule', reason:'', instantUtc:agendaStamp(0,12), precision:'day', showTime:false, inferred:true } },
+      { slug:'midweek-series', mangaName:'A Quiet Midweek Chapter', titleUrl:'https://comix.to/title/midweek-series', lastChapterLabel:'Ch.213', expectedChapterLabel:'Ch.214', lastReleaseAt:Date.now()-8*day, cadenceClass:'weekly', cadenceDays:7.2, confidence:61, eventCount:6, rawEventCount:8, observedCount:2, droppedBackfill:0, evidencePrecision:'day', historyStatus:'ok', historyError:'', lastBackfillAt:Date.now(), pagesScanned:3, prediction:{ level:'estimated', baseLevel:'estimated', reason:'', instantUtc:agendaStamp(2,12), precision:'day', showTime:false, inferred:true } },
+      { slug:'broad-series', mangaName:'Coarse History Example', titleUrl:'https://comix.to/title/broad-series', lastChapterLabel:'Ch.37', expectedChapterLabel:'Ch.38', lastReleaseAt:Date.now()-7*day, cadenceClass:'weekly', cadenceDays:7, confidence:58, eventCount:5, rawEventCount:7, observedCount:0, droppedBackfill:0, evidencePrecision:'week', historyStatus:'ok', historyError:'', lastBackfillAt:Date.now(), pagesScanned:3, prediction:{ level:'estimated', baseLevel:'estimated', reason:'', instantUtc:agendaStamp(4,12), precision:'week', showTime:false, inferred:true } },
+      { slug:'late-series', mangaName:'The Delayed Swordmaster', titleUrl:'https://comix.to/title/late-series', lastChapterLabel:'Ch.44', expectedChapterLabel:'Ch.45', lastReleaseAt:Date.now()-10*day, cadenceClass:'weekly', cadenceDays:7, confidence:78, eventCount:10, rawEventCount:11, observedCount:5, droppedBackfill:0, evidencePrecision:'day', historyStatus:'ok', historyError:'', lastBackfillAt:Date.now(), pagesScanned:3, prediction:{ level:'late', baseLevel:'on-schedule', reason:'', instantUtc:agendaStamp(-2,12), precision:'day', showTime:false, inferred:true } },
+      { slug:'new-series', mangaName:'Newly Followed Story', titleUrl:'https://comix.to/title/new-series', lastChapterLabel:'Ch.3', expectedChapterLabel:'Ch.4', lastReleaseAt:Date.now()-2*day, cadenceClass:'unknown', cadenceDays:null, confidence:null, eventCount:3, rawEventCount:3, observedCount:0, droppedBackfill:0, evidencePrecision:null, historyStatus:'ok', historyError:'', lastBackfillAt:Date.now(), pagesScanned:2, prediction:{ level:'unscheduled', baseLevel:'unscheduled', reason:'insufficient-history', instantUtc:null, precision:null, showTime:false, inferred:true } },
+      { slug:'irregular-series', mangaName:'Irregular Release Notes', titleUrl:'https://comix.to/title/irregular-series', lastChapterLabel:'Ch.18', expectedChapterLabel:'Ch.19', lastReleaseAt:Date.now()-5*day, cadenceClass:'irregular', cadenceDays:null, confidence:32, eventCount:8, rawEventCount:9, observedCount:2, droppedBackfill:0, evidencePrecision:'day', historyStatus:'ok', historyError:'', lastBackfillAt:Date.now(), pagesScanned:3, prediction:{ level:'unscheduled', baseLevel:'unscheduled', reason:'irregular', instantUtc:null, precision:null, showTime:false, inferred:true } }
+    ]
+  };
+
+  function account(overrides) {
+    var base = {
+      email: 'leo@example.com',
+      state: 'trial',
+      trialEnd: NOW + 27 * day,
+      periodEnd: NOW + 27 * day,
+      graceEnd: NOW + 5 * day,
+      dataDeleteAt: NOW + 21 * day,
+      deviceCount: 2,
+      deviceLimit: 5,
+      storageBytes: 286720,
+      encryptionInitialized: true,
+      device: { approved: true }
+    };
+    Object.keys(overrides || {}).forEach(function (key) { base[key] = overrides[key]; });
+    return base;
+  }
+
+  function view(overrides) {
+    var base = {
+      ok: true,
+      signedIn: true,
+      encryptionReady: true,
+      pendingRecoveryCode: null,
+      categories: CATEGORIES,
+      recommendedCategories: RECOMMENDED,
+      state: { account: account(), selectedCategories: RECOMMENDED, lastSyncAt: NOW - 90 * 60000, lastError: null }
+    };
+    Object.keys(overrides || {}).forEach(function (key) {
+      if (key === 'state') Object.keys(overrides.state).forEach(function (k) { base.state[k] = overrides.state[k]; });
+      else if (key === 'account') base.state.account = account(overrides.account);
+      else base[key] = overrides[key];
+    });
+    return base;
+  }
+
+  // Every state render() can reach, in the order render() tests them.
+  var STATES = {
+    'signed-out':            function () { return { ok:true, signedIn:false, categories:CATEGORIES, recommendedCategories:RECOMMENDED, state:{ account:null, selectedCategories:[] } }; },
+    'device-approval':       function () { return view({ account:{ device:{ approved:false } } }); },
+    'pending-checkout':      function () { return view({ account:{ state:'pending_checkout', trialEnd:null } }); },
+    'existing-key-recovery': function () { return view({ encryptionReady:false, account:{ encryptionInitialized:true } }); },
+    'expired':               function () { return view({ account:{ state:'expired' } }); },
+    'encryption-setup':      function () { return view({ encryptionReady:false, account:{ encryptionInitialized:false } }); },
+    'recovery-code':         function () { return view({ pendingRecoveryCode:'K7QF-2M9X-VD4A-8PLT-3RJN-6EWC' }); },
+    'dashboard-trial':       function () { return view(); },
+    'dashboard-active':      function () { return view({ account:{ state:'active' } }); },
+    'dashboard-grace':       function () { return view({ account:{ state:'grace' } }); },
+    'dashboard-cancelled':   function () { return view({ account:{ state:'cancelled_active' } }); },
+    'dashboard-all-on':      function () { return view({ account:{ state:'active', storageBytes: 1_642_890 }, state:{ selectedCategories: ALL } }); },
+    'dashboard-nothing-on':  function () { return view({ state:{ selectedCategories: [], lastSyncAt: null } }); },
+    'dashboard-error':       function () { return view({ state:{ lastError:{ message:'The last sync could not reach the Plus service.', code:'PLUS_NETWORK', requestId:'req_8f21c0' } } }); }
+  };
+
+  var stateName = params.get('state') || 'dashboard-trial';
+  var build = STATES[stateName] || STATES['dashboard-trial'];
+
+  var theme = params.get('theme');
+  if (theme) document.documentElement.style.setProperty('--accent', theme);
+
+  // Injected transport. Resolves the same envelopes the background page returns.
+  function send(message) {
+    var action = message && message.action;
+    if (action === 'plusGetState' || action === 'plusRefreshAccount') return Promise.resolve(build());
+    if (action === 'plusListDevices') return Promise.resolve({ ok:true, devices: DEVICES });
+    if (action === 'plusListSnapshots') {
+      return Promise.resolve({ ok:true, snapshots: stateName === 'dashboard-nothing-on' ? [] : SNAPSHOTS });
+    }
+    if (action === 'agendaGet' || action === 'agendaRefresh') return Promise.resolve({ ok:true, agenda:AGENDA, summary:{ requested:6, analyzed:6, blocked:0, events:53 } });
+    if (action === 'plusRequestCode') return Promise.resolve({ ok:true, sent:true });
+    return Promise.resolve({ ok:true });
+  }
+
+  var section = CDLPlusUI.createSection({
+    variant: 'standalone',
+    dedicated: true,
+    hideHeader: params.get('header') === 'on' ? false : true,
+    agendaOnly: params.get('agendaOnly') === '1',
+    send: send
+  });
+  document.getElementById('target').appendChild(section);
+
+  // Let the harness and Playwright know the pane finished its first render.
+  var settle = setInterval(function () {
+    if (!document.querySelector('.cdl-plus-loading')) {
+      clearInterval(settle);
+      document.body.setAttribute('data-plus-ready', stateName);
+    }
+  }, 30);
+})();
+</script>
+</body>
+</html>

@@ -4,21 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Comix Downloader Plus - Cloud Library, Release Agenda and Sync</title>
-<meta name="description" content="A preview of Comix Downloader Plus: an encrypted Cloud Library for the chapters you save, a Release Agenda for the series you follow, and sync across your browsers. Now in closed beta.">
+<meta name="description" content="Comix Downloader Plus: an encrypted Cloud Library for the chapters you save, a Release Agenda for the series you follow, and sync across your browsers. 30 days free, then US$1.50/month.">
 <meta name="theme-color" content="#15171b">
 <link rel="canonical" href="https://n3uralcreativity.top/comix-downloader/plus.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Comix Downloader">
-<meta property="og:title" content="Comix Downloader Plus - Save it once. Read it anywhere.">
-<meta property="og:description" content="An encrypted Cloud Library, a Release Agenda and sync across your browsers. Now in closed beta.">
+<meta property="og:title" content="Comix Downloader Plus - Save it once. Read it anywhere &amp; offline.">
+<meta property="og:description" content="An encrypted Cloud Library, a Release Agenda and sync across your browsers. 30 days free, then US$1.50/month.">
 <meta property="og:url" content="https://n3uralcreativity.top/comix-downloader/plus.html">
 <meta property="og:image" content="https://n3uralcreativity.top/comix-downloader/assets/plus-cloud-library.jpg">
 <meta property="og:image:width" content="1440">
 <meta property="og:image:height" content="900">
 <meta property="og:image:alt" content="The Comix Downloader Plus Cloud Library showing saved comics as covers">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Comix Downloader Plus - Save it once. Read it anywhere.">
-<meta name="twitter:description" content="An encrypted Cloud Library, a Release Agenda and sync across your browsers. Now in closed beta.">
+<meta name="twitter:title" content="Comix Downloader Plus - Save it once. Read it anywhere &amp; offline.">
+<meta name="twitter:description" content="An encrypted Cloud Library, a Release Agenda and sync across your browsers. 30 days free, then US$1.50/month.">
 <meta name="twitter:image" content="https://n3uralcreativity.top/comix-downloader/assets/plus-cloud-library.jpg">
 <link rel="icon" type="image/png" href="assets/icon128.png?v=2">
 <link rel="preload" as="image" href="assets/plus-cloud-library.jpg">
@@ -65,6 +65,33 @@
     cursor: not-allowed; box-shadow: none;
   }
   .plus-hero-cta .btn-soon svg { width: 17px; height: 17px; flex: none; }
+  .plus-hero-cta .btn-start { display: inline-flex; align-items: center; gap: 9px; padding: 14px 24px; border-radius: var(--radius-sm); background: #bda7ff; color: #15171b; font-weight: 700; font-size: 15.5px; box-shadow: 0 12px 30px rgba(189,167,255,.28), 0 0 0 #8b5cf6; position: relative; isolation: isolate; transition: background .2s, transform .25s, box-shadow .3s; }
+  /* Trial button hover: it pops up like a comic panel over drifting screentone dots,
+     and the label rolls to the reassurance line. */
+  .plus-hero-cta .btn-start::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; opacity: 0; transition: opacity .3s;
+    background-image: radial-gradient(circle, rgba(76,29,149,.42) 0 1.05px, transparent 1.6px); background-size: 6px 6px;
+    -webkit-mask: linear-gradient(35deg, #000 8%, transparent 78%); mask: linear-gradient(35deg, #000 8%, transparent 78%);
+  }
+  .plus-hero-cta .btn-start:is(:hover, :focus-visible) { background: #cbb9ff; color: #15171b; transform: translate(-3px, -3px); box-shadow: 0 12px 30px rgba(189,167,255,0), 6px 6px 0 #8b5cf6; }
+  .plus-hero-cta .btn-start:is(:hover, :focus-visible)::before { opacity: 1; animation: plus-tone 7s linear infinite; }
+  .plus-hero-cta .btn-start:active { transform: translate(1px, 1px); box-shadow: 0 12px 30px rgba(189,167,255,0), 2px 2px 0 #8b5cf6; transition-duration: .06s; }
+  .plus-hero-cta .btn-start .roll { display: grid; overflow: hidden; }
+  .plus-hero-cta .btn-start .roll > span { grid-area: 1 / 1; text-align: center; transition: transform .45s cubic-bezier(.7,0,.2,1); }
+  .plus-hero-cta .btn-start .roll > span + span { transform: translateY(115%); color: #3b1d78; }
+  .plus-hero-cta .btn-start:is(:hover, :focus-visible) .roll > span:first-child { transform: translateY(-115%); }
+  .plus-hero-cta .btn-start:is(:hover, :focus-visible) .roll > span + span { transform: none; }
+  @keyframes plus-tone { to { background-position: 30px -30px; } }
+  @media (prefers-reduced-motion: reduce) {
+    .plus-hero-cta .btn-start, .plus-hero-cta .btn-start *, .plus-hero-cta .btn-start::before { animation: none !important; transition-duration: .01ms !important; }
+    .plus-hero-cta .btn-start:is(:hover, :focus-visible, :active) { transform: none; }
+  }
+  .plus-hero-cta .plus-cta-signin { display: inline-flex; background: transparent; align-items: center; gap: 9px; padding: 13px 20px; border: 1px solid #454a54; border-radius: var(--radius-sm); color: #e7e9ee; font-weight: 650; font-size: 15px; transition: border-color .2s, background .2s, color .2s; }
+  .plus-hero-cta .plus-cta-signin:is(:hover, :focus-visible) { border-color: #bda7ff; background: rgba(189,167,255,.1); color: #fff; }
+  .plus-hero-cta :is(.btn-start, .plus-cta-signin):focus-visible { outline: 2px solid #bda7ff; outline-offset: 4px; }
+  .plus-hero-cta .btn-start svg, .plus-hero-cta .plus-cta-signin svg { width: 17px; height: 17px; flex: none; }
+  .plus-offer--live strong { color: #fff; }
+  .plus-offer--live span { color: #b4b8c0; }
   .plus-offer { display: flex; align-items: baseline; gap: 9px; text-align: left; }
   .plus-offer strong { font-size: 20px; font-weight: 800; color: #9fa4ae; }
   .plus-offer span { font-size: 13px; color: #7f858f; }
@@ -244,33 +271,33 @@
 <header class="nav"><div class="nav-inner">
   <a class="brand" href="index.html"><svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>Comix Downloader<span class="ver">PLUS</span></a>
   <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
-  <nav class="nav-links" id="nav-links"><a href="index.html">Home</a><a href="Documentation.html">Documentation</a><a href="plus.html" class="active">Plus</a><a href="privacy.html">Privacy</a><a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a><a class="nav-signin" href="plus.html#notify"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in<span class="nav-signin-soon">Soon</span></a></nav>
+  <nav class="nav-links" id="nav-links"><a href="index.html">Home</a><a href="Documentation.html">Documentation</a><a href="plus.html" class="active">Plus</a><a href="privacy.html">Privacy</a><a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a><a class="nav-signin" href="https://plus.n3uralcreativity.top/account?mode=login"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in</a></nav>
 </div></header>
 
 <main id="main" tabindex="-1">
   <section class="plus-hero" aria-labelledby="plus-title">
     <div class="plus-shell plus-hero-inner">
-      <span class="plus-pill"><i></i>Closed beta &middot; invite only</span>
-      <h1 id="plus-title">Save it once. <span>Read it anywhere.</span></h1>
-      <p class="lede">Comix Downloader Plus is the optional subscription we are building alongside the free extension. It keeps the chapters you save in an encrypted Cloud Library you can read on any device, shows when the series you follow are likely to return, and syncs your setup across browsers.</p>
+      <span class="plus-pill"><i></i>Now available &middot; 30 days free</span>
+      <h1 id="plus-title">Save it once. <span>Read it anywhere &amp;&nbsp;offline.</span></h1>
+      <p class="lede">Comix Downloader Plus is the optional subscription for the free extension. It keeps the chapters you save in an encrypted Cloud Library you can read on any device, shows when the series you follow are likely to return, and syncs your setup across browsers.</p>
       <div class="plus-hero-cta">
-        <button class="btn-soon" type="button" disabled aria-disabled="true"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Start 30-day free trial</button>
-        <p class="plus-offer"><strong>Planned: 30 days free</strong><span>then US$1.50/mo + tax</span></p>
+        <a class="btn-start" href="https://plus.n3uralcreativity.top/account?mode=create"><span class="roll"><span>Start 30-day free trial</span><span aria-hidden="true">Try it free. Stop anytime.</span></span></a>
+        <a class="plus-cta-signin" href="https://plus.n3uralcreativity.top/account?mode=login"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in</a>
       </div>
-      <p class="plus-fine">Pricing and trial length are the current plan, not a commitment. Nothing is charged today.</p>
-      <p class="plus-signin-note" id="notify">Want to know when it opens? <a href="https://github.com/N3uralCreativity/comix-downloader/releases" target="_blank" rel="noopener">Watch releases on GitHub</a> &mdash; the launch is announced there and in the changelog.</p>
+      <p class="plus-offer plus-offer--live" style="justify-content:center;margin-top:18px;"><strong>30 days free</strong><span>then US$1.50/month + tax. Cancel anytime.</span></p>
+      <p class="plus-signin-note" id="notify">Signing in here also signs Comix Downloader in, in the same browser.</p>
     </div>
   </section>
 
   <figure class="plus-stage">
     <div class="plus-window">
-      <div class="plus-window-bar" aria-hidden="true"><i></i><i></i><i></i><span>Cloud Library &mdash; closed beta build</span></div>
+      <div class="plus-window-bar" aria-hidden="true"><i></i><i></i><i></i><span>Cloud Library</span></div>
       <img src="assets/plus-cloud-library.jpg" width="1440" height="900" alt="The Cloud Library on a desktop browser, with saved comics shown as covers in a grid" fetchpriority="high">
     </div>
     <div class="plus-phone">
       <img src="assets/plus-cloud-phone.jpg" width="780" height="1688" alt="A saved chapter open in the Cloud Library reader on a phone">
     </div>
-    <figcaption>Closed beta build of the Cloud Library, on a desktop browser and a phone. The final interface may differ.</figcaption>
+    <figcaption>The Cloud Library on a desktop browser and a phone, with chapters saved from comix.to.</figcaption>
   </figure>
 
   <section class="plus-shell plus-pillars" aria-labelledby="pillars-title">
@@ -359,7 +386,7 @@
       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       <div>
         <strong>Encrypted before it leaves your browser.</strong>
-        <p>Pages, titles, folder names, thumbnails and reading positions are encrypted on your device before upload. The service keeps a protected copy of your key so a code sent to your email is all you need on a new device, and it does not open your library. The storage included with Plus will be announced before launch.</p>
+        <p>Pages, titles, folder names, thumbnails and reading positions are encrypted on your device before upload. The service keeps a protected copy of your key so a code sent to your email is all you need on a new device, and it does not open your library. Each account includes 1 GB of Cloud Library storage.</p>
       </div>
     </aside>
   </section>
@@ -397,22 +424,22 @@
   </section>
 
   <section class="plus-toolbar" aria-labelledby="toolbar-title">
-    <img src="assets/plus-popup.png" width="680" height="356" alt="The extension popup with a Plus row that opens Cloud Library and the Release Agenda" loading="lazy">
+    <img src="assets/plus-popup.png" width="680" height="220" alt="The extension popup with a Plus row that opens Cloud Library and the Release Agenda" loading="lazy">
     <div>
       <h2 id="toolbar-title">One click from the toolbar.</h2>
-      <p>Sign in from the extension popup with a one-time code sent to your email. Once you are in, its Plus row opens Cloud Library and the Release Agenda directly, with no trip through the settings.</p>
+      <p>Sign in once, from the extension popup or on this website, and the other follows in the same browser. Once you are in, its Plus row opens Cloud Library and the Release Agenda directly, with no trip through the settings.</p>
     </div>
   </section>
 
   <section class="plus-free-band" aria-label="Free stays free">
-    <p><strong>Free stays free.</strong> Downloads, ZIP and CBZ, subscriptions and reader tools remain accountless and unchanged, before and after Plus ships.</p>
+    <p><strong>Free stays free.</strong> Downloads, ZIP and CBZ, subscriptions and reader tools remain accountless and unchanged, with or without Plus.</p>
   </section>
 
   <div class="plus-detail">
     <section aria-labelledby="compare-title">
-      <h2 id="compare-title">Free today vs Plus as planned</h2>
+      <h2 id="compare-title">Free vs Plus</h2>
       <div class="plus-compare">
-        <div class="plus-row plus-row-head"><span>Capability</span><span>Free</span><span>Plus (planned)</span></div>
+        <div class="plus-row plus-row-head"><span>Capability</span><span>Free</span><span>Plus</span></div>
         <div class="plus-row"><span>Downloads, ZIP and CBZ</span><span class="free">Included</span><span class="free">Included</span></div>
         <div class="plus-row"><span>Account</span><span class="free">Not required</span><span class="free">Required</span></div>
         <div class="plus-row"><span>Cloud Library and reader</span><span class="none">Not available</span><span class="yes">Included</span></div>
@@ -425,40 +452,41 @@
     <section aria-labelledby="faq-title">
       <h2 id="faq-title">Questions</h2>
       <div class="plus-faq-list">
-        <div class="plus-faq-item"><strong>Can I subscribe or sign in now?</strong><p>Plus is in closed beta: a small invited group uses it on real libraries before anything is charged. Public sign-up opens with the release, announced in the changelog and on GitHub releases.</p></div>
-        <div class="plus-faq-item"><strong>How much cloud storage will it include?</strong><p>That is being sized during testing and will be announced before launch.</p></div>
+        <div class="plus-faq-item"><strong>How do I start?</strong><p><a href="https://plus.n3uralcreativity.top/account?mode=create">Create an account</a> with your email, start the 30-day free trial, and sign in. Comix Downloader in the same browser signs in with you.</p></div>
+        <div class="plus-faq-item"><strong>Does signing in here sign in the extension?</strong><p>Yes. In the same browser, signing in or out on this website signs Comix Downloader in or out too, and the other way around. On another device, sign in with a code sent to your email.</p></div>
+        <div class="plus-faq-item"><strong>How much cloud storage is included?</strong><p>1 GB of encrypted Cloud Library storage per account. Your account page shows how much you use.</p></div>
         <div class="plus-faq-item"><strong>Can the service read my comics?</strong><p>Pages and names are encrypted on your device before upload. The service keeps a protected copy of your key so an email code can unlock a new device, which means it could technically open your data. It does not, except where the law requires.</p></div>
         <div class="plus-faq-item"><strong>Do I need the extension to read on my phone?</strong><p>No. Saving from comix.to uses the extension, but reading happens in the Cloud Library in any browser where you sign in with your email.</p></div>
         <div class="plus-faq-item"><strong>Will the free extension change?</strong><p>No. Nothing that works today moves behind an account.</p></div>
-        <div class="plus-faq-item"><strong>Is the price final?</strong><p>US$1.50/month with a 30-day trial is the current plan. It can still change before release.</p></div>
+        <div class="plus-faq-item"><strong>What does it cost?</strong><p>US$1.50 a month after the 30-day free trial, plus tax where it applies. Cancel anytime from your account page; Plus stays active to the end of the period.</p></div>
       </div>
     </section>
   </div>
 
-  <section class="plus-roadmap" aria-labelledby="roadmap-title">
-    <h2 id="roadmap-title">Where it stands</h2>
+  <section class="plus-roadmap" aria-labelledby="start-title">
+    <h2 id="start-title">Start in three steps</h2>
     <ol>
       <li>
-        <span class="plus-stage-tag done"><i></i>Done</span>
-        <h3>Private testing</h3>
-        <p>Cloud Library, the Release Agenda and Sync ran in private test builds on real accounts.</p>
+        <span class="plus-stage-tag now"><i></i>Step 1</span>
+        <h3>Create your account</h3>
+        <p>Enter your email and the six-digit code we send. There is no password to remember.</p>
       </li>
       <li>
-        <span class="plus-stage-tag now"><i></i>Now</span>
-        <h3>Closed beta</h3>
-        <p>A small invited group uses it on real libraries before anything is charged.</p>
+        <span class="plus-stage-tag now"><i></i>Step 2</span>
+        <h3>Start the free trial</h3>
+        <p>Add a payment method in Stripe's secure checkout. Nothing is charged for 30 days.</p>
       </li>
       <li>
-        <span class="plus-stage-tag"><i></i>Later</span>
-        <h3>Public release</h3>
-        <p>Sign-up opens with the trial, announced in the changelog and on GitHub releases.</p>
+        <span class="plus-stage-tag now"><i></i>Step 3</span>
+        <h3>Save and read anywhere</h3>
+        <p>Comix Downloader in the same browser signs in with you. On other devices, sign in with your email.</p>
       </li>
     </ol>
-    <p class="plus-later">Also planned: moving a reading library between platforms.</p>
+    <p class="plus-later"><a href="https://plus.n3uralcreativity.top/account?mode=create">Create your account</a> &middot; Already a member? <a href="https://plus.n3uralcreativity.top/account?mode=login">Sign in</a></p>
   </section>
 
   <div class="plus-legal">
-    <p>Everything on this page describes work in progress. Features, pricing and timing may change before release.</p>
+    <p>Plus is optional, and every free feature stays free. Stripe handles billing; tax is added at checkout where it applies.</p>
     <div><a href="terms.html">Terms</a><a href="refund.html">Refund policy</a><a href="privacy.html#plus">Privacy</a></div>
   </div>
 </main>

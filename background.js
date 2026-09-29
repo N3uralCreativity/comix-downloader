@@ -40,11 +40,100 @@ if (typeof importScripts === 'function' && typeof CDLReviewPrompt === 'undefined
 if (typeof importScripts === 'function' && typeof CDLUpdateState === 'undefined') {
   importScripts('core/update-state.js');
 }
+if (typeof importScripts === 'function' && typeof CDLPlus === 'undefined') {
+  importScripts('core/cloud-library.js');
+  importScripts('core/plus-core.js');
+}
 if (typeof importScripts === 'function' && typeof CDLDownloadUrl === 'undefined') {
   importScripts('core/cdl-download-url.js');
 }
+if (typeof importScripts === 'function' && typeof CDLAgendaCore === 'undefined') {
+  importScripts('core/cdl-agenda-core.js');
+}
 
 'use strict';
+
+// Plus is entirely opt-in. Initializing it only reads its local state; the
+// service creates no alarm and performs no network request for free users.
+const cdlPlusService = typeof CDLPlus !== 'undefined'
+  ? CDLPlus.createService({ chrome })
+  : null;
+if (cdlPlusService) cdlPlusService.init().catch(() => {});
+
+// ── Plus website sign-in bridge ──────────────────────────────────────────────
+// content/plus-bridge.js runs on the Plus service origin only (the account page
+// and the web library) and carries sign-ins between the website and the
+// extension. It is registered only while the optional Plus permission is granted,
+// so free users are never affected, and its relays are accepted only from tabs on
+// that origin.
+const CDL_PLUS_BRIDGE_ID = 'cdl-plus-bridge';
+function plusSitePattern() {
+  return typeof CDLPlus !== 'undefined' ? `${new URL(CDLPlus.API_ORIGIN).origin}/*` : '';
+}
+function isPlusSiteSender(sender) {
+  try {
+    return !!(cdlPlusService && sender && sender.url &&
+      new URL(sender.url).origin === new URL(CDLPlus.API_ORIGIN).origin);
+  } catch (_) { return false; }
+}
+async function ensurePlusBridge() {
+  const pattern = plusSitePattern();
+  if (!cdlPlusService || !pattern || !chrome.scripting?.registerContentScripts) return;
+  let granted = false;
+  try { granted = await chrome.permissions.contains({ origins: [pattern] }); } catch (_) {}
+  let registered = [];
+  try { registered = await chrome.scripting.getRegisteredContentScripts({ ids: [CDL_PLUS_BRIDGE_ID] }); } catch (_) {}
+  if (!granted) {
+    if (registered.length) await chrome.scripting.unregisterContentScripts({ ids: [CDL_PLUS_BRIDGE_ID] }).catch(() => {});
+    return;
+  }
+  if (!registered.length) {
+    await chrome.scripting.registerContentScripts([{
+      id: CDL_PLUS_BRIDGE_ID, matches: [pattern], js: ['content/plus-bridge.js'],
+      runAt: 'document_idle', persistAcrossSessions: true,
+    }]).catch(() => {});
+  }
+  // A Plus page left open (for example the account page, while signing in from the
+  // popup) gets the bridge without a reload.
+  const tabs = await chrome.tabs.query({ url: pattern }).catch(() => []);
+  for (const tab of tabs) {
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content/plus-bridge.js'] }).catch(() => {});
+  }
+}
+ensurePlusBridge().catch(() => {});
+chrome.permissions?.onAdded?.addListener(() => { ensurePlusBridge().catch(() => {}); });
+chrome.permissions?.onRemoved?.addListener(() => { ensurePlusBridge().catch(() => {}); });
+
+async function handlePlusBridgeMessage(message) {
+  const view = await cdlPlusService.publicView();
+  const account = view.state && view.state.account;
+  if (message.action === 'cdlPlusBridgeState') {
+    const { cdlPlusSignedOutAt = 0 } = await chrome.storage.local.get('cdlPlusSignedOutAt');
+    return { ok: true, signedIn: !!view.signedIn, email: view.signedIn && account ? account.email || '' : '', signedOutAt: Number(cdlPlusSignedOutAt) || 0 };
+  }
+  if (message.action === 'cdlPlusBridgeRedeem') {
+    await cdlPlusService.handleMessage({ action: 'plusRedeemHandoff', code: String(message.code || ''), email: String(message.email || '') });
+    return { ok: true };
+  }
+  if (message.action === 'cdlPlusBridgeCreateCode') {
+    if (!view.signedIn || !account) return { ok: false };
+    const created = await cdlPlusService.handleMessage({ action: 'plusCreateHandoff' });
+    return { ok: true, code: created.code, email: account.email || '' };
+  }
+  if (message.action === 'cdlPlusBridgeSignOut') {
+    if (view.signedIn) await cdlPlusService.handleMessage({ action: 'plusSignOut' });
+    return { ok: true };
+  }
+  return { ok: false };
+}
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || typeof message.action !== 'string' || message.action.indexOf('cdlPlusBridge') !== 0) return false;
+  if (!isPlusSiteSender(sender)) { sendResponse({ ok: false }); return false; }
+  handlePlusBridgeMessage(message).then(sendResponse, (error) => sendResponse({
+    ok: false, error: { code: error && error.code || 'PLUS_REQUEST_FAILED', message: error && error.message || 'The Plus request failed.' },
+  }));
+  return true;
+});
 
 // Read the user's settings fresh for each download operation. The service worker
 // can restart mid-session, so we never cache config across operations (the one
@@ -86,6 +175,40 @@ function comixSettingsUrl(value) {
   return `${preferredComixOrigin(value)}/user?tab=settings`;
 }
 
+// The Release Agenda is drawn by content_agenda.js inside comix's own page shell.
+function comixAgendaUrl(value) {
+  return `${preferredComixOrigin(value)}/agenda`;
+}
+
+function isComixAgendaTabUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return !!supportedComixOrigin(url.href) && /^\/agenda\/?$/.test(url.pathname);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function openOrFocusComixAgenda(preferredUrl) {
+  let existing = null;
+  try {
+    const tabs = await chrome.tabs.query({ url: ['*://comix.to/*', '*://comix.ws/*'] });
+    existing = (tabs || []).find((tab) => isComixAgendaTabUrl(tab && tab.url)) || null;
+  } catch (_) {}
+  if (!existing || !Number.isInteger(Number(existing.id))) {
+    return chrome.tabs.create({ url: comixAgendaUrl(preferredUrl) });
+  }
+  try {
+    const tab = await chrome.tabs.update(existing.id, { active: true });
+    if (Number.isInteger(Number(existing.windowId)) && chrome.windows && chrome.windows.update) {
+      try { await chrome.windows.update(existing.windowId, { focused: true }); } catch (_) {}
+    }
+    return tab;
+  } catch (_) {
+    return chrome.tabs.create({ url: comixAgendaUrl(preferredUrl) });
+  }
+}
+
 // The in-site settings page is preferred, but a Comix domain may redirect it to
 // the homepage even for an apparently signed-in user. Track only the exact tab
 // the extension opened so unrelated Comix tabs never receive the fallback.
@@ -104,12 +227,13 @@ function isFreshSettingsNavigationAttempt(attempt, tabId, now = Date.now()) {
     Number.isFinite(age) && age >= 0 && age <= CDL_SETTINGS_NAVIGATION_TTL_MS;
 }
 
-async function recordSettingsNavigationAttempt(tabId) {
+async function recordSettingsNavigationAttempt(tabId, view) {
   const id = Number(tabId);
   if (!Number.isInteger(id) || id < 0) throw new Error('Invalid settings tab');
   const startedAt = Date.now();
   await chrome.storage.local.set({
     cdlOpenExtSettings: startedAt,
+    cdlOpenExtSettingsView: view === 'plus' ? 'plus' : 'main',
     [CDL_SETTINGS_NAVIGATION_KEY]: { tabId: id, startedAt },
   });
   _settingsNavigationTabId = id;
@@ -126,7 +250,7 @@ async function clearSettingsNavigationAttempt(tabId) {
     return false;
   }
   if (Number(attempt.tabId) !== id) return false;
-  await chrome.storage.local.remove([CDL_SETTINGS_NAVIGATION_KEY, 'cdlOpenExtSettings']);
+  await chrome.storage.local.remove([CDL_SETTINGS_NAVIGATION_KEY, 'cdlOpenExtSettings', 'cdlOpenExtSettingsView']);
   _settingsNavigationTabId = null;
   return true;
 }
@@ -141,12 +265,12 @@ async function settingsNavigationAttemptForTab(tabId) {
   return null;
 }
 
-async function openTrackedComixSettingsTab(preferredUrl) {
+async function openTrackedComixSettingsTab(preferredUrl, view) {
   const tab = await chrome.tabs.create({ url: comixSettingsUrl(preferredUrl) });
   if (!tab || !Number.isInteger(Number(tab.id))) throw new Error('Settings tab was not created');
   let tracked = false;
   try {
-    await recordSettingsNavigationAttempt(tab.id);
+    await recordSettingsNavigationAttempt(tab.id, view);
     tracked = true;
   } catch (_) {}
   return { tab, tracked };
@@ -310,6 +434,7 @@ function _wakeDownloadAllWaiters() {
 }
 function _cancelDownloadAllNetwork() {
   try { _downloadAllFetchController.abort(); } catch (_) {}
+  try { cdlPlusService?.library?.pause(); } catch (_) {}
 }
 function _signalDownloadAllStop() {
   downloadAllStopFlag = true;
@@ -1799,6 +1924,25 @@ async function cancelDownloadAllForTab(tabId, tabUrl = '', sessionId = '') {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message && typeof message.action === 'string' && message.action.indexOf('plus') === 0) {
+    if (!cdlPlusService) {
+      sendResponse({ ok: false, error: { code: 'PLUS_UNAVAILABLE', message: 'Comix Downloader Plus is unavailable in this build.' } });
+      return false;
+    }
+    Promise.resolve(cdlPlusService.handleMessage(message))
+      .then((result) => sendResponse(Object.assign({ ok: true }, result || {})))
+      .catch((error) => sendResponse({
+        ok: false,
+        error: {
+          code: error && error.code || 'PLUS_REQUEST_FAILED',
+          message: error && error.message || 'The Plus request failed.',
+          requestId: error && error.requestId || null,
+          details: error && error.details,
+        },
+      }));
+    return true;
+  }
+
   if (message.action === 'getChapterAccessPauses') {
     sendResponse({ pauses: [..._chapterAccessTasks.values()]
       .filter((task) => task.originTabId === sender.tab?.id && task.access.paused)
@@ -2039,7 +2183,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // ── Phase 2: subscriptions + library ──
   if (message.action === 'subscribe') {
     const sourceUrl = sender.tab?.url || message.sourceUrl || '';
-    subscribeSeries(message.slug, message.mangaName, sourceUrl).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+    subscribeSeries(message.slug, message.mangaName, sourceUrl, message.coverUrl, message.agendaSnapshot)
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: false }));
     return true;
   }
   if (message.action === 'unsubscribe') {
@@ -2050,6 +2196,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Manual trigger: always check (force), even when the master toggle is off,
     // and report a summary so the options page can show what happened.
     checkAllSubscriptions(true).then((summary) => sendResponse({ ok: true, summary })).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (message.action === 'agendaObserveTitle') {
+    recordAgendaTitleSnapshot(message.slug, message.mangaName, message.snapshot, { requireSubscription: true })
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({ ok: false, error: error && error.message || 'Agenda observation failed.' }));
+    return true;
+  }
+  if (message.action === 'agendaGet') {
+    buildAgendaState()
+      .then((agenda) => sendResponse({ ok: true, agenda }))
+      .catch((error) => sendResponse({
+        ok: false,
+        error: {
+          code: error && error.code || 'AGENDA_READ_FAILED',
+          message: error && error.message || 'The release agenda could not be loaded.',
+          details: error && error.details,
+        },
+      }));
+    return true;
+  }
+  if (message.action === 'agendaRefresh') {
+    refreshAgendaHistory({
+      onlyMissing: message.onlyMissing === true,
+      force: message.force === true,
+      originTabId: sender && sender.tab && sender.tab.id,
+    })
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({
+        ok: false,
+        error: {
+          code: error && error.code || 'AGENDA_REFRESH_FAILED',
+          message: error && error.message || 'The followed-series history could not be refreshed.',
+          details: error && error.details,
+        },
+      }));
+    return true;
+  }
+  if (message.action === 'openAgendaPage') {
+    openOrFocusComixAgenda(sender.tab?.url || message.pageUrl || '')
+      .then((tab) => sendResponse({ ok: true, tabId: tab && tab.id }))
+      .catch((error) => sendResponse({ ok: false, error: error && error.message || 'The Agenda page could not be opened.' }));
     return true;
   }
   if (message.action === 'libraryTest') {
@@ -2089,7 +2277,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message.action === 'cdlOpenComixSettings') {
-    openTrackedComixSettingsTab(sender.tab?.url || message.pageUrl || '')
+    openTrackedComixSettingsTab(sender.tab?.url || message.pageUrl || '', message.view)
       .then((result) => sendResponse({ ok: true, tabId: result.tab.id, tracked: result.tracked }))
       .catch((error) => sendResponse({ ok: false, error: error && error.message }));
     return true;
@@ -4484,6 +4672,8 @@ function resolveOutputOptions(cfg, options) {
   return {
     format,
     directCbz,
+    destination: ['cloud', 'both'].includes(options.destination) ? options.destination : 'local',
+    cloudFolder: options.cloudFolder || null,
     includeComicInfo: !!pick(options.includeComicInfo, cfg['output.includeComicInfo'], true),
     includeSeriesMeta: !directCbz && !!pick(options.includeSeriesMeta, cfg['output.includeSeriesMeta'], false),
     folderLayout: options.folderLayout || cfg['output.folderLayout'] || 'default',
@@ -4979,6 +5169,9 @@ function detectCloudflareChallengeDocument(snapshot) {
   const readerReady = !snapshot && !!document.querySelector(
     'img.rpage-page__img, .rpage-page, [data-page-number], [data-page-index]'
   );
+  const titleReady = !snapshot && !!document.querySelector(
+    '.mchap-list, .mpage__title, .mpage__poster, [class*="mpage__poster"]'
+  );
   const titleMarker = /just a moment|attention required|security verification|checking your browser/i.test(title);
   const formMarker = !snapshot && !!document.querySelector(
     '#challenge-running, #cf-challenge-running, form#challenge-form, .cf-turnstile, [data-sitekey]'
@@ -4994,9 +5187,10 @@ function detectCloudflareChallengeDocument(snapshot) {
     : /^(1006|1007|1008|1106)$/.test(code) || /(?:banned|blocked) your ip|your ip(?: address)? (?:has been|is) (?:banned|blocked)/i.test(bodyText)
       ? 'ip_ban' : 'access_denied';
   return {
-    challenged: !readerReady && !blocked && (titleMarker || formMarker || runtimeMarker || textMarker || !!(snapshot && snapshot.challengeHeader)),
+    challenged: !readerReady && !titleReady && !blocked && (titleMarker || formMarker || runtimeMarker || textMarker || !!(snapshot && snapshot.challengeHeader)),
     blocked, blockKind, cloudflareCode: code,
     readerReady,
+    titleReady,
     title,
     url: snapshot ? snapshot.url || '' : typeof location !== 'undefined' ? String(location.href || '') : '',
   };
@@ -5111,7 +5305,7 @@ async function inspectCloudflareChallengeTab(tabId) {
       func: detectCloudflareChallengeDocument,
     });
     return result && result[0] && result[0].result || {
-      challenged: false, readerReady: false, title: '', url: '',
+      challenged: false, readerReady: false, titleReady: false, title: '', url: '',
     };
   } catch (_) {
     return null;
@@ -5146,7 +5340,7 @@ function showCloudflareChallengeNotification() {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon128.png'),
       title: 'Comix Downloader needs verification',
-      message: 'Complete the Cloudflare check in the opened Comix tab. The download will resume automatically.',
+      message: 'Complete the Cloudflare check in the opened Comix tab. The current operation will resume automatically.',
     });
     if (created && typeof created.catch === 'function') created.catch(() => {});
   } catch (_) {}
@@ -5218,7 +5412,9 @@ async function waitForCloudflareChallengeClear(tabId, deadline, navigation = {})
       if (!onExpectedChapter && navigation.expectedChapterUrl && !restoredExpectedChapter) {
         restoredExpectedChapter = true;
         await reloadCloudflareChapterTab(tabId, navigation);
-      } else if (onExpectedChapter && state.readerReady) {
+      } else if (onExpectedChapter && (
+        navigation.expectedPageKind === 'title' ? state.titleReady : state.readerReady
+      )) {
         return;
       }
     }
@@ -5522,6 +5718,47 @@ async function extractFromTab(url, cfg, navigation = {}) {
   });
 }
 
+// The series cover gives Cloud Library a real preview; a chapter's first page is often a
+// scanlator credits page. Fetched once per Download All; failure keeps the page preview.
+async function fetchCloudSeriesCover(meta, cfg) {
+  if (!meta || !/^https:\/\//i.test(meta.coverUrl || '')) return null;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), Math.min(Number(cfg && cfg['perf.imageTimeoutMs']) || 30000, 30000));
+  try {
+    const resp = await fetch(meta.coverUrl, {
+      signal: controller.signal,
+      credentials: 'include',
+      headers: { Referer: `${preferredComixOrigin(meta.sourceUrl)}/` },
+    });
+    if (!resp.ok || !/^image\//i.test(resp.headers.get('content-type') || '')) return null;
+    return await resp.arrayBuffer();
+  } catch (err) {
+    cdlLog('warn', `Cloud Library cover could not be fetched: ${err.message}`);
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// Firefox counts Cloud Library page uploads as "websiteContent" data collection even
+// though pages are encrypted first, so an upload needs that optional consent. Accounts
+// that signed in before the category was declared grant it from Plus settings.
+async function ensureCloudUploadConsent() {
+  let declared = null;
+  try { declared = chrome.runtime.getManifest()?.browser_specific_settings?.gecko?.data_collection_permissions?.optional; } catch (_) {}
+  if (!Array.isArray(declared) || !declared.includes('websiteContent')) return;
+  const granted = await new Promise((resolve) => {
+    try {
+      const result = chrome.permissions.contains({ data_collection: ['websiteContent'] }, (value) => resolve(!chrome.runtime.lastError && !!value));
+      if (result && typeof result.then === 'function') result.then((value) => resolve(!!value), () => resolve(false));
+    } catch (_) { resolve(false); }
+  });
+  if (!granted) {
+    throw new Error('Firefox needs your permission before chapter pages can be uploaded to your Cloud Library. ' +
+      'Open Plus settings, choose "Allow Cloud uploads", then try again. Nothing was uploaded.');
+  }
+}
+
 // ── Téléchargement de tous les chapitres ──────────────────────────────────────
 // Up to `download.concurrentChapters` (1–10, default 2) chapters are downloaded at the same
 // time by a small worker pool. Each worker fully downloads its chapter into memory
@@ -5561,6 +5798,18 @@ async function handleDownloadAllRequest(
   const cfg = await loadCfg();
   const opts = resolveOutputOptions(cfg, options);
   const directCbz = opts.format === 'cbz' && opts.directCbz === true;
+  opts.destination = opts.destination || 'local';
+  const cloudOnly = opts.destination === 'cloud';
+  let cloudSaved = 0;
+  let cloudCoverPromise = null;
+  const cloudSeriesCover = () => cloudCoverPromise ||
+    (cloudCoverPromise = fetchCloudSeriesCover(opts.seriesMeta, cfg));
+  if (opts.destination !== 'local') {
+    if (!cdlPlusService?.library) throw new Error('Cloud Library is unavailable in this build.');
+    await ensureCloudUploadConsent();
+    await cdlPlusService.handleMessage({ action: 'plusRefreshAccount' });
+    await cdlPlusService.library.list();
+  }
   const expectedSeriesSlug = downloadAllResumeSlug(resumeData);
   if (!opts.totalCount) opts.totalCount = totalChapters;
   // Push finished .cbz files to the library server, only when enabled + CBZ format.
@@ -6290,7 +6539,7 @@ async function handleDownloadAllRequest(
       };
     }
 
-    if (opts.format === 'pdf') {
+    if (opts.format === 'pdf' && opts.destination === 'local') {
       try {
         const pdfBytes = await enqueuePdfBuild(async () => {
           if (downloadAllShouldStop()) return null;
@@ -6430,7 +6679,7 @@ async function handleDownloadAllRequest(
 
       const packageable = r && r.status === 'done' &&
         (r.files.length || (r.pdfBytes && r.pdfBytes.byteLength));
-      if (packageable && !directCbz) {
+      if (packageable && !directCbz && !cloudOnly) {
         const estimatedBytes = r.pdfBytes && r.pdfBytes.byteLength
           ? r.pdfBytes.byteLength
           : Math.max(0, Number(r.bytes) || 0);
@@ -6453,6 +6702,33 @@ async function handleDownloadAllRequest(
       }
 
       if (packageable) {
+        if (opts.destination !== 'local') {
+          try {
+            const cover = await cloudSeriesCover();
+            await withExtensionKeepAlive(() => cdlPlusService.library.saveChapter({
+              name: r.chapterLabel, series: mangaName, parentId: opts.cloudFolder,
+              source: r.chapterUrl.replace(/^https?:\/\/comix\.(to|ws)/i, 'comix'), files: r.files, cover,
+            }, (progress) => {
+              if (downloadAllShouldStop()) cdlPlusService.library.pause();
+              notify({ phase: 'uploadingCloud', chapterIndex: chapterOffset + i, totalChapters,
+                chapterLabel: r.chapterLabel, imagesDone: progress.completed, imagesTotal: progress.total });
+            }));
+            cloudSaved++;
+            if (cloudOnly) {
+              acceptedChapterCount++;
+              if (!resumeData.checkpointBlocked) updateDownloadAllResumeCheckpoint({
+                checkpointIndex: chapterOffset + i + 1, nextZipPart: resumeData.nextZipPart,
+                savedZipNames, terminalCounts, firstChapterError,
+              });
+              packedCount = i + 1; wakeWindow(); continue;
+            }
+            if (opts.format === 'pdf') r.pdfBytes = await buildChapterPdfOutput(r.files, opts, r.chapterLabel, r.chapterUrl, mangaName);
+          } catch (error) {
+            if (downloadAllShouldStop()) return;
+            notifyDownloadAllError(originTabId, `Cloud upload paused: ${error.message} Open Cloud Library > Transfers to resume.`);
+            packFailed = true; _signalDownloadAllAbort(); return;
+          }
+        }
         if (directCbz) {
           const ok = await saveDirectCbz(r, chapterOffset + i + 1);
           if (!ok) { packFailed = true; _signalDownloadAllAbort(); return; }
@@ -6494,7 +6770,7 @@ async function handleDownloadAllRequest(
   };
 
   // Series cover + series.json go in first (so they land in ZIP part 1).
-  if (!directCbz && zipPart === 1) {
+  if (!directCbz && !cloudOnly && zipPart === 1) {
     const metadataBytes = await withExtensionKeepAlive(
       () => addSeriesMetaToOuter(zip, opts, mangaName, cfg)
     );
@@ -6517,6 +6793,7 @@ async function handleDownloadAllRequest(
   if (downloadAllAbortFlag) return;
   if (downloadAllStopFlag) {
     // The in-order packer exits immediately on cancellation. Preserve any
+    if (cloudOnly) { finishGracefulCancellation(); return; }
     // chapters that completed just before the stop but had not reached it yet.
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
@@ -6587,9 +6864,14 @@ async function handleDownloadAllRequest(
     return;
   }
 
+  if (cloudOnly && cloudSaved > 0) {
+    const warning = terminalCounts.error || terminalCounts.skipped ? 'Some chapters were not saved. Retry incomplete chapters.' : '';
+    notifyDownloadAllDone(originTabId, `${cloudSaved} chapter${cloudSaved === 1 ? '' : 's'} saved to Cloud Library`, warning);
+    return;
+  }
   if (zipPartChapters === 0 && savedZipNames.length === 0) {
     const detail = firstChapterError ? ` ${firstChapterError}` : '';
-    const output = directCbz ? 'CBZ files' : 'ZIP files';
+    const output = cloudOnly ? 'cloud chapters' : directCbz ? 'CBZ files' : 'ZIP files';
     const error = `No ${output} were created because no complete chapters could be downloaded.${detail}`;
     cdlLog('error', `Download All failed: ${error}`);
     notifyDownloadAllError(originTabId, error, {
@@ -6871,22 +7153,56 @@ async function fetchSeriesChapterPathsDirect(slug, sourceOrigin) {
 // runs and solves itself in a real tab; we poll the page until the chapter list
 // is readable (or give up after the deadline and report "blocked" as before).
 async function fetchSeriesChapterPathsViaTab(slug, sourceOrigin) {
+  const snapshot = await fetchSeriesChapterSnapshotViaTab(slug, { maxPages: 1, maxRows: 40, sourceOrigin });
+  return snapshot && snapshot.paths && snapshot.paths.length ? snapshot.paths : null;
+}
+
+async function fetchSeriesChapterSnapshotViaTab(slug, options = {}) {
   if (!chrome.scripting || !chrome.tabs) return null;
-  const origin = preferredComixOrigin(sourceOrigin);
+  const titleUrl = `${preferredComixOrigin(options.sourceOrigin)}/title/${slug}`;
+  const requestedMaxPages = Math.max(1, Math.min(5, Number(options.maxPages) || 3));
+  const requestedMaxRows = Math.max(20, Math.min(120, Number(options.maxRows) || 80));
+  const adaptive = options.adaptive !== false && requestedMaxPages > 1;
+  let ownsTab = !Number.isInteger(options.tabId);
   let tab = null;
-  try { tab = await chrome.tabs.create({ url: withExtractMarker(`${origin}/title/${slug}`), active: false }); }
-  catch (_) { return null; }
+  let mobile = false;
+  try {
+    mobile = await isMobileBrowserPlatform();
+    if (ownsTab) {
+      tab = await chrome.tabs.create({ url: withExtractMarker(titleUrl), active: false });
+    } else {
+      try {
+        tab = await chrome.tabs.update(options.tabId, { url: withExtractMarker(titleUrl), active: false });
+      } catch (_) {
+        ownsTab = true;
+        tab = await chrome.tabs.create({ url: withExtractMarker(titleUrl), active: false });
+      }
+    }
+    if (mobile && tab && tab.active && options.originTabId != null) {
+      await restoreChallengeOrigin({ originTabId: options.originTabId });
+    }
+  } catch (_) { return null; }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try {
     const deadline = Date.now() + 45_000;
-    await sleep(2500); // let navigation (and a possible challenge) start
+    let emptyReadyPolls = 0;
+    let challengeRecovered = false;
     while (Date.now() < deadline) {
+      let liveTab = null;
+      try { liveTab = await chrome.tabs.get(tab.id); } catch (_) { return null; }
+      if (liveTab && liveTab.status !== 'complete') {
+        await sleep(200);
+        continue;
+      }
       let out = null;
       try {
         const res = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
-          func: grabSeriesChapterPathsFromPage,
-          args: [slug],
+          func: grabSeriesChapterSnapshotFromPage,
+          args: [slug, {
+            maxPages: 1,
+            maxRows: Math.min(40, requestedMaxRows),
+          }],
         });
         out = res && res[0] && res[0].result;
       } catch (_) {
@@ -6894,48 +7210,694 @@ async function fetchSeriesChapterPathsViaTab(slug, sourceOrigin) {
         // if the tab itself is gone (closed by the user), stop waiting.
         try { await chrome.tabs.get(tab.id); } catch (_) { return null; }
       }
-      if (out && !out.challenge && out.paths && out.paths.length) {
-        cdlLog('info', `${slug}: chapter list read via background tab (Cloudflare cleared)`);
-        return out.paths;
+      if (out && out.challenge) {
+        await coordinateCloudflareChallenge(tab.id, {
+          originTabId: options.originTabId,
+          expectedSeriesSlug: slug,
+          expectedChapterUrl: titleUrl,
+          expectedPageKind: 'title',
+          onChallenge: ({ state }) => cdlLog('info', `${slug}: Agenda verification ${state}`),
+        });
+        challengeRecovered = true;
+        emptyReadyPolls = 0;
+        continue;
       }
-      await sleep(1500);
+      if (out && !out.challenge && out.paths && out.paths.length) {
+        let snapshot = out;
+        if (adaptive && !agendaSnapshotHasEnoughHistory(out)) {
+          try {
+            const deeper = await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: grabSeriesChapterSnapshotFromPage,
+              args: [slug, { maxPages: requestedMaxPages, maxRows: requestedMaxRows }],
+            });
+            const deepSnapshot = deeper && deeper[0] && deeper[0].result;
+            if (deepSnapshot && !deepSnapshot.challenge && deepSnapshot.paths && deepSnapshot.paths.length) {
+              snapshot = deepSnapshot;
+            }
+          } catch (_) {}
+        }
+        snapshot.challengeRecovered = challengeRecovered;
+        cdlLog('info', `${slug}: ${snapshot.rows.length} chapter history row(s) read across ${snapshot.pagesScanned} page(s)`);
+        return snapshot;
+      }
+      if (out && out.ready) {
+        emptyReadyPolls++;
+        if (emptyReadyPolls >= 3) return out;
+      } else {
+        emptyReadyPolls = 0;
+      }
+      await sleep(250);
     }
     return null;
   } finally {
-    if (tab) { try { chrome.tabs.remove(tab.id).catch(() => {}); } catch (_) {} }
+    if (ownsTab && tab) {
+      try { await chrome.tabs.remove(tab.id); } catch (_) {}
+      if (mobile && options.originTabId != null) {
+        await restoreChallengeOrigin({ originTabId: options.originTabId });
+      }
+    }
   }
 }
 
-// Injected into the series page tab. Self-contained (no outer closures).
-async function grabSeriesChapterPathsFromPage(slug) {
-  const RE = /\/title\/[a-z0-9-]+\/\d+-chapter-[\w.-]+/gi;
-  const html = document.documentElement ? document.documentElement.outerHTML : '';
-  const set = new Set(html.match(RE) || []);
-  document.querySelectorAll('a[href*="-chapter-"]').forEach((a) => {
-    const m = (a.getAttribute('href') || '').match(RE);
-    if (m) m.forEach((p) => set.add(p));
-  });
-  // No chapter data AND no Next.js payload → most likely the Cloudflare
-  // interstitial (or a page still rendering): ask the caller to retry.
-  if (!set.size && !document.getElementById('__NEXT_DATA__')) {
-    return { challenge: true, paths: [] };
+function agendaSnapshotHasEnoughHistory(snapshot) {
+  const rows = snapshot && Array.isArray(snapshot.rows) ? snapshot.rows : [];
+  if (rows.length < 6) return false;
+  if (typeof CDLAgendaCore === 'undefined') return true;
+  try {
+    return CDLAgendaCore.extractChapterEvents({ items: rows }, { now: Date.now() }).events.length >= 6;
+  } catch (_) {
+    return rows.length >= 6;
   }
-  // Pagination from page context: same-origin fetch with the browser's own
-  // headers/cookies — Cloudflare never challenges these.
-  const bm = html.match(/"buildId"\s*:\s*"([^"]+)"/);
-  if (bm) {
-    for (let page = 1; page <= 100; page++) {
-      let fresh = 0;
+}
+
+// Injected into the series page tab. It deliberately reads the rendered rows:
+// the current SPA API exposes only `createdAtFormatted` (for example "2w ago")
+// after decryption, and no raw publication timestamp exists in the client data.
+async function grabSeriesChapterSnapshotFromPage(slug, options) {
+  options = options || {};
+  const maxPages = Math.max(1, Math.min(5, Number(options.maxPages) || 1));
+  const maxRows = Math.max(20, Math.min(120, Number(options.maxRows) || 40));
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const prefix = `/title/${slug}/`;
+
+  function readCoverUrl() {
+    const poster = document.querySelector('.mpage__poster img, [class*="mpage__poster"] img, img[class*="mpage__poster"]');
+    const og = document.querySelector('meta[property="og:image"]');
+    const candidates = [
+      poster && poster.currentSrc,
+      poster && poster.getAttribute('src'),
+      poster && poster.getAttribute('data-src'),
+      og && og.getAttribute('content'),
+    ];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
       try {
-        const r = await fetch(`/_next/data/${bm[1]}/title/${slug}.json?page=${page}`, { headers: { Accept: 'application/json' } });
-        if (!r.ok) break;
-        const t = await r.text();
-        (t.match(RE) || []).forEach((p) => { if (!set.has(p)) { set.add(p); fresh++; } });
-      } catch (_) { break; }
-      if (!fresh && page > 1) break;
+        const parsed = new URL(candidate, location.origin);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return parsed.href;
+      } catch (_) {}
+    }
+    return '';
+  }
+
+  function readRows() {
+    return Array.from(document.querySelectorAll('.mchap-list .mchap-item')).map((item) => {
+      const primary = item.querySelector('a.mchap-row__primary[href*="-chapter-"]');
+      const href = primary && primary.getAttribute('href');
+      if (!href) return null;
+      let chapterUrl = '';
+      try { chapterUrl = new URL(href, location.origin).pathname; } catch (_) { return null; }
+      if (!chapterUrl.startsWith(prefix)) return null;
+      const group = item.querySelector('a.mchap-row__group');
+      const groupHref = group && group.getAttribute('href') || '';
+      const groupMatch = groupHref.match(/\/groups\/(\d+)/i);
+      const time = item.querySelector('.mchap-row__time');
+      return {
+        chapterUrl,
+        chapterLabel: (primary.textContent || '').trim(),
+        createdAtFormatted: (time && time.textContent || '').trim(),
+        groupId: groupMatch ? groupMatch[1] : '',
+        group: (group && group.textContent || '').trim(),
+      };
+    }).filter(Boolean);
+  }
+
+  function pageSignature() {
+    const active = document.querySelector('.mpage__chapters .npager__num.is-active');
+    const first = document.querySelector('.mchap-list a.mchap-row__primary[href*="-chapter-"]');
+    return `${active && active.textContent || ''}|${first && first.getAttribute('href') || ''}`;
+  }
+
+  const initial = readRows();
+  if (!initial.length) {
+    const challengeText = `${document.title || ''} ${document.body && document.body.innerText || ''}`.toLowerCase();
+    const challenge = /just a moment|checking your browser|cloudflare|verify you are human|security verification|ray id/.test(challengeText);
+    return {
+      challenge,
+      ready: !challenge && !!document.querySelector('.mchap-list'),
+      rows: [], paths: [], pagesScanned: 0, coverUrl: readCoverUrl(),
+    };
+  }
+
+  const rowsBySource = new Map();
+  let pagesScanned = 0;
+  for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
+    readRows().forEach((row) => {
+      const key = `${row.chapterUrl}|${row.groupId || row.group}`;
+      if (!rowsBySource.has(key)) rowsBySource.set(key, row);
+    });
+    pagesScanned++;
+    if (rowsBySource.size >= maxRows) break;
+    if (pageIndex + 1 >= maxPages) break;
+
+    const next = document.querySelector('.mpage__chapters button.npager__nav[aria-label="Next page"]');
+    if (!next || next.disabled) break;
+    const before = pageSignature();
+    next.click();
+    let changed = false;
+    for (let wait = 0; wait < 40; wait++) {
+      await sleep(200);
+      const after = pageSignature();
+      if (after && after !== before && readRows().length) { changed = true; break; }
+    }
+    if (!changed) break;
+  }
+
+  const rows = Array.from(rowsBySource.values()).slice(0, maxRows);
+  return {
+    challenge: false,
+    ready: true,
+    rows,
+    paths: Array.from(new Set(rows.map((row) => row.chapterUrl))),
+    pagesScanned,
+    rangeText: ((document.querySelector('.mpage__chapters .npager__info') || {}).textContent || '').trim(),
+    coverUrl: readCoverUrl(),
+  };
+}
+
+// ── Plus followed-series agenda ─────────────────────────────────────────────
+const CDL_AGENDA_HISTORY_KEY = 'cdlAgendaHistory';
+const CDL_AGENDA_MAX_HISTORY_EVENTS = 120;
+const CDL_AGENDA_MAX_OBSERVED_EVENTS = 80;
+const CDL_AGENDA_HISTORY_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+const CDL_AGENDA_RETRY_COOLDOWN_MS = 15 * 60 * 1000;
+const CDL_AGENDA_ACTIVE_STATES = new Set(['trial', 'active', 'grace', 'cancelled_active']);
+let _agendaStorageQueue = Promise.resolve();
+let _agendaRefreshPromise = null;
+
+function agendaHistoryEvidenceCount(history) {
+  if (!history || typeof history !== 'object') return 0;
+  const keys = new Set();
+  [...(history.historyEvents || []), ...(history.observedEvents || [])].forEach((event) => {
+    if (event && event.chapterKey) keys.add(String(event.chapterKey));
+  });
+  return keys.size;
+}
+
+function agendaRefreshReason(subscription, history, options = {}, now = Date.now()) {
+  const hasHistory = agendaHistoryEvidenceCount(history) >= 2;
+  const hasCover = !!normalizeAgendaCoverUrl(
+    subscription && subscription.coverUrl || history && history.coverUrl
+  );
+  const lastRefresh = Math.max(
+    Number(history && history.lastBackfillAt) || 0,
+    Number(history && history.lastPassiveAt) || 0,
+    Number(history && history.lastAttemptAt) || 0
+  );
+  if (options.force) return 'forced';
+  if (!hasHistory) {
+    if (options.onlyMissing && lastRefresh && now - lastRefresh < CDL_AGENDA_RETRY_COOLDOWN_MS) return '';
+    return 'missing-history';
+  }
+  if (!hasCover) {
+    const lastAttempt = Number(history && history.lastAttemptAt) || 0;
+    if (options.onlyMissing && lastAttempt && now - lastAttempt < CDL_AGENDA_RETRY_COOLDOWN_MS) return '';
+    return 'missing-cover';
+  }
+  if (options.onlyMissing) return '';
+  if (!lastRefresh || now - lastRefresh >= CDL_AGENDA_HISTORY_STALE_MS) return 'stale-history';
+  return '';
+}
+
+async function runAgendaPool(items, limit, mapper) {
+  const list = Array.isArray(items) ? items : [];
+  const results = new Array(list.length);
+  let cursor = 0;
+  const count = Math.max(0, Math.min(list.length, Math.max(1, Number(limit) || 1)));
+  await Promise.all(Array.from({ length: count }, async (_, workerIndex) => {
+    while (cursor < list.length) {
+      const itemIndex = cursor++;
+      results[itemIndex] = await mapper(list[itemIndex], workerIndex, itemIndex);
+    }
+  }));
+  return results;
+}
+
+function normalizeAgendaCoverUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw, 'https://comix.to/');
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
+    return parsed.href;
+  } catch (_) {
+    return '';
+  }
+}
+
+function agendaMetaAttribute(tag, name) {
+  const match = String(tag || '').match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
+  return match ? (match[1] || match[2] || match[3] || '') : '';
+}
+
+function decodeAgendaHtmlAttribute(value) {
+  return String(value || '')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#x2f;/gi, '/');
+}
+
+function extractAgendaCoverFromHtml(html) {
+  const tags = String(html || '').match(/<meta\b[^>]*>/gi) || [];
+  for (const tag of tags) {
+    const marker = agendaMetaAttribute(tag, 'property') || agendaMetaAttribute(tag, 'name');
+    if (!/^(?:og:image|twitter:image)$/i.test(marker)) continue;
+    const coverUrl = normalizeAgendaCoverUrl(decodeAgendaHtmlAttribute(agendaMetaAttribute(tag, 'content')));
+    if (coverUrl) return coverUrl;
+  }
+  return '';
+}
+
+async function fetchSeriesCoverDirect(slug, sourceOrigin) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(`${preferredComixOrigin(sourceOrigin)}/title/${slug}`, {
+      credentials: 'include',
+      headers: { Accept: 'text/html' },
+      signal: controller.signal,
+    });
+    if (!response.ok) return '';
+    return extractAgendaCoverFromHtml(await response.text());
+  } catch (_) {
+    return '';
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function storeAgendaCover(slug, coverUrl) {
+  const normalized = normalizeAgendaCoverUrl(coverUrl);
+  if (!normalized) return false;
+  await mutateAgendaHistory((all) => {
+    const entry = all[slug] && typeof all[slug] === 'object' ? all[slug] : {};
+    entry.version = 1;
+    entry.coverUrl = normalized;
+    entry.lastCoverAt = Date.now();
+    all[slug] = entry;
+  });
+  return true;
+}
+
+function agendaPrecisionRank(precision) {
+  return ({ instant: 0, hour: 1, day: 2, week: 3 })[precision] ?? 4;
+}
+
+function cleanAgendaEvent(event) {
+  if (!event || !event.chapterKey || !Number.isFinite(Number(event.uploadedAt))) return null;
+  return {
+    chapterKey: String(event.chapterKey),
+    chapterLabel: String(event.chapterLabel || ''),
+    chapterUrl: String(event.chapterUrl || ''),
+    uploadedAt: Number(event.uploadedAt),
+    observedAt: Number(event.observedAt) || Date.now(),
+    source: event.source === 'first-seen' ? 'first-seen' : 'comix-history',
+    precision: ['instant', 'hour', 'day', 'week'].includes(event.precision) ? event.precision : 'week',
+    groupId: String(event.groupId || ''),
+  };
+}
+
+function trimAgendaEvents(events, limit) {
+  return (events || []).map(cleanAgendaEvent).filter(Boolean)
+    .sort((a, b) => a.uploadedAt - b.uploadedAt)
+    .slice(-limit);
+}
+
+function mergeAgendaHistoryEvents(existing, incoming) {
+  const bySource = new Map();
+  [...(existing || []), ...(incoming || [])].map(cleanAgendaEvent).filter(Boolean).forEach((event) => {
+    const key = `${event.chapterKey}|${event.groupId}`;
+    const current = bySource.get(key);
+    if (!current || agendaPrecisionRank(event.precision) < agendaPrecisionRank(current.precision) || (
+      agendaPrecisionRank(event.precision) === agendaPrecisionRank(current.precision) && event.observedAt < current.observedAt
+    )) bySource.set(key, event);
+  });
+  return trimAgendaEvents(Array.from(bySource.values()), CDL_AGENDA_MAX_HISTORY_EVENTS);
+}
+
+function mergeAgendaObservedEvents(existing, incoming) {
+  const firstSeen = new Map();
+  [...(existing || []), ...(incoming || [])].map(cleanAgendaEvent).filter(Boolean).forEach((event) => {
+    const current = firstSeen.get(event.chapterKey);
+    if (!current || event.observedAt < current.observedAt) firstSeen.set(event.chapterKey, event);
+  });
+  return trimAgendaEvents(Array.from(firstSeen.values()), CDL_AGENDA_MAX_OBSERVED_EVENTS);
+}
+
+function mutateAgendaHistory(mutator) {
+  const run = async () => {
+    const stored = await chrome.storage.local.get(CDL_AGENDA_HISTORY_KEY);
+    const all = stored[CDL_AGENDA_HISTORY_KEY] && typeof stored[CDL_AGENDA_HISTORY_KEY] === 'object'
+      ? stored[CDL_AGENDA_HISTORY_KEY] : {};
+    await mutator(all);
+    await chrome.storage.local.set({ [CDL_AGENDA_HISTORY_KEY]: all });
+    return all;
+  };
+  _agendaStorageQueue = _agendaStorageQueue.then(run, run);
+  return _agendaStorageQueue;
+}
+
+function cleanAgendaSnapshotRows(slug, rows) {
+  const prefix = `/title/${slug}/`;
+  return (Array.isArray(rows) ? rows : []).slice(0, 80).map((row) => {
+    if (!row || typeof row !== 'object') return null;
+    let chapterUrl = '';
+    try { chapterUrl = new URL(String(row.chapterUrl || ''), 'https://comix.to/').pathname; }
+    catch (_) { return null; }
+    if (!chapterUrl.startsWith(prefix) || !/-chapter-/i.test(chapterUrl)) return null;
+    return {
+      chapterUrl,
+      chapterLabel: String(row.chapterLabel || '').slice(0, 120),
+      createdAtFormatted: String(row.createdAtFormatted || '').slice(0, 48),
+      groupId: String(row.groupId || '').replace(/[^0-9]/g, '').slice(0, 24),
+      group: String(row.group || '').slice(0, 120),
+    };
+  }).filter(Boolean);
+}
+
+async function recordAgendaTitleSnapshot(slug, mangaName, snapshot, options = {}) {
+  slug = String(slug || snapshot && snapshot.slug || '').trim().toLowerCase();
+  if (!/^[a-z0-9-]{1,180}$/.test(slug) || typeof CDLAgendaCore === 'undefined') {
+    return { ignored: true, eventCount: 0 };
+  }
+  if (options.requireSubscription) {
+    const stored = await chrome.storage.local.get('cdlSubscriptions');
+    if (!stored.cdlSubscriptions || !stored.cdlSubscriptions[slug]) {
+      return { ignored: true, eventCount: 0 };
     }
   }
-  return { challenge: false, paths: [...set] };
+
+  const now = Date.now();
+  const suppliedAt = Number(snapshot && snapshot.capturedAt);
+  const capturedAt = Number.isFinite(suppliedAt) && Math.abs(now - suppliedAt) < 24 * 60 * 60 * 1000
+    ? suppliedAt : now;
+  const rows = cleanAgendaSnapshotRows(slug, snapshot && snapshot.rows);
+  const coverUrl = normalizeAgendaCoverUrl(snapshot && snapshot.coverUrl);
+  const safeName = String(mangaName || snapshot && snapshot.mangaName || '').trim().slice(0, 300);
+  const extracted = rows.length
+    ? CDLAgendaCore.extractChapterEvents({ items: rows }, { now: capturedAt })
+    : { events: [], tsFields: [] };
+
+  if (!extracted.events.length && !coverUrl && !safeName) {
+    return { ignored: true, eventCount: 0 };
+  }
+  await mutateAgendaHistory((all) => {
+    const entry = all[slug] && typeof all[slug] === 'object' ? all[slug] : {};
+    entry.version = 1;
+    entry.mangaName = safeName || entry.mangaName || slug;
+    entry.coverUrl = coverUrl || normalizeAgendaCoverUrl(entry.coverUrl);
+    entry.lastPassiveAt = capturedAt;
+    entry.rowsScanned = Math.max(Number(entry.rowsScanned) || 0, rows.length);
+    entry.pagesScanned = Math.max(Number(entry.pagesScanned) || 0, rows.length ? 1 : 0);
+    if (extracted.events.length) {
+      entry.historyEvents = mergeAgendaHistoryEvents(entry.historyEvents, extracted.events);
+      entry.timestampFields = Array.from(new Set([...(entry.timestampFields || []), ...(extracted.tsFields || [])]));
+      entry.lastBackfillAt = capturedAt;
+      entry.lastStatus = 'ok';
+      entry.lastError = '';
+    }
+    all[slug] = entry;
+  });
+  return { ignored: false, eventCount: extracted.events.length, rowCount: rows.length, coverStored: !!coverUrl };
+}
+
+async function recordAgendaObservedChapters(slug, mangaName, chapters, observedAt = Date.now()) {
+  if (!slug || !Array.isArray(chapters) || !chapters.length || typeof CDLAgendaCore === 'undefined') return;
+  const incoming = chapters.map((chapter) => ({
+    chapterKey: chapter.key || CDLAgendaCore.chapterKeyFor(chapter.chapterUrl || chapter.chapterLabel),
+    chapterLabel: chapter.chapterLabel || '',
+    chapterUrl: chapter.chapterUrl || '',
+    uploadedAt: observedAt,
+    observedAt,
+    source: 'first-seen',
+    // Subscription polling establishes a reliable day, not an official upload time.
+    precision: 'day',
+    groupId: chapter.groupId || '',
+  }));
+  await mutateAgendaHistory((all) => {
+    const entry = all[slug] && typeof all[slug] === 'object' ? all[slug] : {};
+    entry.version = 1;
+    entry.mangaName = mangaName || entry.mangaName || slug;
+    entry.observedEvents = mergeAgendaObservedEvents(entry.observedEvents, incoming);
+    entry.lastObservedAt = observedAt;
+    all[slug] = entry;
+  });
+}
+
+async function backfillAgendaSeries(slug, subscription, options = {}) {
+  const attemptedAt = Date.now();
+  let snapshot = null;
+  let failure = '';
+  try {
+    snapshot = await fetchSeriesChapterSnapshotViaTab(slug, {
+      maxPages: 3,
+      maxRows: 80,
+      adaptive: true,
+      sourceOrigin: subscription && subscription.sourceOrigin,
+      tabId: options.tabId,
+      originTabId: options.originTabId,
+    });
+  } catch (error) {
+    failure = error && error.message || 'Chapter history could not be read.';
+  }
+
+  let extracted = { events: [], scanned: 0, tsFields: [] };
+  if (snapshot && snapshot.rows && snapshot.rows.length && typeof CDLAgendaCore !== 'undefined') {
+    extracted = CDLAgendaCore.extractChapterEvents({ items: snapshot.rows }, { now: attemptedAt });
+  }
+  const coverUrl = normalizeAgendaCoverUrl(snapshot && snapshot.coverUrl);
+
+  await mutateAgendaHistory((all) => {
+    const entry = all[slug] && typeof all[slug] === 'object' ? all[slug] : {};
+    entry.version = 1;
+    entry.mangaName = subscription && subscription.mangaName || entry.mangaName || slug;
+    entry.coverUrl = coverUrl || normalizeAgendaCoverUrl(entry.coverUrl);
+    entry.lastAttemptAt = attemptedAt;
+    entry.rowsScanned = snapshot && snapshot.rows ? snapshot.rows.length : 0;
+    entry.pagesScanned = snapshot && snapshot.pagesScanned || 0;
+    entry.timestampFields = extracted.tsFields || [];
+    if (extracted.events.length) {
+      entry.historyEvents = mergeAgendaHistoryEvents(entry.historyEvents, extracted.events);
+      entry.lastBackfillAt = attemptedAt;
+      entry.lastStatus = 'ok';
+      entry.lastError = '';
+    } else {
+      entry.lastStatus = snapshot ? 'no-history' : 'blocked';
+      entry.lastError = failure || (snapshot
+        ? 'Comix did not expose readable chapter ages for this title.'
+        : 'Comix did not make the chapter list available. Open the Comix site and complete any verification, then refresh again.');
+    }
+    all[slug] = entry;
+  });
+
+  return {
+    ok: extracted.events.length > 0,
+    slug,
+    eventCount: extracted.events.length,
+    rowsScanned: snapshot && snapshot.rows ? snapshot.rows.length : 0,
+    pagesScanned: snapshot && snapshot.pagesScanned || 0,
+    blocked: !snapshot,
+    coverStored: !!coverUrl,
+  };
+}
+
+async function requireAgendaEntitlement() {
+  if (!cdlPlusService) {
+    const error = new Error('Comix Downloader Plus is unavailable in this build.');
+    error.code = 'AGENDA_UNAVAILABLE';
+    throw error;
+  }
+  const state = await cdlPlusService.getState();
+  const accountState = state && state.account && state.account.state || 'signed_out';
+  if (!CDL_AGENDA_ACTIVE_STATES.has(accountState)) {
+    const error = new Error('The release agenda is available while a Plus trial or subscription is active.');
+    error.code = 'AGENDA_PLUS_REQUIRED';
+    error.details = { accountState };
+    throw error;
+  }
+  return state;
+}
+
+function latestAgendaChapter(events) {
+  let latest = null;
+  (events || []).forEach((event) => {
+    if (!event) return;
+    const parsed = typeof CDLFeaturesCore !== 'undefined'
+      ? CDLFeaturesCore.parseChapterNumber(event.chapterUrl || event.chapterLabel)
+      : null;
+    if (!parsed || parsed.kind !== 'num' || !Number.isFinite(parsed.value)) return;
+    if (!latest || parsed.value > latest.value) latest = { value: parsed.value, event };
+  });
+  if (!latest) return { lastChapterLabel: '', expectedChapterLabel: '' };
+  const nextValue = Number.isInteger(latest.value) ? latest.value + 1 : Math.ceil(latest.value);
+  return {
+    lastChapterLabel: latest.event.chapterLabel || `Ch.${latest.value}`,
+    expectedChapterLabel: `Ch.${nextValue}`,
+  };
+}
+
+async function buildAgendaState() {
+  await requireAgendaEntitlement();
+  if (typeof CDLAgendaCore === 'undefined') {
+    const error = new Error('The release-cadence engine is unavailable.');
+    error.code = 'AGENDA_ENGINE_UNAVAILABLE';
+    throw error;
+  }
+  const stored = await chrome.storage.local.get(['cdlSubscriptions', CDL_AGENDA_HISTORY_KEY]);
+  const subscriptions = stored.cdlSubscriptions && typeof stored.cdlSubscriptions === 'object' ? stored.cdlSubscriptions : {};
+  const histories = stored[CDL_AGENDA_HISTORY_KEY] && typeof stored[CDL_AGENDA_HISTORY_KEY] === 'object'
+    ? stored[CDL_AGENDA_HISTORY_KEY] : {};
+  const cfg = await loadCfg();
+  const now = Date.now();
+  const pollIntervalMinutes = Math.max(30, Math.min(1440, Number(cfg['subscribe.intervalMinutes']) || 360));
+  const entries = [];
+  let readyCount = 0;
+  let missingCount = 0;
+
+  Object.keys(subscriptions).forEach((slug) => {
+    const subscription = subscriptions[slug] || {};
+    const history = histories[slug] || {};
+    const historyEvents = trimAgendaEvents(history.historyEvents, CDL_AGENDA_MAX_HISTORY_EVENTS);
+    const observedEvents = trimAgendaEvents(history.observedEvents, CDL_AGENDA_MAX_OBSERVED_EVENTS);
+    const merged = CDLAgendaCore.mergeEventSources(historyEvents, observedEvents);
+    const analysis = CDLAgendaCore.buildAgendaEntry(merged, {
+      now,
+      pollIntervalMinutes,
+      minEvents: 2,
+    });
+    const chapter = latestAgendaChapter(merged);
+    const model = analysis.model || {};
+    const prediction = analysis.prediction || { level: 'unscheduled', reason: 'insufficient-history' };
+    if (prediction.level === 'unscheduled') missingCount++;
+    else readyCount++;
+    entries.push({
+      slug,
+      mangaName: subscription.mangaName || history.mangaName || slug,
+      titleUrl: `${preferredComixOrigin(subscription.sourceOrigin)}/title/${slug}`,
+      coverUrl: normalizeAgendaCoverUrl(subscription.coverUrl || history.coverUrl),
+      lastChapterLabel: chapter.lastChapterLabel,
+      expectedChapterLabel: chapter.expectedChapterLabel,
+      lastReleaseAt: Number(model.lastEventAt) || null,
+      prediction: {
+        level: prediction.level,
+        baseLevel: prediction.baseLevel || prediction.level,
+        reason: prediction.reason || '',
+        instantUtc: prediction.instantUtc || null,
+        precision: prediction.precision || null,
+        evidencePrecision: prediction.evidencePrecision || model.evidencePrecision || null,
+        uncertaintyDays: Number.isFinite(prediction.uncertaintyDays) ? prediction.uncertaintyDays : null,
+        showTime: prediction.showTime === true,
+        inferred: true,
+      },
+      cadenceClass: model.cadenceClass || 'unknown',
+      cadenceDays: Number.isFinite(model.cadenceMs) ? Math.round((model.cadenceMs / 86400000) * 10) / 10 : null,
+      confidence: Number.isFinite(model.score) ? Math.round(model.score * 100) : null,
+      eventCount: model.eventCount || analysis.events.length || 0,
+      rawEventCount: merged.length,
+      observedCount: observedEvents.length,
+      droppedBackfill: analysis.droppedBackfill || 0,
+      evidencePrecision: model.evidencePrecision || null,
+      historyStatus: history.lastStatus || (historyEvents.length ? 'ok' : 'not-analyzed'),
+      historyError: history.lastError || '',
+      lastBackfillAt: history.lastBackfillAt || null,
+      pagesScanned: history.pagesScanned || 0,
+    });
+  });
+
+  entries.sort((a, b) => {
+    const at = a.prediction.instantUtc ? Date.parse(a.prediction.instantUtc) : Infinity;
+    const bt = b.prediction.instantUtc ? Date.parse(b.prediction.instantUtc) : Infinity;
+    return at - bt || a.mangaName.localeCompare(b.mangaName);
+  });
+  return {
+    generatedAt: new Date(now).toISOString(),
+    timeZone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local time'; } catch (_) { return 'Local time'; } })(),
+    pollIntervalMinutes,
+    subscriptionCount: Object.keys(subscriptions).length,
+    readyCount,
+    unscheduledCount: missingCount,
+    needsBackfill: Object.keys(subscriptions).filter((slug) => !!agendaRefreshReason(
+      subscriptions[slug], histories[slug] || {}, { onlyMissing: true }, now
+    )),
+    entries,
+  };
+}
+
+async function refreshAgendaHistory(options = {}) {
+  await requireAgendaEntitlement();
+  if (_agendaRefreshPromise) return _agendaRefreshPromise;
+  _agendaRefreshPromise = (async () => {
+    const stored = await chrome.storage.local.get(['cdlSubscriptions', CDL_AGENDA_HISTORY_KEY]);
+    const subscriptions = stored.cdlSubscriptions && typeof stored.cdlSubscriptions === 'object' ? stored.cdlSubscriptions : {};
+    const histories = stored[CDL_AGENDA_HISTORY_KEY] && typeof stored[CDL_AGENDA_HISTORY_KEY] === 'object'
+      ? stored[CDL_AGENDA_HISTORY_KEY] : {};
+    const now = Date.now();
+    const allSlugs = Object.keys(subscriptions);
+    const candidates = allSlugs.map((slug) => ({
+      slug,
+      reason: agendaRefreshReason(subscriptions[slug], histories[slug] || {}, options, now),
+    })).filter((item) => item.reason);
+    const mobile = await isMobileBrowserPlatform();
+    const historyWorkerCount = mobile ? 1 : 2;
+    const summary = {
+      requested: candidates.length,
+      analyzed: 0,
+      blocked: 0,
+      events: 0,
+      covers: 0,
+      cached: Math.max(0, allSlugs.length - candidates.length),
+      workers: Math.min(historyWorkerCount, candidates.length),
+    };
+
+    const directCoverSlugs = new Set();
+    const missingCovers = candidates.filter(({ slug }) => !normalizeAgendaCoverUrl(
+      (subscriptions[slug] || {}).coverUrl || (histories[slug] || {}).coverUrl
+    ));
+    await runAgendaPool(missingCovers, mobile ? 2 : 4, async ({ slug }) => {
+      const coverUrl = await fetchSeriesCoverDirect(slug, subscriptions[slug].sourceOrigin);
+      if (coverUrl && await storeAgendaCover(slug, coverUrl)) {
+        directCoverSlugs.add(slug);
+        summary.covers++;
+      }
+    });
+
+    const historyTasks = candidates.filter(({ slug, reason }) => (
+      reason !== 'missing-cover' || !directCoverSlugs.has(slug)
+    ));
+    summary.workers = Math.min(historyWorkerCount, historyTasks.length);
+    const workerTabs = [];
+    if (!mobile) {
+      for (let index = 0; index < summary.workers; index++) {
+        try { workerTabs.push(await chrome.tabs.create({ url: 'about:blank', active: false })); }
+        catch (_) { workerTabs.push(null); }
+      }
+    }
+    try {
+      const results = await runAgendaPool(historyTasks, historyWorkerCount, async ({ slug }, workerIndex) => (
+        backfillAgendaSeries(slug, subscriptions[slug], {
+          tabId: workerTabs[workerIndex] && workerTabs[workerIndex].id,
+          originTabId: options.originTabId,
+        })
+      ));
+      results.filter(Boolean).forEach((result) => {
+        if (result.ok) summary.analyzed++;
+        if (result.blocked) summary.blocked++;
+        if (result.coverStored && !directCoverSlugs.has(result.slug)) summary.covers++;
+        summary.events += result.eventCount;
+      });
+    } finally {
+      await Promise.all(workerTabs.filter(Boolean).map(async (workerTab) => {
+        try { await chrome.tabs.remove(workerTab.id); } catch (_) {}
+      }));
+      if (mobile && options.originTabId != null) {
+        await restoreChallengeOrigin({ originTabId: options.originTabId });
+      }
+    }
+    return { summary, agenda: await buildAgendaState() };
+  })();
+  try { return await _agendaRefreshPromise; }
+  finally { _agendaRefreshPromise = null; }
 }
 
 // ── Subscriptions ─────────────────────────────────────────────────────────────
@@ -6961,23 +7923,33 @@ async function setupSubscribeAlarm() {
   try { chrome.alarms.create(SUBSCRIBE_ALARM, { periodInMinutes: mins, delayInMinutes: 1 }); } catch (_) {}
 }
 
-async function subscribeSeries(slug, mangaName, sourceUrl) {
+async function subscribeSeries(slug, mangaName, sourceUrl, coverUrl, agendaSnapshot) {
   if (!slug) return;
   const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
   const isNew = !cdlSubscriptions[slug];
   const sourceOrigin = supportedComixOrigin(sourceUrl);
+  const normalizedCoverUrl = normalizeAgendaCoverUrl(coverUrl);
   if (isNew) {
     cdlSubscriptions[slug] = {
       mangaName: mangaName || slug,
       sourceOrigin: sourceOrigin || CDL_DEFAULT_COMIX_ORIGIN,
+      coverUrl: normalizedCoverUrl,
       lastSeen: [],
       lastCheck: 0,
     };
   } else {
     if (mangaName) cdlSubscriptions[slug].mangaName = mangaName;
     if (sourceOrigin) cdlSubscriptions[slug].sourceOrigin = sourceOrigin;
+    if (normalizedCoverUrl) cdlSubscriptions[slug].coverUrl = normalizedCoverUrl;
   }
   await chrome.storage.local.set({ cdlSubscriptions });
+  try {
+    await recordAgendaTitleSnapshot(slug, mangaName, agendaSnapshot || {
+      slug, mangaName, coverUrl: normalizedCoverUrl, capturedAt: Date.now(), rows: [],
+    });
+  } catch (error) {
+    cdlLog('warn', `${mangaName || slug}: initial release-agenda history could not be stored (${error && error.message || error})`);
+  }
   // Subscribing implies wanting background checks — enable the master toggle once.
   let cfg = {};
   try {
@@ -6997,6 +7969,7 @@ async function subscribeSeries(slug, mangaName, sourceUrl) {
 async function unsubscribeSeries(slug) {
   const { cdlSubscriptions = {} } = await chrome.storage.local.get('cdlSubscriptions');
   if (cdlSubscriptions[slug]) { delete cdlSubscriptions[slug]; await chrome.storage.local.set({ cdlSubscriptions }); }
+  await mutateAgendaHistory((all) => { delete all[slug]; });
 }
 
 // Returns a summary so the manual "Check now" can show real feedback.
@@ -7049,6 +8022,8 @@ async function checkOneSubscription(slug, sub, cfg) {
   await chrome.storage.local.set({ cdlSubscriptions });
 
   if (!hadBaseline || !newOnes.length) return { blocked: false, newCount: 0 }; // first successful check just baselines
+  try { await recordAgendaObservedChapters(slug, entry.mangaName, newOnes, entry.lastCheck); }
+  catch (error) { cdlLog('warn', `${entry.mangaName}: release-agenda observation could not be stored (${error && error.message || error})`); }
   cdlLog('ok', `${entry.mangaName}: ${newOnes.length} new chapter(s) found`);
   if (cfg['subscribe.notify']) notifyNewChapters(slug, entry.mangaName, newOnes);
   if (cfg['subscribe.autoDownload']) queueAutoDownload(slug, entry.mangaName, newOnes, cfg, chapters.length);
@@ -7163,6 +8138,7 @@ if (chrome.alarms && chrome.alarms.onAlarm) {
     if (!a) return;
     if (a.name === SUBSCRIBE_ALARM) checkAllSubscriptions();
     else if (a.name === UPDATE_CHECK_ALARM) runScheduledUpdateCheck().catch(() => {});
+    else if (cdlPlusService) cdlPlusService.handleAlarm(a.name).catch(() => {});
   });
 }
 chrome.runtime.onInstalled.addListener(setupSubscribeAlarm);

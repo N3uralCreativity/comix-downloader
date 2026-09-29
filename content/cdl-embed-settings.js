@@ -20,6 +20,8 @@
 
   var NAV_ID = 'cdl-nav-item';
   var VIEW_ID = 'cdl-uview';
+  var PLUS_NAV_ID = 'cdl-plus-nav-item';
+  var PLUS_VIEW_ID = 'cdl-plus-uview';
   var STYLE_ID = 'cdl-embed-style';
   var FALLBACK_ID = 'cdl-settings-fallback';
   var OUTRO_ID = 'cdl-settings-outro';
@@ -43,6 +45,7 @@
   // comix's React re-renders (which wipe + re-inject our panel) and across page refreshes.
   var OPEN_KEY = 'cdlExtSettingsOpen';   // sessionStorage flag: our panel is open
   var SCROLL_KEY = 'cdlExtSettingsScroll'; // sessionStorage: last window.scrollY while open
+  var PLUS_SCROLL_KEY = 'cdlPlusSettingsScroll';
   var scrollSaveTimer = null, scrollTracking = false;
   var fallbackTracked = false;
   var fallbackDeadline = 0;
@@ -155,7 +158,7 @@
   }
 
   function onSettingsPage() {
-    if (document.querySelector('.usettings__section') || document.getElementById(VIEW_ID)) return true;
+    if (document.querySelector('.usettings__section') || document.getElementById(VIEW_ID) || document.getElementById(PLUS_VIEW_ID)) return true;
     return /\/user(?:\/|$)/.test(location.pathname) && /(?:^|[?&])tab=settings(?:&|$)/.test(location.search);
   }
 
@@ -282,7 +285,7 @@
 
   function monitorSettingsNavigation() {
     if (!fallbackTracked) return;
-    if (document.getElementById(VIEW_ID)) {
+    if (document.getElementById(VIEW_ID) || document.getElementById(PLUS_VIEW_ID)) {
       finishSettingsNavigationAttempt();
       return;
     }
@@ -316,7 +319,7 @@
 
   function navList() { return document.querySelector('.umenu__list'); }
   function contentBox() { return document.querySelector('.user-content'); }
-  function comixView() { return document.querySelector('.user-content > .uview:not(#' + VIEW_ID + ')'); }
+  function comixView() { return document.querySelector('.user-content > .uview:not(#' + VIEW_ID + '):not(#' + PLUS_VIEW_ID + ')'); }
 
   // ── styles for the controls comix doesn't ship (sliders/selects/inputs/etc.) ─
   function injectStyle() {
@@ -1095,22 +1098,53 @@
     return view;
   }
 
+  function buildPlusView() {
+    var view = el('div', { class: 'uview', id: PLUS_VIEW_ID }, [
+      el('div', { class: 'uview__head cdl-settings-head' }, [
+        el('div', { class: 'cdl-settings-head-copy' }, [
+          el('h2', { class: 'uview__title', text: 'Comix Downloader Plus' }),
+          el('p', { class: 'uview__sub', text: 'Your optional account, encrypted synchronization, devices, restore history, and billing in one dedicated place.' }),
+        ]),
+      ]),
+    ]);
+    if (typeof CDLPlusUI !== 'undefined') {
+      view.appendChild(CDLPlusUI.createSection({ variant: 'embedded', send: send, dedicated: true, hideHeader: true }));
+    } else {
+      view.appendChild(el('section', { class: 'usettings__section' }, [
+        el('p', { text: 'The Plus settings client could not be loaded. Reload this page and try again.' }),
+      ]));
+    }
+    return view;
+  }
+
   // ── nav + view switching ────────────────────────────────────────────────────
   function ensureNavItem() {
     var list = navList();
-    if (!list || document.getElementById(NAV_ID)) return;
+    if (!list) return;
     if (!document.querySelector('.cdl-umenu-sep')) list.appendChild(el('li', { class: 'cdl-umenu-sep', text: 'Extension' }));
-    var btn = el('button', { type: 'button', class: 'umenu__item', id: NAV_ID }, [
-      el('span', { class: 'umenu__icon' }, [markSvg(16)]),
-      el('span', { class: 'umenu__text', text: 'Comix Downloader' }),
-    ]);
-    btn.addEventListener('click', function () { activate(true); });
-    list.appendChild(el('li', {}, [btn]));
+    if (!document.getElementById(NAV_ID)) {
+      var btn = el('button', { type: 'button', class: 'umenu__item', id: NAV_ID }, [
+        el('span', { class: 'umenu__icon' }, [markSvg(16)]),
+        el('span', { class: 'umenu__text', text: 'Comix Downloader' }),
+      ]);
+      btn.addEventListener('click', function () { activate(true); });
+      list.appendChild(el('li', {}, [btn]));
+    }
+    if (!document.getElementById(PLUS_NAV_ID)) {
+      var plusBtn = el('button', { type: 'button', class: 'umenu__item', id: PLUS_NAV_ID }, [
+        el('span', { class: 'umenu__icon' }, [svg(['M12 3l1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4L12 3', 'M18.5 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2'], 16)]),
+        el('span', { class: 'umenu__text', text: 'Comix Downloader Plus' }),
+      ]);
+      plusBtn.addEventListener('click', function () { activatePlus(true); });
+      list.appendChild(el('li', {}, [plusBtn]));
+    }
   }
 
   // ── scroll persistence ──────────────────────────────────────────────────────
-  function readScroll() { try { var v = sessionStorage.getItem(SCROLL_KEY); return v == null ? null : parseInt(v, 10); } catch (_) { return null; } }
-  function saveScroll() { if (!document.getElementById(VIEW_ID)) return; try { sessionStorage.setItem(SCROLL_KEY, String(window.scrollY)); } catch (_) {} }
+  function activeSettingsMode() { return document.getElementById(PLUS_VIEW_ID) ? 'plus' : document.getElementById(VIEW_ID) ? 'main' : null; }
+  function scrollKey(mode) { return mode === 'plus' ? PLUS_SCROLL_KEY : SCROLL_KEY; }
+  function readScroll(mode) { try { var v = sessionStorage.getItem(scrollKey(mode)); return v == null ? null : parseInt(v, 10); } catch (_) { return null; } }
+  function saveScroll() { var mode = activeSettingsMode(); if (!mode) return; try { sessionStorage.setItem(scrollKey(mode), String(window.scrollY)); } catch (_) {} }
   function onScrollSave() {
     if (scrollSaveTimer) return;
     scrollSaveTimer = setTimeout(function () { scrollSaveTimer = null; saveScroll(); }, 150);
@@ -1123,8 +1157,8 @@
   }
   // Restore where the reader was: their saved position if any (covers React re-injects +
   // refresh); otherwise, only on a deliberate open, bring the panel into view.
-  function restoreScroll(box, userInitiated) {
-    var saved = readScroll();
+  function restoreScroll(box, userInitiated, mode) {
+    var saved = readScroll(mode);
     if (saved != null && isFinite(saved)) { try { window.scrollTo(0, saved); } catch (_) {} return; }
     if (userInitiated) { try { var y = box.getBoundingClientRect().top + window.scrollY - 80; window.scrollTo(0, y); saveScroll(); } catch (_) {} }
   }
@@ -1135,6 +1169,7 @@
     var cv = comixView(); if (cv) { hiddenComixView = cv; cv.style.display = 'none'; }
     stopOutro();
     if (userInitiated === true) primeOutroAudio();
+    var plusOld = document.getElementById(PLUS_VIEW_ID); if (plusOld) plusOld.remove();
     var old = document.getElementById(VIEW_ID); if (old) old.remove();
     Promise.all([S.getSettings(), getLocal('cdlLibrary'), getLocal('cdlSubscriptions')]).then(function (r) {
       if (!document.getElementById(NAV_ID)) return;
@@ -1144,49 +1179,73 @@
       contentBox().appendChild(nextView);
       finishSettingsNavigationAttempt();
       setupOutro(nextView);
-      setActiveNav(true);
-      try { sessionStorage.setItem(OPEN_KEY, '1'); } catch (_) {}
+      setActiveNav(NAV_ID);
+      try { sessionStorage.setItem(OPEN_KEY, 'main'); } catch (_) {}
       startScrollTracking();
-      restoreScroll(box, userInitiated === true);
+      restoreScroll(box, userInitiated === true, 'main');
     });
+  }
+
+  function activatePlus(userInitiated) {
+    injectStyle();
+    var box = contentBox(); if (!box) return;
+    var cv = comixView(); if (cv) { hiddenComixView = cv; cv.style.display = 'none'; }
+    stopOutro();
+    embeddedUpdateRefresh = null;
+    var normal = document.getElementById(VIEW_ID); if (normal) normal.remove();
+    var old = document.getElementById(PLUS_VIEW_ID); if (old) old.remove();
+    var nextView = buildPlusView();
+    box.appendChild(nextView);
+    finishSettingsNavigationAttempt();
+    setActiveNav(PLUS_NAV_ID);
+    try { sessionStorage.setItem(OPEN_KEY, 'plus'); } catch (_) {}
+    startScrollTracking();
+    restoreScroll(box, userInitiated === true, 'plus');
   }
 
   function deactivate() {
     stopOutro();
     embeddedUpdateRefresh = null;
     var v = document.getElementById(VIEW_ID); if (v) v.remove();
+    var plusView = document.getElementById(PLUS_VIEW_ID); if (plusView) plusView.remove();
     if (hiddenComixView) { try { hiddenComixView.style.display = ''; } catch (_) {} hiddenComixView = null; }
-    setActiveNav(false);
+    setActiveNav(null);
     stopScrollTracking();
     // An explicit close forgets the saved spot, so the next open starts at the panel top.
-    try { sessionStorage.removeItem(OPEN_KEY); sessionStorage.removeItem(SCROLL_KEY); } catch (_) {}
+    try { sessionStorage.removeItem(OPEN_KEY); sessionStorage.removeItem(SCROLL_KEY); sessionStorage.removeItem(PLUS_SCROLL_KEY); } catch (_) {}
   }
 
   // If the popup's "Settings" button sent us here, open our view automatically
-  // once (consumes a short-lived flag set by the popup).
+  // once (consumes a short-lived flag set by the popup). A Plus shortcut asks for
+  // the Plus view instead of the extension settings.
   function maybeAutoActivate() {
     if (autoChecked || !document.getElementById(NAV_ID)) return;
     autoChecked = true;
     try {
-      chrome.storage.local.get('cdlOpenExtSettings', function (r) {
+      chrome.storage.local.get(['cdlOpenExtSettings', 'cdlOpenExtSettingsView'], function (r) {
         var ts = r && r.cdlOpenExtSettings;
         if (ts && (Date.now() - ts) < 60000) {
-          try { chrome.storage.local.remove('cdlOpenExtSettings'); } catch (_) {}
-          activate(true);
+          try { chrome.storage.local.remove(['cdlOpenExtSettings', 'cdlOpenExtSettingsView']); } catch (_) {}
+          if (r.cdlOpenExtSettingsView === 'plus') activatePlus(true);
+          else activate(true);
         }
       });
     } catch (_) {}
   }
 
-  function setActiveNav(on) {
-    var ours = document.getElementById(NAV_ID);
-    document.querySelectorAll('.umenu__item.is-active').forEach(function (b) { if (b !== ours) b.classList.toggle('is-active', !on); });
-    if (ours) ours.classList.toggle('is-active', on);
+  function setActiveNav(activeId) {
+    [NAV_ID, PLUS_NAV_ID].forEach(function (id) {
+      var item = document.getElementById(id);
+      if (item) item.classList.toggle('is-active', id === activeId);
+    });
+    if (activeId) document.querySelectorAll('.umenu__item.is-active').forEach(function (item) {
+      if (item.id !== activeId) item.classList.remove('is-active');
+    });
   }
 
   document.addEventListener('click', function (e) {
     var item = e.target && e.target.closest && e.target.closest('.umenu__item');
-    if (item && item.id !== NAV_ID && document.getElementById(VIEW_ID)) deactivate();
+    if (item && item.id !== NAV_ID && item.id !== PLUS_NAV_ID && activeSettingsMode()) deactivate();
   }, true);
 
   // ── comix's quick-settings popover (gear in the top bar) ─────────────────────
@@ -1201,6 +1260,7 @@
       location.href = location.origin + '/user?tab=settings';
     };
     setLocal('cdlOpenExtSettings', Date.now());
+    setLocal('cdlOpenExtSettingsView', 'main');
     send({ action: 'cdlTrackSettingsNavigation' }).then(go);
     setTimeout(go, 500);
   }
@@ -1280,6 +1340,7 @@
     else {
       stopWatching(); deactivate();
       var n = document.getElementById(NAV_ID); if (n && n.parentElement) n.parentElement.remove();
+      var plus = document.getElementById(PLUS_NAV_ID); if (plus && plus.parentElement) plus.parentElement.remove();
       var sep = document.querySelector('.cdl-umenu-sep'); if (sep) sep.remove();
     }
   }
@@ -1290,10 +1351,14 @@
         ensureNavItem();
         maybeAutoActivate();
         var n = document.getElementById(NAV_ID);
+        var plus = document.getElementById(PLUS_NAV_ID);
         // Re-open after a refresh (our panel was open last time) or re-inject after comix's
         // React wiped our panel — both restore the saved scroll position (no jump to top).
-        var wasOpen = false; try { wasOpen = sessionStorage.getItem(OPEN_KEY) === '1'; } catch (_) {}
-        if (n && !document.getElementById(VIEW_ID) && (n.classList.contains('is-active') || wasOpen)) activate(false);
+        var openMode = null; try { openMode = sessionStorage.getItem(OPEN_KEY); } catch (_) {}
+        if (!activeSettingsMode()) {
+          if (plus && (plus.classList.contains('is-active') || openMode === 'plus')) activatePlus(false);
+          else if (n && (n.classList.contains('is-active') || openMode === 'main' || openMode === '1')) activate(false);
+        }
         if (++tries > 60) { clearInterval(pollTimer); pollTimer = null; }
       }, 300);
     }

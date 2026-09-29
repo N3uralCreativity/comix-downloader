@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "4.2.40",
+  "version": "4.3.0",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
   "homepage_url": "https://github.com/N3uralCreativity/comix-downloader",
@@ -17,14 +17,15 @@
     "declarativeNetRequestWithHostAccess"
   ],
   "optional_host_permissions": [
-    "*://*/*"
+    "*://*/*",
+    "https://plus.n3uralcreativity.top/*"
   ],
   "host_permissions": [
     "*://comix.to/*",
     "*://*.comix.to/*",
     "*://comix.ws/*",
     "*://*.comix.ws/*",
-    "https://*.workers.dev/*",
+    "https://comix-downloader-badge.comixdl.workers.dev/*",
     "*://*.wowpic1.store/*",
     "*://*.wowpic2.store/*",
     "*://*.wowpic3.store/*",
@@ -66,7 +67,12 @@
     },
     {
       "matches": ["*://comix.to/*", "*://comix.ws/*"],
-      "js": ["core/settings.js", "content/cdl-embed-settings.js"],
+      "js": ["core/settings.js", "core/plus-tokens.js", "core/plus-ui.js", "content/cdl-embed-settings.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://comix.to/*", "*://comix.ws/*"],
+      "js": ["core/cdl-agenda-view.js", "content/content_agenda.js"],
       "run_at": "document_idle"
     }
   ],

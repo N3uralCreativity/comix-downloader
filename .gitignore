@@ -14,6 +14,7 @@ Thumbs.db
 # Browser-generated unpacked-extension metadata
 _metadata/
 .playwright-cli/
+output/
 
 # Claude Code per-machine local settings (permission allowlist etc. — not shared)
 .claude/settings.local.json
@@ -39,3 +40,10 @@ __pycache__/
 
 # Cloudflare Wrangler local cache (contains the account id / email — NEVER commit)
 .wrangler/
+plus-worker/.dev.vars
+plus-worker/.env
+plus-worker/.env.*
+plus-worker/public/
+
+# Private testing: shared tester account key for the testing Plus service (NEVER commit)
+plus-tester.local.json

@@ -94,6 +94,7 @@
     advanced: 'Powerful options that can break downloads or hurt quality. Read each warning.',
     features: 'Extra tweaks that make Comix nicer to use — not about downloading. Ad blocking is on by default; the other features remain opt-in.',
     sync: 'Watch subscribed series for new chapters, and optionally push finished CBZ files to your own media server (Komga / Kavita via a watched folder).',
+    plus: 'Optional encrypted cross-device continuity, restore history, device access, and billing. Every existing extension feature remains free.',
     about: 'Back up your configuration, and information about the extension.'
   };
 
@@ -507,6 +508,9 @@
       tab.keys.forEach(function (key) { if (S.SCHEMA[key]) panel.appendChild(buildRow(key)); });
       if (tab.id === 'about') buildAboutExtras(panel);
       if (tab.id === 'sync') buildSyncExtras(panel);
+      if (tab.id === 'plus' && typeof CDLPlusUI !== 'undefined') {
+        panel.appendChild(CDLPlusUI.createSection({ variant: 'standalone', dedicated: true, hideHeader: true }));
+      }
       content.appendChild(panel);
     });
   }
