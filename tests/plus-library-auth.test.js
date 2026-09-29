@@ -3,6 +3,21 @@ const assert = require("node:assert/strict");
 require("../core/cloud-library.js");
 const Plus = require("../core/plus-core.js");
 
+// Token refresh relies on the Web Locks API, which every supported browser has (and Node 24+).
+// Older Node versions (CI runs Node 22) lack it, so provide the same one-at-a-time lock here.
+if (!globalThis.navigator || !globalThis.navigator.locks) {
+  const queues = new Map();
+  const locks = {
+    request(name, callback) {
+      const run = (queues.get(name) || Promise.resolve()).then(() => callback({ name }));
+      queues.set(name, run.catch(() => {}));
+      return run;
+    },
+  };
+  if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "locks", { value: locks, configurable: true });
+  else globalThis.navigator = { locks };
+}
+
 (async () => {
   const store = {
     [Plus.SECRET_KEY]: {
