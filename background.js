@@ -3510,8 +3510,14 @@ async function comixPageFetchImage(src, timeoutMs) {
       referrerPolicy: 'strict-origin-when-cross-origin',
       signal: controller.signal,
     });
-    if (!response.ok) {
-      return { ok: false, status: response.status, retryAfter: response.headers.get('retry-after') || '' };
+    const headers = {};
+    for (const name of ['content-type', 'retry-after', 'cf-mitigated', 'server', 'cf-ray']) {
+      const value = response.headers.get(name);
+      if (value) headers[name] = value;
+    }
+    if (!response.ok || /text\/html|application\/xhtml/i.test(headers['content-type'] || '')) {
+      // Error and challenge pages come back as text so the extension can recognise Cloudflare blocks.
+      return { ok: false, status: response.status, headers, text: (await response.text()).slice(0, 65536) };
     }
     const blob = await response.blob();
     const dataUrl = await new Promise((resolve, reject) => {
@@ -3520,12 +3526,8 @@ async function comixPageFetchImage(src, timeoutMs) {
       reader.onerror = () => reject(reader.error || new Error('The page could not be read'));
       reader.readAsDataURL(blob);
     });
-    return {
-      ok: true,
-      status: response.status,
-      contentType: response.headers.get('content-type') || blob.type || '',
-      data: dataUrl.slice(dataUrl.indexOf(',') + 1),
-    };
+    if (!headers['content-type'] && blob.type) headers['content-type'] = blob.type;
+    return { ok: true, status: response.status, headers, data: dataUrl.slice(dataUrl.indexOf(',') + 1) };
   } catch (error) {
     const timedOut = !!error && error.name === 'AbortError';
     return { ok: false, status: 0, timedOut, message: timedOut ? 'timed out' : String((error && error.message) || error) };
@@ -3556,20 +3558,15 @@ async function fetchImageThroughComixTab(src, timeoutMs, signal) {
     comixImageTabId = null;
     throw new TypeError('Failed to fetch through the comix tab (no result)');
   }
-  if (!result.ok) {
-    if (!result.status) {
-      if (result.timedOut) throw new DOMException('The image request timed out.', 'TimeoutError');
-      throw new TypeError(`Failed to fetch (${result.message || 'network error'})`);
-    }
-    const error = new Error(`HTTP ${result.status}`);
-    error.status = result.status;
-    error.retryAfterMs = parseRetryAfterMs(result.retryAfter);
-    throw error;
+  if (!result.status) {
+    if (result.timedOut) throw new DOMException('The image request timed out.', 'TimeoutError');
+    throw new TypeError(`Failed to fetch (${result.message || 'network error'})`);
   }
-  return new Response(base64ToBytes(result.data), {
-    status: 200,
-    headers: result.contentType ? { 'content-type': result.contentType } : {},
-  });
+  // Rebuild the page's response so the usual checks (Cloudflare blocks, HTTP status,
+  // Retry-After) apply exactly as they do to the extension's own requests.
+  const nullBody = [101, 204, 205, 304].includes(result.status);
+  const body = nullBody ? null : result.ok ? base64ToBytes(result.data) : (result.text || '');
+  return new Response(body, { status: result.status, headers: result.headers || {} });
 }
 
 // Fetch an image and, when comix.to marks it as scrambled, redraw the CDN

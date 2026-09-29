@@ -7,6 +7,7 @@ const path = require('node:path');
 const JSZip = require('../../lib/jszip.min.js');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const titleUrl = 'https://comix.to/title/cloudflare-smoke';
+const imageHost = 'https://image-fixture.invalid/';
 const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare pause test</title><style>
   :root { --surface:#202426; --surface-2:#272b2e; --text:#cdd5d6; --text-emphasis:#ecf4f5; --text-2:#9a9ca6; --accent:#8b5cf6; }
   * { box-sizing:border-box; } body { background:#17191a; color:var(--text); font:14px Arial,sans-serif; padding:24px; }
@@ -27,8 +28,23 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     });
-    await context.route(/^https?:/, route => route.request().url().startsWith(titleUrl)
-      ? route.fulfill({ contentType: 'text/html', body: fixture }) : route.abort());
+    // Chapter pages live on a host the extension has no permission for, like comix's rotating
+    // image hosts, so the extension fetches them inside the comix tab and these routes answer the page.
+    let banned = true;
+    const requests = {};
+    const cors = { 'access-control-allow-origin': '*' };
+    await context.route(/^https?:/, (route) => {
+      const url = route.request().url();
+      if (url.startsWith(titleUrl)) return route.fulfill({ contentType: 'text/html', body: fixture });
+      if (!url.startsWith(imageHost)) return route.abort();
+      const page = url.split('?')[0];
+      requests[page] = (requests[page] || 0) + 1;
+      if (banned && page.endsWith('/1/2')) {
+        return route.fulfill({ status: 403, contentType: 'text/html', headers: cors,
+          body: '<h1>Error 1006</h1><p>Cloudflare: your IP address has been banned.</p>' });
+      }
+      return route.fulfill({ contentType: 'image/jpeg', headers: cors, body: Buffer.from([1, 2, 3]) });
+    });
     const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
     const page = await context.newPage();
     const errors = [];
@@ -40,20 +56,6 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
     await worker.evaluate(async (url) => {
       const tab = (await chrome.tabs.query({})).find(tab => tab.url === url);
       self.testTabId = tab.id;
-      self.testBanned = true;
-      self.testRequests = {};
-      const actualFetch = self.fetch;
-      self.fetch = async (input, options) => {
-        const src = String(input);
-        if (!src.startsWith('https://image-fixture.invalid/')) return actualFetch(input, options);
-        self.testRequests[src] = (self.testRequests[src] || 0) + 1;
-        if (self.testBanned && src.endsWith('/1/2')) {
-          return new Response('<h1>Error 1006</h1><p>Cloudflare: your IP address has been banned.</p>', {
-            status: 403, headers: { 'content-type': 'text/html' },
-          });
-        }
-        return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } });
-      };
       loadCfg = async () => ({ 'perf.batchSize': 1, 'perf.rateLimitMode': 'off', 'download.concurrentChapters': 2 });
       getLibraryConfig = async () => null;
       extractFromTab = async (chapterUrl) => [1, 2, 3].map(index => ({
@@ -68,9 +70,9 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
 
     await page.locator('#cdl-ap-access-resume').waitFor();
     assert.match(await page.locator('#cdl-ap-img-status').textContent(), /IP address/);
-    const firstRequests = await worker.evaluate(() => ({ ...self.testRequests }));
+    const firstRequests = { ...requests };
     await page.waitForTimeout(1200);
-    assert.deepEqual(await worker.evaluate(() => self.testRequests), firstRequests, 'No automatic retries while blocked');
+    assert.deepEqual(requests, firstRequests, 'No automatic retries while blocked');
     await page.reload();
     await page.locator('#cdl-ap-access-resume').waitFor();
     assert.equal(await page.locator('#cdl-all-popup').getAttribute('data-session-status'), 'blocked');
@@ -99,17 +101,17 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
     await page.locator('#cdl-ap-access-resume').click();
     await page.waitForFunction(() => !document.querySelector('#cdl-ap-access-resume')?.disabled &&
       document.querySelector('#cdl-all-popup')?.dataset.sessionStatus === 'blocked');
-    assert.equal(await worker.evaluate(() => self.testRequests['https://image-fixture.invalid/1/2']), 2);
-    await worker.evaluate(() => { self.testBanned = false; });
+    assert.equal(requests[`${imageHost}1/2`], 2);
+    banned = false;
     await page.locator('#cdl-ap-access-resume').click();
     const result = await worker.evaluate(async () => {
       await self.testRun;
-      return { status: downloadAllSession.status, requests: self.testRequests,
-        downloads: await chrome.downloads.search({ state: 'complete' }) };
+      return { status: downloadAllSession.status, downloads: await chrome.downloads.search({ state: 'complete' }) };
     });
     assert.equal(result.status, 'done');
     assert.equal(result.downloads.length, 1);
-    for (const [url, count] of Object.entries(result.requests)) assert.equal(count, url.endsWith('/1/2') ? 3 : 1);
+    assert.equal(Object.keys(requests).length, 6);
+    for (const [url, count] of Object.entries(requests)) assert.equal(count, url.endsWith('/1/2') ? 3 : 1);
     const file = result.downloads[0].filename;
     assert.equal(path.dirname(path.resolve(file)), path.resolve(temp));
     const zip = await JSZip.loadAsync(await fs.readFile(file));
@@ -131,7 +133,7 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     assert.equal(await worker.evaluate(() => self.singlePause), 'DOWNLOAD_ALL_STOPPED');
     assert.equal(errors.length, 0, errors.join('\n'));
-    console.log('PASS real MV3 Cloudflare pause, reload, re-block, resume, archive bytes, single-chapter Cancel, desktop/mobile layout');
+    console.log('PASS real MV3 Cloudflare pause through the comix tab, reload, re-block, resume, archive bytes, single-chapter Cancel, desktop/mobile layout');
   } finally {
     if (context) await context.close();
     assert.equal(path.dirname(path.resolve(temp)), path.resolve(os.tmpdir()));

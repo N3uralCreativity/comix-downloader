@@ -53,8 +53,10 @@ function extractConst(name) {
 function makeContext({ tabs = [], inject }) {
   const calls = { injected: [] };
   const context = {
-    console, URL, Uint8Array, atob, Response, DOMException, AbortController, setTimeout, clearTimeout,
+    console, URL, Uint8Array, atob, Response, DOMException, AbortController, setTimeout, clearTimeout, TextDecoder,
     downloadAllSession: null,
+    preferredComixOrigin: () => 'https://comix.to',
+    cdlLog: () => {},
     chrome: {
       tabs: {
         get: async (id) => { const tab = tabs.find((t) => t.id === id); if (!tab) throw new Error('No tab with id: ' + id); return tab; },
@@ -72,8 +74,10 @@ function makeContext({ tabs = [], inject }) {
     'let comixImageTabId = null;',
     ...['canFetchImageDirectly', 'isComixTabUrl', 'comixTabForImages', 'makeComixTabRequiredError', 'raceAbort',
       'base64ToBytes', 'comixPageFetchImage', 'fetchImageThroughComixTab', 'parseRetryAfterMs',
-      'imageRequestStatus', 'isRetryableImageRequestError'].map(extractFunction),
-    'globalThis.api = { canFetchImageDirectly, fetchImageThroughComixTab, isRetryableImageRequestError, comixTabForImages };',
+      'imageRequestStatus', 'isRetryableImageRequestError', 'fetchImageForZip', 'checkCloudflareResponse',
+      'detectCloudflareChallengeDocument', 'makeCloudflareAccessError', 'isCloudflareAccessError',
+      'getImageExtension', 'getScrambleInfo'].map(extractFunction),
+    'globalThis.api = { canFetchImageDirectly, fetchImageThroughComixTab, fetchImageForZip, isRetryableImageRequestError, isCloudflareAccessError, comixTabForImages };',
   ].join('\n'), context);
   return { api: context.api, calls, context };
 }
@@ -104,7 +108,7 @@ async function run() {
   {
     const { api, calls } = makeContext({
       tabs: [comixTab],
-      inject: () => [{ result: { ok: true, status: 200, contentType: 'image/webp', data: bytes.toString('base64') } }],
+      inject: () => [{ result: { ok: true, status: 200, headers: { 'content-type': 'image/webp' }, data: bytes.toString('base64') } }],
     });
     const response = await api.fetchImageThroughComixTab(PAGE, 30000, null);
     const body = Buffer.from(await response.arrayBuffer());
@@ -120,20 +124,53 @@ async function run() {
     const other = { id: 3, url: 'https://comix.to/home', status: 'complete', discarded: false };
     const { api, calls, context } = makeContext({
       tabs: [other, comixTab],
-      inject: () => [{ result: { ok: true, status: 200, contentType: 'image/webp', data: bytes.toString('base64') } }],
+      inject: () => [{ result: { ok: true, status: 200, headers: { 'content-type': 'image/webp' }, data: bytes.toString('base64') } }],
     });
     context.downloadAllSession = { originTabId: 7 };
     await api.fetchImageThroughComixTab(PAGE, 30000, null);
     check('the tab that started Download All is used', calls.injected[0].target.tabId === 7);
   }
 
+  // The whole image step (fetchImageForZip) on a rotating host
+  {
+    const { api } = makeContext({
+      tabs: [comixTab],
+      inject: () => [{ result: { ok: true, status: 200, headers: { 'content-type': 'image/webp' }, data: bytes.toString('base64') } }],
+    });
+    const image = await api.fetchImageForZip(PAGE, {}, null, comixTab.url);
+    check('a page from a rotating host goes into the chapter unchanged', Buffer.from(image.buffer).equals(bytes) && image.ext === 'webp');
+  }
+
   // HTTP errors keep their status so the retry rules apply
   {
-    const { api } = makeContext({ tabs: [comixTab], inject: () => [{ result: { ok: false, status: 503, retryAfter: '2' } }] });
-    const error = await api.fetchImageThroughComixTab(PAGE, 30000, null).catch((e) => e);
+    const { api } = makeContext({
+      tabs: [comixTab],
+      inject: () => [{ result: { ok: false, status: 503, headers: { 'retry-after': '2', 'content-type': 'text/plain' }, text: 'Service Unavailable' } }],
+    });
+    const error = await api.fetchImageForZip(PAGE, {}, null, comixTab.url).catch((e) => e);
     check('a server error keeps its HTTP status', error.status === 503 && /HTTP 503/.test(error.message));
     check('a server error keeps Retry-After', error.retryAfterMs === 2000);
     check('a server error is retried', api.isRetryableImageRequestError(error));
+  }
+
+  // Cloudflare blocks seen through the tab pause Download All like the direct path does
+  {
+    const { api } = makeContext({
+      tabs: [comixTab],
+      inject: () => [{ result: { ok: false, status: 403, headers: { 'content-type': 'text/html' },
+        text: '<h1>Error 1006</h1><p>Cloudflare: your IP address has been banned.</p>' } }],
+    });
+    const error = await api.fetchImageForZip(PAGE, {}, null, comixTab.url).catch((e) => e);
+    check('an IP ban on the image host is recognised as a Cloudflare block', api.isCloudflareAccessError(error) && error.blockKind === 'ip_ban');
+  }
+  {
+    const { api } = makeContext({
+      tabs: [comixTab],
+      inject: () => [{ result: { ok: false, status: 200, headers: { 'content-type': 'text/html; charset=UTF-8' },
+        text: '<html><head><title>Just a moment...</title></head><body>Checking your browser</body></html>' } }],
+    });
+    const error = await api.fetchImageForZip(PAGE, {}, null, comixTab.url).catch((e) => e);
+    check('a challenge page instead of an image is recognised as a Cloudflare challenge', api.isCloudflareAccessError(error) && error.blockKind === 'challenge');
   }
 
   // No comix tab: a clear message, not endless retries
@@ -151,7 +188,7 @@ async function run() {
       tabs: [comixTab],
       inject: () => {
         if (first) { first = false; throw new Error('Frame with ID 0 was removed.'); }
-        return [{ result: { ok: true, status: 200, contentType: 'image/webp', data: bytes.toString('base64') } }];
+        return [{ result: { ok: true, status: 200, headers: { 'content-type': 'image/webp' }, data: bytes.toString('base64') } }];
       },
     });
     const error = await api.fetchImageThroughComixTab(PAGE, 30000, null).catch((e) => e);
@@ -160,7 +197,7 @@ async function run() {
     check('the next attempt finds a comix tab again', response.ok && calls.injected.length === 2);
   }
 
-  // A page-side network failure (for example a refused CORS response) is retried
+  // A page-side network failure (for example a response without CORS headers) is retried
   {
     const { api } = makeContext({ tabs: [comixTab], inject: () => [{ result: { ok: false, status: 0, message: 'Failed to fetch' } }] });
     const error = await api.fetchImageThroughComixTab(PAGE, 30000, null).catch((e) => e);
@@ -199,7 +236,11 @@ async function run() {
     const result = await pageContext.pageFetch(PAGE, 30000);
     check('the page fetch sends no cookies (the hosts allow any origin, not credentials)', pageContext.seen.init.credentials === 'omit');
     check('the page fetch sends comix as the referrer origin', pageContext.seen.init.referrerPolicy === 'strict-origin-when-cross-origin');
-    check('the page fetch returns base64 bytes and the type', result.ok && Buffer.from(result.data, 'base64').equals(bytes) && result.contentType === 'image/webp');
+    check('the page fetch returns base64 bytes and the type', result.ok && Buffer.from(result.data, 'base64').equals(bytes) && result.headers['content-type'] === 'image/webp');
+    pageContext.fetch = async () => new Response('<h1>Error 1006</h1>', { status: 403, headers: { 'content-type': 'text/html', 'retry-after': '5' } });
+    const blocked = await pageContext.pageFetch(PAGE, 30000);
+    check('an error page comes back as text with its status and headers',
+      !blocked.ok && blocked.status === 403 && blocked.text === '<h1>Error 1006</h1>' && blocked.headers['retry-after'] === '5');
   }
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
