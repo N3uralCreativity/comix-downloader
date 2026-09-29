@@ -39,6 +39,11 @@ check('a trial counts as a member', A.isMemberState({ account: { state: 'trial' 
 check('a cancelled but active subscription counts', A.isMemberState({ account: { state: 'cancelled_active' } }) === true);
 check('expired is not a member', A.isMemberState({ account: { state: 'expired' } }) === false);
 
+// The launch phase shows itself briefly, then shrinks into the corner on its own
+check('launch opens briefly, then shrinks into the corner by itself', A.autoCloseDelay('launch', false) > 1500 && A.autoCloseDelay('launch', false) < 5000);
+check('coming soon stays until the reader closes it', A.autoCloseDelay('soon', false) === 0);
+check('a launch full screen the reader reopened stays until closed', A.autoCloseDelay('launch', true) === 0);
+
 // Phases and destinations
 check('an unknown phase is treated as coming soon', A.phaseOf({ phase: 'toString' }) === 'soon');
 check('coming soon links to the Plus page', A.ctaUrl({ phase: 'soon' }) === 'https://n3uralcreativity.top/comix-downloader/plus.html');

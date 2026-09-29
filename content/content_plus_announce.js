@@ -22,6 +22,11 @@
   const TICK_MS = 800;
   const LEAVE_MS = 450;
   const BUBBLE_MS = 9000;
+  // Launch phase: the first full screen is a short showing. It fades in, stays a moment,
+  // then shrinks into the corner on its own; readers reopen it from the corner.
+  const LAUNCH_FADE_MS = 700;
+  const LAUNCH_HOLD_MS = 2000;
+  const LAUNCH_RESUME_MS = 1200;
   const MEMBER_STATES = new Set(['trial', 'active', 'grace', 'cancelled_active']);
   const DEFAULT_URLS = {
     soon: 'https://n3uralcreativity.top/comix-downloader/plus.html',
@@ -77,6 +82,12 @@
   function isMemberState(plusState) {
     const state = plusState && plusState.account && plusState.account.state;
     return MEMBER_STATES.has(state);
+  }
+
+  // How long a full screen stays before shrinking into the corner by itself: only the
+  // launch phase's first showing does; one a reader opens from the corner stays until closed.
+  function autoCloseDelay(phase, openedByReader) {
+    return phase === 'launch' && !openedByReader ? LAUNCH_FADE_MS + LAUNCH_HOLD_MS : 0;
   }
 
   // Full screen once per revision, then the corner piece; nothing where it would get in the way.
@@ -185,6 +196,7 @@
       outline: none;
     }
     .full.is-entering { opacity: 0; transform: scale(.98); }
+    .full.is-brief { transition: opacity .7s ease, transform .7s cubic-bezier(.2, .8, .2, 1); }
     .full.is-leaving { opacity: 0; transform: scale(.14); pointer-events: none; }
     .bg { position: absolute; inset: 0; background: rgba(28, 20, 64, .99); }
     .bg::after {
@@ -470,6 +482,9 @@
     leaveToken: 0,
     bubblePath: '',
     bubbleTimer: 0,
+    readerOpened: false,
+    briefTimer: 0,
+    briefPaused: false,
   };
 
   function ensureUi() {
@@ -497,9 +512,20 @@
     fullParts.cta.addEventListener('click', () => { setTimeout(() => closeFull(), 0); });
     fullParts.off.addEventListener('click', turnOff);
     cornerParts.corner.addEventListener('click', () => {
+      state.readerOpened = true;
       state.userMode = 'full';
       update();
     });
+    // A short launch showing waits while the reader points at or tabs into its text and button.
+    // Real movement only: browsers also send synthetic pointer events when content appears under a still cursor.
+    // The text column, Close and "Turn off" hold the showing (the footer row itself spans the whole
+    // bottom edge, so only its button counts); keyboard focus anywhere in it does too.
+    [fullParts.full.querySelector('.left'), fullParts.close, fullParts.off].forEach((zone) => {
+      zone.addEventListener('pointermove', (event) => { if (event.movementX || event.movementY) pauseBrief(); });
+      zone.addEventListener('pointerleave', () => resumeBrief());
+    });
+    fullParts.full.addEventListener('focusin', pauseBrief);
+    fullParts.full.addEventListener('focusout', () => resumeBrief());
 
     state.ui = { shadow, full: fullParts.full, corner: cornerParts.corner, bubble: cornerParts.bubble };
     return state.ui;
@@ -511,18 +537,55 @@
 
   function showFull(ui) {
     state.leaveToken++;
-    ui.full.classList.remove('is-leaving');
+    // Reopened while still shrinking away: finish that hide so it enters like any other showing.
+    if (ui.full.classList.contains('is-leaving')) {
+      ui.full.hidden = true;
+      ui.full.classList.remove('is-leaving');
+    }
     if (!ui.full.hidden) return;
+    const delay = autoCloseDelay(phaseOf(state.promo), state.readerOpened);
+    ui.full.classList.toggle('is-brief', delay > 0);
+    // A short showing does not take focus, so it must not claim to be modal either.
+    ui.full.setAttribute('aria-modal', delay ? 'false' : 'true');
     ui.full.hidden = false;
     ui.full.classList.add('is-entering');
     requestAnimationFrame(() => requestAnimationFrame(() => ui.full.classList.remove('is-entering')));
-    try { ui.full.focus({ preventScroll: true }); } catch (_) {}
+    // A short showing leaves keyboard focus where it was; one the reader opened takes it.
+    if (!delay) {
+      try { ui.full.focus({ preventScroll: true }); } catch (_) {}
+    }
     root.addEventListener('keydown', onKeydown, true);
+    clearTimeout(state.briefTimer);
+    state.briefPaused = false;
+    state.briefTimer = delay ? setTimeout(endBrief, prefersCalm() ? LAUNCH_HOLD_MS : delay) : 0;
+  }
+
+  function endBrief() {
+    state.briefTimer = 0;
+    if (state.mode === 'full' && !state.readerOpened) closeFull();
+  }
+
+  function pauseBrief() {
+    if (!state.briefTimer) return;
+    clearTimeout(state.briefTimer);
+    state.briefTimer = 0;
+    state.briefPaused = true;
+  }
+
+  function resumeBrief(ms) {
+    if (!state.briefPaused || state.mode !== 'full') return;
+    state.briefPaused = false;
+    state.briefTimer = setTimeout(endBrief, ms || LAUNCH_RESUME_MS);
   }
 
   function hideFull(ui) {
     root.removeEventListener('keydown', onKeydown, true);
-    if (ui.full.hidden) return;
+    clearTimeout(state.briefTimer);
+    state.briefTimer = 0;
+    state.briefPaused = false;
+    // Already shrinking away: let that finish instead of restarting it on every check.
+    if (ui.full.hidden || ui.full.classList.contains('is-leaving')) return;
+    ui.full.classList.remove('is-brief');
     const token = ++state.leaveToken;
     ui.full.classList.add('is-leaving');
     setTimeout(() => {
@@ -571,11 +634,21 @@
       showFull(ui);
       return;
     }
+    // Keyboard focus inside the full screen moves to the corner piece once it is back.
+    const refocus = previous === 'full' && ui.full.contains(ui.shadow.activeElement);
     hideFull(ui);
     if (previous === 'full') {
       // Let the full screen shrink away before the corner piece appears.
-      setTimeout(() => { if (state.mode === 'mini') showCorner(ui, pageKind(location.pathname)); }, prefersCalm() ? 0 : LEAVE_MS - 100);
-    } else {
+      setTimeout(() => {
+        if (state.mode !== 'mini') return;
+        showCorner(ui, pageKind(location.pathname));
+        // Only when focus was lost with the full screen, never when the reader moved on elsewhere.
+        if (refocus && (ui.full.contains(ui.shadow.activeElement) || document.activeElement === document.body)) {
+          try { ui.corner.focus({ preventScroll: true }); } catch (_) {}
+        }
+      }, prefersCalm() ? 0 : LEAVE_MS - 100);
+    } else if (!ui.full.classList.contains('is-leaving')) {
+      // The check that runs every 800 ms waits for a shrinking full screen too.
       showCorner(ui, kind);
     }
   }
@@ -594,8 +667,12 @@
       autoOpened: state.autoOpened,
       userMode: state.userMode,
     });
+    // A tab opened in the background would play the short showing (and mark it seen) unseen:
+    // wait until the tab is on screen.
+    if (mode === 'full' && !state.userMode && document.visibilityState === 'hidden') return;
     if (mode === 'full' && !state.userMode) {
       state.autoOpened = true;
+      state.readerOpened = false;
       state.userMode = 'full';
     }
     // Something took over the page while the full screen was up: come back as the corner piece.
@@ -668,11 +745,17 @@
     state.member = member;
     state.seen = seen.indexOf(revisionKey(promo)) !== -1;
     watchChanges();
+    // The short launch showing only counts down while the tab is on screen.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') { pauseBrief(); return; }
+      resumeBrief(LAUNCH_HOLD_MS);
+      update();
+    });
     update();
     state.timer = setInterval(update, TICK_MS);
   }
 
-  const api = { show, pageKind, phaseOf, ctaUrl, revisionKey, isMemberState, decideMode, DEFAULT_URLS };
+  const api = { show, pageKind, phaseOf, ctaUrl, revisionKey, isMemberState, decideMode, autoCloseDelay, DEFAULT_URLS };
   root.__cdlPlusAnnounce = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

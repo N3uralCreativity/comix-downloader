@@ -87,7 +87,7 @@ The local-only notice dashboard is `notices-admin.html`. Open it from disk, ente
 | --- | --- |
 | `warning` | A blocking card over comix.to until it is dismissed. |
 | `notification` | A small card in the top-right corner until it is dismissed. |
-| `promotion` | The Comix Downloader Plus announcement. The extension draws it: full screen the first time, then a small phone in the bottom-right corner while the notice stays active. |
+| `promotion` | The Comix Downloader Plus announcement. The extension draws it: full screen the first time (for the launch phase only about three seconds, then it shrinks away by itself), then a small phone in the bottom-right corner while the notice stays active. |
 
 A promotion has no title or message of its own; the layout and text ship with the extension (`content/content_plus_announce.js`, from v4.2.38). Its `phase` is `soon` (links to the Plus page) or `launch` (starts the free trial), and `ctaUrl` can override the button destination. Changing the phase, or disabling and re-enabling the notice, starts a new revision, so everyone sees the full screen once more. The extension never shows it in the reader, while the Download All panel is open, to Plus members, or to readers who turned off **Show Plus announcements** (off by default on Firefox). Older extension versions ignore promotions.
 
