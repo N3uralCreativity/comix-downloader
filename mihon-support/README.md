@@ -22,10 +22,11 @@ Earlier versions of this source loaded the site in a `WebView` to capture a toke
 ### One-tap install (auto-updates)
 
 1. Install [Mihon](https://mihon.app/download).
-2. **More → Settings → Browse → Extension repos → +**, then paste:
+2. On the phone, tap **Add to Mihon** in the [install guide](https://n3uralcreativity.top/comix-downloader/Documentation.html#android), or open **More → Settings → Browse → Extension repos → +** and paste:
    ```
-   https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json
+   https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.pb
    ```
+   `index.pb` needs Mihon 0.20 or newer. Older Mihon versions and apps based on them (Komikku, etc.) take `https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json` instead.
 3. **Browse → Extensions** → install **Comix**.
 4. **Browse → Comix** → pick a title → tap **⋮ → Download → All** (or use the per-chapter download icons).
 
@@ -85,9 +86,12 @@ The release workflow runs `repo-tools/build-index.py` after building the APK. Th
 1. Extracts package, versionCode, versionName from the APK with `aapt`.
 2. Reads the signing-cert SHA-256 fingerprint with `apksigner` for `repo.json`.
 3. Computes the deterministic source id (`Comix`/`en`) and writes `index.min.json` + `index.json`.
-4. Stages the APK under `apk/` and the launcher icon under `icon/`.
+4. Writes `index.pb`, the extension store format of Mihon 0.20 and newer (a gzipped `NetworkExtensionStore` protobuf, as keiyoushi publishes), and points `repo.json` at it with `index_v2`.
+5. Stages the APK under `apk/` and the launcher icon under `icon/`.
 
 The result is force-pushed to the orphan `repo` branch, which Mihon clients fetch via raw.githubusercontent.com.
+
+Mihon 0.20 still reads `index.min.json`, but only when the address it was given ends exactly in `/index.min.json`. A space or line break pasted after it gives "Provided legacy store url is not valid". Through `index_v2`, Mihon 0.20 moves stores added with `index.min.json` (and ones already added) to `index.pb`, which has no such check. Older Mihon versions ignore `index_v2`.
 
 To dry-run the index locally:
 

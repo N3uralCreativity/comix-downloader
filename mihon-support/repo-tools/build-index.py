@@ -2,10 +2,14 @@
 """
 Build a Mihon-compatible extension repo index for the Comix source.
 
-Generates `index.min.json`, `index.json`, and `repo.json` in the staging
-directory, and copies the APK into `<staging>/apk/`. The staging tree is
-then ready to be pushed to an orphan `repo` branch and served via
+Generates `index.min.json`, `index.json`, `repo.json`, and `index.pb` in the
+staging directory, and copies the APK into `<staging>/apk/`. The staging tree
+is then ready to be pushed to an orphan `repo` branch and served via
 raw.githubusercontent.com so Mihon users can install with one tap.
+
+`index.pb` is the extension store format Mihon 0.20 and newer read. `repo.json`
+points to it (`index_v2`), so the older `index.min.json` address keeps working
+everywhere and newer Mihon versions move to `index.pb` on their own.
 
 Usage:
     build-index.py --apk <path-to-apk> --out <staging-dir>
@@ -15,6 +19,7 @@ build-tools that the release workflow already installs).
 """
 
 import argparse
+import gzip
 import hashlib
 import json
 import re
@@ -31,7 +36,13 @@ SOURCE_BASE_URL = "https://comix.to"
 SOURCE_NSFW = 1
 
 REPO_NAME = "Comix Mihon Extensions"
+REPO_BADGE = "Comix"
 REPO_WEBSITE = "https://github.com/N3uralCreativity/comix-downloader"
+REPO_URL = "https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo"
+
+# Mihon's NetworkExtensionStore.ContentWarning values.
+CONTENT_WARNING_SAFE = 1
+CONTENT_WARNING_NSFW = 3
 
 
 def compute_source_id(name: str, lang: str, version_id: int) -> int:
@@ -41,6 +52,54 @@ def compute_source_id(name: str, lang: str, version_id: int) -> int:
     for i in range(8):
         value |= (digest[i] & 0xFF) << ((7 - i) * 8)
     return value & 0x7FFFFFFFFFFFFFFF
+
+
+def _varint(value: int) -> bytes:
+    out = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        if not value:
+            out.append(byte)
+            return bytes(out)
+        out.append(byte | 0x80)
+
+
+def _field(number: int, value: int | str | bytes) -> bytes:
+    """One protobuf field: an int is a varint, a str is text, bytes are a nested message."""
+    if isinstance(value, int):
+        return _varint(number << 3) + _varint(value)
+    if isinstance(value, str):
+        value = value.encode()
+    return _varint(number << 3 | 2) + _varint(len(value)) + value
+
+
+def build_store(entry: dict, fingerprint: str) -> bytes:
+    """Encode the repo as Mihon's NetworkExtensionStore protobuf, gzipped like keiyoushi's."""
+    source = entry["sources"][0]
+    extension = b"".join([
+        _field(1, entry["name"]),
+        _field(2, entry["pkg"]),
+        _field(3, _field(1, f"{REPO_URL}/apk/{entry['apk']}")
+               + _field(2, f"{REPO_URL}/icon/{entry['pkg']}.png")),
+        # extensions-lib version, read the same way as the legacy index ("1.4.4023900" -> "1.4")
+        _field(4, entry["version"].rsplit(".", 1)[0]),
+        _field(5, entry["code"]),
+        _field(6, entry["version"]),
+        _field(7, CONTENT_WARNING_NSFW if entry["nsfw"] else CONTENT_WARNING_SAFE),
+        _field(8, _field(1, int(source["id"]))
+               + _field(2, source["name"])
+               + _field(3, source["lang"])
+               + _field(4, source["baseUrl"])),
+    ])
+    store = b"".join([
+        _field(1, REPO_NAME),
+        _field(2, REPO_BADGE),
+        _field(3, fingerprint),
+        _field(4, _field(1, REPO_WEBSITE)),
+        _field(101, _field(1, extension)),
+    ])
+    return gzip.compress(store, mtime=0)
 
 
 def run(cmd: list[str]) -> str:
@@ -127,6 +186,7 @@ def main() -> None:
     }
 
     repo_meta = {
+        "index_v2": f"{REPO_URL}/index.pb",
         "meta": {
             "name": REPO_NAME,
             "website": REPO_WEBSITE,
@@ -139,6 +199,7 @@ def main() -> None:
     )
     (out_dir / "index.json").write_text(json.dumps([entry], indent=2) + "\n")
     (out_dir / "repo.json").write_text(json.dumps(repo_meta, indent=2) + "\n")
+    (out_dir / "index.pb").write_bytes(build_store(entry, fingerprint))
 
     print(f"package:     {meta['package']}")
     print(f"versionCode: {meta['versionCode']}")
