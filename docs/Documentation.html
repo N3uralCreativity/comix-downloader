@@ -160,7 +160,7 @@
 
   /* command box + click-to-copy (revealed on hover, unobtrusive) */
   .cmd-box { position: relative; margin: 12px 0 0; }
-  .cmd-box pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cmd-box pre { margin: 0; padding-right: 48px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .cmd-copy {
     position: absolute; top: 7px; right: 7px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -170,6 +170,7 @@
     opacity: 0; transition: opacity .15s, background .14s, color .14s, border-color .14s;
   }
   .cmd-box:hover .cmd-copy, .cmd-copy:focus-visible { opacity: 1; }
+  @media (hover: none) { .cmd-copy { opacity: 1; } }
   .cmd-copy:hover { background: rgba(255, 255, 255, .2); color: #fff; }
   .cmd-copy.copied { opacity: 1; background: rgba(74, 222, 128, .2); border-color: rgba(74, 222, 128, .5); color: #b9f6cd; }
   .cmd-copy svg { width: 15px; height: 15px; flex: none; }
@@ -426,8 +427,17 @@
       <p style="margin-top:22px;"><strong>Option A — Mihon</strong> (recommended for offline reading). You browse and download entirely inside the Mihon app, with auto-updates. Follow every step in order:</p>
       <ol class="steps">
         <li><strong>Install the Mihon app.</strong> Get it from <a href="https://mihon.app/download" target="_blank" rel="noopener"><strong>mihon.app/download</strong></a> and open it once so it finishes setting up. This is a standalone app — it is <em>not</em> a browser and not our extension.</li>
-        <li><strong>Add our source to Mihon.</strong> In Mihon, tap <strong>More</strong> (bottom-right) → <strong>Settings</strong> → <strong>Browse</strong> → <strong>Extension repos</strong>. Tap the <strong>+</strong> button, paste the address below exactly, and confirm:
-          <pre style="margin-top:10px;"><code>https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json</code></pre>
+        <li><strong>Add our source to Mihon.</strong> On your phone, tap this button, then confirm in Mihon:
+          <p style="margin-top:12px;"><a class="btn btn-primary" href="tachiyomi://add-repo?url=https%3A%2F%2Fraw.githubusercontent.com%2Fn3uralcreativity%2Fcomix-downloader%2Frepo%2Findex.min.json">Add to Mihon</a></p>
+          <p style="margin-top:12px;">If the button doesn't open Mihon, add it by hand: in Mihon, tap <strong>More</strong> (bottom-right) → <strong>Settings</strong> → <strong>Browse</strong> → <strong>Extension repos</strong>. Tap the <strong>+</strong> button, paste this address, and confirm:</p>
+          <div class="cmd-box">
+            <pre><code id="mihon-repo-url">https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.pb</code></pre>
+            <button type="button" class="cmd-copy" data-copy="mihon-repo-url" title="Copy address" aria-label="Copy address">
+              <svg class="ico-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <svg class="ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            </button>
+          </div>
+          <p style="margin-top:10px;font-size:13.5px;color:var(--muted);">That address needs Mihon 0.20 or newer. On an older Mihon, or an app based on it such as Komikku, paste <code>https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json</code> instead, with nothing after <code>.json</code>. If Mihon says <em>“Provided legacy store url is not valid”</em>, a space or line break was pasted after <code>index.min.json</code>: use the button or the address above instead.</p>
         </li>
         <li><strong>Turn on 18+ sources <em>(required — don't skip)</em>.</strong> Still on the <strong>Settings → Browse</strong> screen, enable <strong>Show NSFW sources</strong> (a.k.a. 18+). Comix is flagged 18+, so with this off it installs fine but <strong>stays completely hidden from your Sources list</strong> — which is the usual reason people install it and then can't find it.</li>
         <li><strong>Install the Comix extension.</strong> Go to the <strong>Browse</strong> tab (bottom bar) → <strong>Extensions</strong>. Under a heading like <em>Comix Mihon Extensions</em> you'll see <strong>Comix</strong> — tap <strong>Install</strong> and allow the install if Android asks. (If Android blocks it, allow <em>“install unknown apps”</em> for Mihon, then try again.)</li>

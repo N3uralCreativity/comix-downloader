@@ -87,10 +87,11 @@ Once it's set up, you get the same **Download All** and **per-chapter** capabili
 Follow every step in order:
 
 1. **Install the Mihon app.** Get it from [mihon.app/download](https://mihon.app/download) and open it once so it finishes setting up. (This is a standalone app - not a browser, and not our extension.)
-2. **Add our source to Mihon.** In Mihon, tap **More** (bottom-right) → **Settings** → **Browse** → **Extension repos**. Tap **+**, paste the address below exactly, and confirm:
+2. **Add our source to Mihon.** On your phone, tap **Add to Mihon** in the [install guide](https://n3uralcreativity.top/comix-downloader/Documentation.html#android) and confirm in Mihon. Or add it by hand: in Mihon, tap **More** (bottom-right) → **Settings** → **Browse** → **Extension repos**, tap **+**, paste the address below, and confirm:
    ```
-   https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json
+   https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.pb
    ```
+   That address needs Mihon 0.20 or newer. On an older Mihon, or an app based on it such as Komikku, paste `https://raw.githubusercontent.com/n3uralcreativity/comix-downloader/repo/index.min.json` instead, with nothing after `.json`.
 3. **Turn on 18+ sources - required, don't skip.** Still on the **Settings → Browse** screen, enable **Show NSFW sources** (18+). Comix is flagged 18+, so with this **off** it installs fine but stays **completely hidden from your Sources list** - this is the usual reason people install it and then can't find it.
 4. **Install the Comix extension.** Open the **Browse** tab (bottom bar) → **Extensions**. Under a heading like *Comix Mihon Extensions*, find **Comix** and tap **Install**. If Android blocks it, allow *"install unknown apps"* for Mihon and try again.
 5. **Open the Comix catalogue.** Go to the **Browse** tab and tap **Comix** under **Sources** (that's the tab where you actually browse - not the Extensions sub-tab). You should now see comix titles loading **inside Mihon** - that's how you know it's working. Use the search icon to find a specific series.
@@ -99,6 +100,8 @@ Follow every step in order:
 8. **Read offline.** Downloaded chapters open instantly in Mihon's reader with no connection needed.
 
 Mihon fetches new versions automatically whenever a new release is published here - no reinstalling.
+
+> **Mihon says "Provided legacy store url is not valid"?** A space or line break was pasted after `index.min.json`. Use the **Add to Mihon** button or the `index.pb` address in step 2 instead.
 
 > **Installed Comix but it never shows under Sources?** That's almost always the 18+ filter (step 3). Comix is NSFW-flagged, so Mihon installs it and lists it under *Extensions* but hides it from **Browse → Sources** until **Settings → Browse → Show NSFW sources** is on. Turn it on and Comix appears in Sources right away.
 

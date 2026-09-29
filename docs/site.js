@@ -186,3 +186,42 @@
     });
   }
 })();
+
+/* Copy buttons for fixed text, e.g. the Mihon repo address: <button class="cmd-copy" data-copy="<id of the code element>"> */
+(function () {
+  "use strict";
+
+  Array.prototype.forEach.call(document.querySelectorAll(".cmd-copy[data-copy]"), function (btn) {
+    var source = document.getElementById(btn.getAttribute("data-copy"));
+    if (!source) return;
+    var label = btn.title;
+    var resetTimer;
+    function flash() {
+      btn.classList.add("copied");
+      btn.title = "Copied!";
+      clearTimeout(resetTimer);
+      resetTimer = setTimeout(function () {
+        btn.classList.remove("copied");
+        btn.title = label;
+      }, 1600);
+    }
+    function legacyCopy(text) {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", "");
+        ta.style.position = "fixed"; ta.style.top = "-1000px"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); document.body.removeChild(ta);
+        flash();
+      } catch (e) { /* no-op */ }
+    }
+    btn.addEventListener("click", function () {
+      var text = source.textContent.trim();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(flash, function () { legacyCopy(text); });
+      } else {
+        legacyCopy(text);
+      }
+    });
+  });
+})();
