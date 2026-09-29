@@ -369,6 +369,7 @@ vm.runInContext(`
   ${extractFunction('downloadAllPartitionPolicy')}
   ${extractFunction('downloadAllPartSplitReason')}
   ${extractFunction('downloadAllProjectedPartSplitReason')}
+  ${extractFunction('forEachPageInPool')}
   ${extractFunction('handleDownloadAllRequest')}
   ${extractFunction('createCloudflarePauseControl')}
   ${extractFunction('isCloudflareAccessError')}

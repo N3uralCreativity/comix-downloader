@@ -24,12 +24,14 @@ const context = {
   chrome: { tabs: { get: async () => ({ status: 'complete' }), update: async () => { throw new Error('Unexpected automatic navigation'); } } },
   withExtensionKeepAlive: (task) => task(),
   preferredComixOrigin: () => 'https://comix.to',
+  // These checks cover the extension's own image requests; tests/comix-tab-image-fetch.test.js covers the comix-tab path.
+  canFetchImageDirectly: () => true,
 };
 vm.createContext(context);
 const names = ['detectCloudflareChallengeDocument', 'makeCloudflareAccessError', 'isCloudflareAccessError',
   'checkCloudflareResponse', 'createCloudflarePauseControl', 'makeDownloadAllStoppedError', 'isDownloadAllStoppedError',
   'probeImageUrl', 'fetchImageForZip', 'parseRetryAfterMs', 'getImageExtension',
-  'createChapterAccessTask', 'downloadImagesAsZip', 'fetchImageToFile', 'fetchImageWithRetry',
+  'createChapterAccessTask', 'downloadImagesAsZip', 'forEachPageInPool', 'fetchImageToFile', 'fetchImageWithRetry',
   'raceCloudflareCancellation', 'reportCloudflareChallenge', 'coordinateCloudflareChallenge', 'waitForCloudflareChallengeClear'];
 vm.runInContext(`
   const CLOUDFLARE_AUTO_WAIT_MS = 4000, CLOUDFLARE_CHALLENGE_TIMEOUT_MS = 300000;

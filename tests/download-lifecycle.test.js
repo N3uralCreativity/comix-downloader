@@ -129,7 +129,7 @@ function harness(overrides = {}) {
     ${source.slice(source.indexOf('function startDownloadAllSession('), source.indexOf('// ── Réception des messages depuis content_title.js'))}
     ${extractFunction('cancelDownloadAllForTab')}
     ${['createCloudflarePauseControl', 'isCloudflareAccessError', 'makeCloudflareAccessError',
-      'showCloudflareBlockedNotification', 'fetchImageWithRetry', 'fetchImageToFile',
+      'showCloudflareBlockedNotification', 'fetchImageWithRetry', 'fetchImageToFile', 'forEachPageInPool',
       'detectCloudflareChallengeDocument', 'checkCloudflareResponse'].map((name) => extractFunction(name)).join('\n')}
     ${['resolveOutputOptions', 'chapterConcurrencyLimit', 'isArchiveDeliveryAccepted', 'isDownloadCancelledError',
       'buildChapterComicInfoXml', 'buildChapterCbzBytes', 'handleDownloadAllRequest', '_doZipAndSave',
