@@ -81,6 +81,8 @@ function harness(overrides = {}) {
     downloadAllProjectedPartSplitReason() { return ''; },
     async withExtensionKeepAlive(task) { return task(); },
     async addSeriesMetaToOuter() { return 0; },
+    // These chapters are read in a tab; tests/comix-api.test.js covers comix's chapter API.
+    async chapterImagesFromApi() { return null; },
     async extractFromTab(chapterUrl, cfg, navigation) {
       if (overrides.extract) return overrides.extract(chapterUrl, navigation);
       return [{ index: 1, src: chapterUrl }];
@@ -128,6 +130,8 @@ function harness(overrides = {}) {
     ${source.slice(source.indexOf('let downloadAllSession = null'), source.indexOf('const FEATURES_NOTICE_VERSION'))}
     ${source.slice(source.indexOf('function startDownloadAllSession('), source.indexOf('// ── Réception des messages depuis content_title.js'))}
     ${extractFunction('cancelDownloadAllForTab')}
+    // Page pacing has its own tests (tests/comix-tab-image-fetch.test.js).
+    function withComixPageSlot(src, cfg, signal, task) { return task(); }
     ${['createCloudflarePauseControl', 'isCloudflareAccessError', 'makeCloudflareAccessError',
       'showCloudflareBlockedNotification', 'fetchImageWithRetry', 'fetchImageToFile', 'forEachPageInPool',
       'detectCloudflareChallengeDocument', 'checkCloudflareResponse'].map((name) => extractFunction(name)).join('\n')}

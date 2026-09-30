@@ -82,6 +82,8 @@ vm.runInContext(`
   ${extractFunction('parseRetryAfterMs')}
   ${extractFunction('isCloudflareAccessError')}
   ${extractFunction('cacheBustedImageUrl')}
+  // Page pacing has its own tests (tests/comix-tab-image-fetch.test.js).
+  function withComixPageSlot(src, cfg, signal, task) { return task(); }
   ${extractFunction('fetchImageWithRetry')}
   globalThis.retryApi = {
     isRetryableImageRequestError,
@@ -250,6 +252,8 @@ const allContext = {
       mobileHandoff: archiveDeliveryMode === 'mobile',
     };
   },
+  // These chapters are read in a tab; tests/comix-api.test.js covers comix's chapter API.
+  chapterImagesFromApi: async () => null,
   extractFromTab: async (url) => {
     allEvents.extracted.push(url);
     const calls = (extractCalls.get(url) || 0) + 1;
@@ -462,12 +466,12 @@ async function run() {
     return { buffer: new ArrayBuffer(1), ext: 'webp' };
   };
   await retryContext.retryApi.fetchImageWithRetry('https://wowpic.example/i5/page', {}, 1);
-  check("after a server error every retry uses a new r= URL, like comix's reader",
+  check("after a server error each retry adds r=1, r=2, r=3, exactly like comix's reader",
     requested.length === 4 &&
     requested[0] === 'https://wowpic.example/i5/page' &&
-    /^https:\/\/wowpic\.example\/i5\/page\?r=1[a-z0-9]+$/.test(requested[1]) &&
-    /^https:\/\/wowpic\.example\/i5\/page\?r=2[a-z0-9]+$/.test(requested[2]) &&
-    /^https:\/\/wowpic\.example\/i5\/page\?r=3[a-z0-9]+$/.test(requested[3]) &&
+    requested[1] === 'https://wowpic.example/i5/page?r=1' &&
+    requested[2] === 'https://wowpic.example/i5/page?r=2' &&
+    requested[3] === 'https://wowpic.example/i5/page?r=3' &&
     new Set(requested).size === 4);
   check('the fresh URL keeps an existing comix query such as ?8',
     /^https:\/\/wowpic\.example\/i5\/page\?8&r=\w+$/.test(retryContext.retryApi.cacheBustedImageUrl('https://wowpic.example/i5/page?8', 1)));

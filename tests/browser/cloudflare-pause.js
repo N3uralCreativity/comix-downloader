@@ -30,15 +30,25 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
     });
     // Chapter pages live on a host the extension has no permission for, like comix's rotating
     // image hosts, so the extension fetches them inside the comix tab and these routes answer the page.
+    // The page list comes from comix's (encrypted) chapter API, asked from the comix tab.
     let banned = true;
     const requests = {};
+    const apiAnswers = {};
+    let apiRequests = 0;
     const cors = { 'access-control-allow-origin': '*' };
     await context.route(/^https?:/, (route) => {
       const url = route.request().url();
+      const api = url.match(/^https:\/\/comix\.to\/api\/v1\/chapters\/(\d+)\?_=/);
+      if (api && apiAnswers[api[1]]) {
+        apiRequests++;
+        return route.fulfill({ contentType: 'application/json', headers: { 'x-enc': '1' }, body: apiAnswers[api[1]] });
+      }
       if (url.startsWith(titleUrl)) return route.fulfill({ contentType: 'text/html', body: fixture });
       if (!url.startsWith(imageHost)) return route.abort();
       const page = url.split('?')[0];
-      requests[page] = (requests[page] || 0) + 1;
+      // Count the image loads, the only requests a reader makes; reading them back from the
+      // cache (or learning why one failed) is not counted.
+      if (route.request().resourceType() === 'image') requests[page] = (requests[page] || 0) + 1;
       if (banned && page.endsWith('/1/2')) {
         return route.fulfill({ status: 403, contentType: 'text/html', headers: cors,
           body: '<h1>Error 1006</h1><p>Cloudflare: your IP address has been banned.</p>' });
@@ -51,16 +61,20 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
     page.on('pageerror', error => errors.push(error.message));
     const cdp = await context.newCDPSession(page);
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: temp });
+    Object.assign(apiAnswers, await worker.evaluate((host) => Object.fromEntries([1, 2].map((n) => [n, JSON.stringify({
+      e: comixApiEncode(JSON.stringify({ result: { pages: { baseUrl: `${host}${n}/`, items: [1, 2, 3].map((index) => ({ url: String(index) })) } } })),
+    })])), imageHost));
     await page.goto(titleUrl);
     await page.locator('.cdl-dl-all-btn').first().waitFor();
     await worker.evaluate(async (url) => {
       const tab = (await chrome.tabs.query({})).find(tab => tab.url === url);
       self.testTabId = tab.id;
-      loadCfg = async () => ({ 'perf.batchSize': 1, 'perf.rateLimitMode': 'off', 'download.concurrentChapters': 2 });
+      loadCfg = async () => ({ 'perf.batchSize': 1, 'perf.rateLimitMode': 'off', 'download.concurrentChapters': 2, 'perf.pagePace': 'fast' });
       getLibraryConfig = async () => null;
-      extractFromTab = async (chapterUrl) => [1, 2, 3].map(index => ({
+      self.testTabsOpened = 0;
+      extractFromTab = async (chapterUrl) => (self.testTabsOpened++, [1, 2, 3].map(index => ({
         index, src: `https://image-fixture.invalid/${chapterUrl.includes('/1-chapter') ? 1 : 2}/${index}`,
-      }));
+      })));
       await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => {
         showDownloadAllPopup('Cloudflare pause test', 2, { sessionId: 'cloudflare-smoke' });
       } });
@@ -111,6 +125,8 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
     assert.equal(result.status, 'done');
     assert.equal(result.downloads.length, 1);
     assert.equal(Object.keys(requests).length, 6);
+    assert.equal(apiRequests, 2, 'One chapter API request per chapter');
+    assert.equal(await worker.evaluate(() => self.testTabsOpened), 0, 'No chapter was opened in a background tab');
     for (const [url, count] of Object.entries(requests)) assert.equal(count, url.endsWith('/1/2') ? 3 : 1);
     const file = result.downloads[0].filename;
     assert.equal(path.dirname(path.resolve(file)), path.resolve(temp));
@@ -133,7 +149,7 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     assert.equal(await worker.evaluate(() => self.singlePause), 'DOWNLOAD_ALL_STOPPED');
     assert.equal(errors.length, 0, errors.join('\n'));
-    console.log('PASS real MV3 Cloudflare pause through the comix tab, reload, re-block, resume, archive bytes, single-chapter Cancel, desktop/mobile layout');
+    console.log('PASS real MV3 chapter API + reader-like page loads through the comix tab, Cloudflare pause, reload, re-block, resume, archive bytes, single-chapter Cancel, desktop/mobile layout');
   } finally {
     if (context) await context.close();
     assert.equal(path.dirname(path.resolve(temp)), path.resolve(os.tmpdir()));

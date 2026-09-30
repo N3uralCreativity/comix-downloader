@@ -55,6 +55,7 @@ function makeContext({ tabs = [], inject }) {
   const context = {
     console, URL, Uint8Array, atob, Response, DOMException, AbortController, setTimeout, clearTimeout, TextDecoder,
     downloadAllSession: null,
+    _IS_FIREFOX: false,
     preferredComixOrigin: () => 'https://comix.to',
     cdlLog: () => {},
     chrome: {
@@ -71,13 +72,17 @@ function makeContext({ tabs = [], inject }) {
   vm.runInContext([
     extractConst('DIRECT_IMAGE_HOST'),
     extractConst('COMIX_TAB_PATTERNS'),
+    extractConst('COMIX_PAGE_PACE_MS'),
+    extractConst('COMIX_PAGES_IN_FLIGHT'),
+    extractConst('comixPagePacer'),
     'let comixImageTabId = null;',
     ...['canFetchImageDirectly', 'isComixTabUrl', 'comixTabForImages', 'makeComixTabRequiredError', 'raceAbort',
       'base64ToBytes', 'comixPageFetchImage', 'fetchImageThroughComixTab', 'parseRetryAfterMs',
-      'imageRequestStatus', 'isRetryableImageRequestError', 'fetchImageForZip', 'checkCloudflareResponse',
+      'imageRequestStatus', 'isRetryableImageRequestError', 'fetchImageForZip', 'withComixPageSlot',
+      'acquireComixPageSlot', 'releaseComixPageSlot', 'checkCloudflareResponse',
       'detectCloudflareChallengeDocument', 'makeCloudflareAccessError', 'isCloudflareAccessError',
       'getImageExtension', 'getScrambleInfo'].map(extractFunction),
-    'globalThis.api = { canFetchImageDirectly, fetchImageThroughComixTab, fetchImageForZip, isRetryableImageRequestError, isCloudflareAccessError, comixTabForImages };',
+    'globalThis.api = { canFetchImageDirectly, fetchImageThroughComixTab, fetchImageForZip, isRetryableImageRequestError, isCloudflareAccessError, comixTabForImages, acquireComixPageSlot, releaseComixPageSlot, withComixPageSlot, pacer: comixPagePacer };',
   ].join('\n'), context);
   return { api: context.api, calls, context };
 }
@@ -116,6 +121,7 @@ async function run() {
     check('the content type is kept', response.headers.get('content-type') === 'image/webp');
     check('the fetch runs in the page itself (MAIN world) of the comix tab',
       calls.injected[0].world === 'MAIN' && calls.injected[0].target.tabId === 7);
+    check('Chromium browsers load the page as an image first', calls.injected[0].args[2] === true);
     check('the page function receives the image address and timeout', calls.injected[0].args[0] === PAGE && calls.injected[0].args[1] === 30000);
   }
 
@@ -214,13 +220,24 @@ async function run() {
     check('an abort ends the wait at once', error.name === 'AbortError');
   }
 
-  // The page function itself, run against a stubbed page fetch
+  // The page function itself: an image load like the reader's, then a read from the cache
   {
+    const events = [];
+    let imageOutcome = 'load';
     const pageContext = {
-      AbortController, setTimeout, clearTimeout, String,
+      AbortController, setTimeout, clearTimeout, String, Date, Math,
+      Image: class {
+        set src(value) {
+          if (!value) return;
+          events.push({ kind: 'image', src: value, referrerPolicy: this.referrerPolicy });
+          if (imageOutcome === 'hang') return;
+          setTimeout(() => (imageOutcome === 'load' ? this.onload && this.onload() : this.onerror && this.onerror()), 1);
+        }
+      },
       fetch: async (url, init) => {
-        pageContext.seen = { url, init };
-        return new Response(bytes, { status: 200, headers: { 'content-type': 'image/webp' } });
+        events.push({ kind: 'fetch', url, init });
+        if (imageOutcome === 'load') return new Response(bytes, { status: 200, headers: { 'content-type': 'image/webp' } });
+        return new Response('<h1>Error 1006</h1>', { status: 403, headers: { 'content-type': 'text/html', 'retry-after': '5' } });
       },
       FileReader: class {
         readAsDataURL(blob) {
@@ -234,13 +251,80 @@ async function run() {
     vm.createContext(pageContext);
     vm.runInContext(extractFunction('comixPageFetchImage') + '\nglobalThis.pageFetch = comixPageFetchImage;', pageContext);
     const result = await pageContext.pageFetch(PAGE, 30000);
-    check('the page fetch sends no cookies (the hosts allow any origin, not credentials)', pageContext.seen.init.credentials === 'omit');
-    check('the page fetch sends comix as the referrer origin', pageContext.seen.init.referrerPolicy === 'strict-origin-when-cross-origin');
+    const [image, read] = events;
+    check('the page is first loaded as an image with no referrer, exactly like the reader',
+      image && image.kind === 'image' && image.src === PAGE && image.referrerPolicy === 'no-referrer');
+    check('its bytes are then read from the browser cache', read && read.kind === 'fetch' && read.init.cache === 'force-cache');
+    check('the cache read sends no cookies (the hosts allow any origin, not credentials)', read.init.credentials === 'omit');
     check('the page fetch returns base64 bytes and the type', result.ok && Buffer.from(result.data, 'base64').equals(bytes) && result.headers['content-type'] === 'image/webp');
-    pageContext.fetch = async () => new Response('<h1>Error 1006</h1>', { status: 403, headers: { 'content-type': 'text/html', 'retry-after': '5' } });
+
+    events.length = 0;
+    imageOutcome = 'error';
     const blocked = await pageContext.pageFetch(PAGE, 30000);
+    check('when the image fails, one uncached request finds out why',
+      events.length === 2 && events[1].kind === 'fetch' && events[1].init.cache === 'no-store' && events[1].init.referrerPolicy === 'strict-origin-when-cross-origin');
     check('an error page comes back as text with its status and headers',
       !blocked.ok && blocked.status === 403 && blocked.text === '<h1>Error 1006</h1>' && blocked.headers['retry-after'] === '5');
+
+    events.length = 0;
+    imageOutcome = 'hang';
+    const slow = await pageContext.pageFetch(PAGE, 30);
+    check('a page that never loads times out without a second request', slow.timedOut === true && events.length === 1);
+
+    events.length = 0;
+    imageOutcome = 'load';
+    const firefox = await pageContext.pageFetch(PAGE, 30000, false);
+    check('in Firefox the page is fetched once, with no image load first',
+      firefox.ok && events.length === 1 && events[0].kind === 'fetch' && events[0].init.cache === 'default');
+  }
+
+  // One shared pace for every page from comix's image hosts
+  {
+    const { api } = makeContext({ inject: () => [] });
+    const starts = [];
+    const hold = [];
+    const run = async () => {
+      await api.acquireComixPageSlot('fast');
+      starts.push(Date.now());
+      await new Promise((resolve) => hold.push(resolve));
+      api.releaseComixPageSlot();
+    };
+    const tasks = [run(), run(), run(), run(), run()];
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    check('never more than three pages at once', starts.length === 3 && api.pacer.inFlight === 3);
+    const gaps = starts.slice(1).map((t, i) => t - starts[i]);
+    check('pages start spaced out, like a reader turning pages (fast: 350-650 ms)', gaps.every((gap) => gap >= 330 && gap <= 700));
+    hold.shift()();
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    check('a finished page frees a slot for the next one', starts.length === 4);
+    while (hold.length || starts.length < 5) {
+      if (hold.length) hold.shift()();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    await Promise.all(tasks);
+    check('every slot is given back', api.pacer.inFlight === 0);
+
+    const controller = new AbortController();
+    api.pacer.inFlight = 3;
+    const waiting = api.acquireComixPageSlot('balanced', controller.signal).catch((e) => e);
+    controller.abort();
+    check('stopping a download ends a wait for a slot', (await waiting).name === 'AbortError');
+    api.pacer.inFlight = 0;
+  }
+
+  // A page from a comix image host takes its turn before the pause check; comix's own images do not
+  {
+    const { api } = makeContext({ inject: () => [] });
+    const order = [];
+    api.pacer.nextStartAt = Date.now() + 400;
+    const t0 = Date.now();
+    await api.withComixPageSlot(PAGE, { 'perf.pagePace': 'fast' }, null, async () => { order.push(Date.now() - t0); });
+    check('a page from a comix image host waits for its turn before anything else runs', order[0] >= 350 && api.pacer.inFlight === 0);
+    api.pacer.nextStartAt = Date.now() + 10000;
+    const direct = [];
+    await api.withComixPageSlot('https://comix.to/images/a.webp', {}, null, async () => { direct.push(true); });
+    check('comix.to images do not wait for a turn', direct.length === 1 && api.pacer.inFlight === 0);
+    api.pacer.nextStartAt = 0;
   }
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);

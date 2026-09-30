@@ -578,7 +578,7 @@
       <ul class="tab-list">
         <li><strong>Download &amp; ZIP</strong> — multi-part (default) or single ZIP, separate ZIP/CBZ chapter limits per part, and how many chapters to fetch at once.</li>
         <li><strong>Output &amp; Library</strong> — ZIP or CBZ, ComicInfo.xml, series info, folder layout, and skipping already-downloaded chapters.</li>
-        <li><strong>Performance</strong> — parallel image downloads, pacing between chapters, and network timeouts.</li>
+        <li><strong>Performance</strong> — download pace, parallel image downloads, pacing between chapters, and network timeouts.</li>
         <li><strong>Retries</strong> — re-attempt images or chapters that fail.</li>
         <li><strong>Naming</strong> — image padding and templates for chapter folders, ZIP names, and CBZ chapter files. CBZ templates can include chapter, scanlator/group, language, and series metadata, with a live preview.</li>
         <li><strong>Appearance</strong> — the on-page buttons and the progress panel.</li>
@@ -779,7 +779,15 @@
         <summary>Cloudflare keeps asking me to verify</summary>
         <div class="ans">
           <p>The extension cannot and does not bypass Cloudflare. When comix.to presents a challenge, the download pauses, opens exactly one real verification tab, and resumes automatically after you complete it. Other chapter tabs wait behind that verification instead of opening more challenges.</p>
-          <p>If verification loops, keep <strong>Dynamic</strong> rate limiting enabled, lower <strong>Chapters at once</strong> and <strong>Parallel image downloads</strong>, use a stable connection, and temporarily disable a VPN, proxy or another blocker that may interfere with Cloudflare scripts. See Cloudflare's <a href="https://developers.cloudflare.com/cloudflare-challenges/troubleshooting/challenge-solve-issues/" target="_blank" rel="noopener">challenge troubleshooting guide</a>.</p>
+          <p>If verification loops, keep <strong>Dynamic</strong> rate limiting enabled, set <strong>Download pace</strong> to <strong>Gentle</strong>, lower <strong>Chapters at once</strong>, use a stable connection, and temporarily disable a VPN, proxy or another blocker that may interfere with Cloudflare scripts. See Cloudflare's <a href="https://developers.cloudflare.com/cloudflare-challenges/troubleshooting/challenge-solve-issues/" target="_blank" rel="noopener">challenge troubleshooting guide</a>.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>comix says "Sorry, you have been blocked"</summary>
+        <div class="ans">
+          <p>comix blocks addresses that load pages much faster than a person reads them. A block usually lasts a few hours and stops the whole site, not only downloads, until it lifts. The extension pauses the download as soon as it sees one; press Resume once comix opens again.</p>
+          <p>To stay under comix's limits, the extension asks for each chapter's page list with the same single request the reader makes, loads every page once the way the reader does, and paces pages for all downloads together: at most three at a time, at the <strong>Download pace</strong> set in <strong>Settings → Performance</strong>. <strong>Balanced</strong> (about 50 pages a minute) is the default; choose <strong>Gentle</strong> for long downloads or if you have been blocked before. Running another downloader or reader app on the same connection adds to the same limit.</p>
         </div>
       </details>
 

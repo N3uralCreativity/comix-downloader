@@ -2492,6 +2492,22 @@ async function handleDownloadRequest(chapterUrl, zipName, originTabId, options) 
   }
   const task = createChapterAccessTask(chapterUrl, originTabId);
   cdlLog('info', `Download started: ${zipName}`);
+  // comix's chapter API lists the pages without loading the chapter in a background tab.
+  let apiImages = null;
+  try {
+    apiImages = await task.access.run(() => chapterImagesFromApi(chapterUrl, originTabId), { chapterUrl });
+  } catch (err) {
+    if (task.signal.aborted || isDownloadAllStoppedError(err)) {
+      _chapterAccessTasks.delete(task.id);
+      return;
+    }
+    cdlLog('warn', `Chapter page list unavailable (${err.message}); opening the chapter instead`);
+  }
+  if (apiImages) {
+    cdlLog('info', `Listed ${apiImages.length} pages for ${zipName}`);
+    scheduleDownload({ images: apiImages, chapterUrl, zipName, originTabId, cfg, options, task });
+    return;
+  }
   try {
     // Ouvrir un onglet en arrière-plan
     const tab = await chrome.tabs.create({
@@ -3501,14 +3517,14 @@ async function waitForChapterRecovery(retryNumber, errors = []) {
 // comix's image origin intermittently answers 503, and that error carries
 // "Cache-Control: public, max-age=14400", so the Cloudflare edge replays it for the
 // same URL for up to four hours. comix's own reader never re-requests a failed URL:
-// each retry appends a new "r=<n>" query so it reaches the origin again. Server-error
-// retries here do the same, with a unique value so no cached error is shared.
+// each retry appends "r=1", "r=2", ... so it reaches the origin again. Server-error
+// retries here use the same numbers, so they look like the reader's and can reuse
+// what the edge already cached for other readers' retries.
 function cacheBustedImageUrl(src, attempt) {
-  const token = `${attempt}${Math.random().toString(36).slice(2, 8)}`;
   const hashAt = src.indexOf('#');
   const base = hashAt === -1 ? src : src.slice(0, hashAt);
   const hash = hashAt === -1 ? '' : src.slice(hashAt);
-  return `${base}${base.includes('?') ? '&' : '?'}r=${token}${hash}`;
+  return `${base}${base.includes('?') ? '&' : '?'}r=${Math.max(1, Math.floor(Number(attempt)) || 1)}${hash}`;
 }
 
 async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal, sourceUrl, access = null) {
@@ -3521,7 +3537,8 @@ async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal,
     try {
       const requestSrc = edgeHoldsError ? cacheBustedImageUrl(src, attempt) : src;
       const request = () => fetchImageForZip(requestSrc, cfg, signal, sourceUrl);
-      return await (access ? access.run(request, { chapterUrl: sourceUrl }) : request());
+      return await withComixPageSlot(requestSrc, cfg, signal,
+        () => (access ? access.run(request, { chapterUrl: sourceUrl }) : request()));
     } catch (error) {
       if (signal && signal.aborted) throw makeDownloadAllStoppedError();
       if (isCloudflareAccessError(error)) throw error;
@@ -3642,8 +3659,8 @@ function isComixTabUrl(value) {
   }
 }
 
-async function comixTabForImages() {
-  const preferred = [comixImageTabId, downloadAllSession && downloadAllSession.originTabId];
+async function comixTabForImages(preferredTabId = null) {
+  const preferred = [preferredTabId, comixImageTabId, downloadAllSession && downloadAllSession.originTabId];
   for (const tabId of preferred) {
     if (tabId == null) continue;
     try {
@@ -3687,14 +3704,35 @@ function base64ToBytes(base64) {
   return bytes;
 }
 
-// Runs inside the comix page (MAIN world), so the request carries comix's origin and
-// Referer like the reader's own images. Returns plain data: results cross back serialized.
-async function comixPageFetchImage(src, timeoutMs) {
+// Runs inside the comix page (MAIN world). In Chromium browsers the page is first loaded
+// exactly the way comix's reader loads it: an image with no referrer, which is the only
+// request a page normally costs. Its bytes are then read back from the browser cache; when
+// the image failed, that second request is what tells a server error from a block.
+// Firefox keeps image loads and fetches in separate cache entries, so there the page is
+// fetched once instead (loadAsImage false). Returns plain data: results cross back serialized.
+async function comixPageFetchImage(src, timeoutMs, loadAsImage = true) {
+  const started = Date.now();
+  const loaded = !loadAsImage ? 'skipped' : await new Promise((resolve) => {
+    const img = new Image();
+    const timer = setTimeout(() => {
+      img.onload = null;
+      img.onerror = null;
+      img.src = '';
+      resolve('timeout');
+    }, timeoutMs);
+    img.onload = () => { clearTimeout(timer); resolve('ok'); };
+    img.onerror = () => { clearTimeout(timer); resolve('error'); };
+    img.referrerPolicy = 'no-referrer';
+    img.decoding = 'async';
+    img.src = src;
+  });
+  if (loaded === 'timeout') return { ok: false, status: 0, timedOut: true, message: 'timed out' };
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), Math.max(5000, timeoutMs - (Date.now() - started)));
   try {
     const response = await fetch(src, {
       credentials: 'omit',
+      cache: loaded === 'ok' ? 'force-cache' : loaded === 'skipped' ? 'default' : 'no-store',
       referrerPolicy: 'strict-origin-when-cross-origin',
       signal: controller.signal,
     });
@@ -3733,7 +3771,7 @@ async function fetchImageThroughComixTab(src, timeoutMs, signal) {
       target: { tabId },
       world: 'MAIN',
       func: comixPageFetchImage,
-      args: [src, timeoutMs],
+      args: [src, timeoutMs, !_IS_FIREFOX],
     }), signal);
   } catch (error) {
     if (error && error.name === 'AbortError') throw error;
@@ -3757,11 +3795,208 @@ async function fetchImageThroughComixTab(src, timeoutMs, signal) {
   return new Response(body, { status: result.status, headers: result.headers || {} });
 }
 
+// comix blocks addresses that pull pages much faster than a person reads them. Pages
+// from its image hosts therefore share one schedule across every download: at most
+// three at a time (the reader preloads three) and a steady pace chosen in
+// Settings > Performance > Download pace. Each page waits for its turn before its
+// timeout starts.
+const COMIX_PAGE_PACE_MS = { gentle: 2000, balanced: 1200, fast: 500 };
+const COMIX_PAGES_IN_FLIGHT = 3;
+const comixPagePacer = { inFlight: 0, nextStartAt: 0 };
+
+async function acquireComixPageSlot(pace, signal) {
+  const interval = COMIX_PAGE_PACE_MS[pace] || COMIX_PAGE_PACE_MS.balanced;
+  for (;;) {
+    if (signal && signal.aborted) throw new DOMException('The image request was aborted.', 'AbortError');
+    const now = Date.now();
+    if (comixPagePacer.inFlight < COMIX_PAGES_IN_FLIGHT && now >= comixPagePacer.nextStartAt) {
+      comixPagePacer.inFlight++;
+      // Uneven gaps, like a reader turning pages: 70-130% of the average.
+      comixPagePacer.nextStartAt = now + Math.round(interval * (0.7 + Math.random() * 0.6));
+      return;
+    }
+    const wait = comixPagePacer.inFlight < COMIX_PAGES_IN_FLIGHT ? comixPagePacer.nextStartAt - now : 100;
+    await new Promise((resolve) => setTimeout(resolve, Math.max(20, Math.min(wait, 250))));
+  }
+}
+
+function releaseComixPageSlot() {
+  comixPagePacer.inFlight = Math.max(0, comixPagePacer.inFlight - 1);
+}
+
+// A page takes its turn before the Cloudflare pause check, so one that waited for its
+// turn never goes out while downloads are paused.
+async function withComixPageSlot(src, cfg, signal, task) {
+  if (canFetchImageDirectly(src)) return task();
+  await acquireComixPageSlot(cfg && cfg['perf.pagePace'], signal);
+  try {
+    return await task();
+  } finally {
+    releaseComixPageSlot();
+  }
+}
+
+// comix signs its chapter API: each /api/v1/chapters/<id> request carries a "_" token
+// made from the path, and the answer is encrypted. This is the cipher the Mihon source
+// uses (mihon-support/.../ComixCrypto.kt, ported from comix's secure-*.js). With it the
+// extension asks for a chapter's page list with the same single request the reader
+// makes, from the comix tab, instead of loading the whole chapter in a background tab.
+const COMIX_API_CIPHER = [
+  ['gbicCvAMzfcXEtGAyjvvhmb2yCWzWhjqcxXZ7ZhpzANOzoQLo3nuPZ2vK9dkb9hJExC0Vni/hdQBceI+mw611gkhQFjBuf4bJg1TxYqM+SL4YDqtwjxiGSdeH7so7Fn1HiRo37Z+RNvl44twXWVhomtMjw+8bemfmv9XEXr7mS82MxaCOJZRR0oHd9PLI5O+gyBGT6hcLoduNa7yCObVVCk3bFWsoD+xcqTrBcP6dNJN/NB1Br2QGhSN2snHAqeRNKVFQiyeAFLPSKGwY8aq9EPgsi17qd4ywPMxiH8w6N1qX1tLKtzhOeemHWeJQfFQ5H23q7qSlJUcjgTEl3x2/Q==', 'rafYl4oSAKQX+GYoic9oW4iGwiYpZzs0', 189],
+  ['2lQehmgyYFAoWUi0haazZqHy5zZ34NN+VzlfsoB2Y1yY0IuMLjgVcV2xt8t4moH+AP0NMJ5qekW7DFIHEWKkOgIBIMhDdA8lbM6iHKjDlq6IChpb3CnA9NmsvQW/afdt1SfJjTdwcvpKqunCJLxBFmXX9hecm6tGb+HRxD7BC3njoxPxgnX5pdKP1IMSkd4/O3NRfZSE6DVLG2s9uexaipA05cpJzE8Qkv/z5jzHAwlEWOLd3yxA+0cvVbpOoJPFGc8f1lb4vu2HUxjuuEwEQk0GsPCVnyKvfOoh9TG2YYmZLV4I67UU2NsrrakqZ47k/O+ne25/DjPGZCMdnZcmzQ==', '2USAq+VTo5ht4bQn+K9DUcpUQRTtrB56', 133],
+  ['+mhJSFwzaV+PQPDyKp2scO/S9SdFsy/7e56UWT8XHbK3E2+19nEPwfwOgE9uVCaDtOAWTobCZX+cBCXlIbBqyDyQB1beKLspW6kGPhBCV9x0jf0KUeFhHjmlMf7qMFIB41PfDFprZ3bJiK4YxrZDv+K6dcwJmggVO8f5ktrXTM0cZL4fer0SpnkbvNajPbHxfuTz5lVEBarOI4rdc+2V6zTsjpfQYjgN1MMr6EvA6eehN6dQ1bgUogt9rZOBbQBeNnLYY00uZqSoJBnFi5gthCJsWF33ykosn9v/9KB8udMCz0YRYImrA4VHr5mMgpH4xDXLeEHRd5vZOiAalofuMg==', 'yNHlokVEnuecesDrB/lDhVuUNiheWc3a47VtkwZ2ENg=', 32],
+];
+const COMIX_API_RETRY_AFTER_MS = 30 * 60 * 1000;
+let comixApiLayers = null;
+let comixApiUnusableUntil = 0;
+
+function comixApiCipherLayers() {
+  if (comixApiLayers) return comixApiLayers;
+  const bytes = (base64) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  comixApiLayers = COMIX_API_CIPHER.map(([sboxB64, keyB64, iv]) => {
+    const sbox = bytes(sboxB64);
+    const inverse = new Uint8Array(256);
+    for (let i = 0; i < sbox.length; i++) inverse[sbox[i]] = i;
+    return { sbox, inverse, key: bytes(keyB64), iv };
+  });
+  return comixApiLayers;
+}
+
+function comixApiEncode(text) {
+  let bytes = new TextEncoder().encode(String(text));
+  for (const layer of comixApiCipherLayers()) {
+    const out = new Uint8Array(bytes.length);
+    let prev = layer.iv;
+    for (let i = 0; i < bytes.length; i++) {
+      prev = layer.sbox[(bytes[i] ^ layer.key[i % layer.key.length] ^ prev) & 0xff];
+      out[i] = prev;
+    }
+    bytes = out;
+  }
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function comixApiDecode(token) {
+  const base64 = String(token).replace(/-/g, '+').replace(/_/g, '/');
+  let bytes = Uint8Array.from(atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4)), (c) => c.charCodeAt(0));
+  const layers = comixApiCipherLayers();
+  for (let l = layers.length - 1; l >= 0; l--) {
+    const layer = layers[l];
+    const out = new Uint8Array(bytes.length);
+    let prev = layer.iv;
+    for (let i = 0; i < bytes.length; i++) {
+      const cipher = bytes[i];
+      out[i] = (layer.inverse[cipher] ^ layer.key[i % layer.key.length] ^ prev) & 0xff;
+      prev = cipher;
+    }
+    bytes = out;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+function comixChapterIdFromUrl(url) {
+  try {
+    const parsed = new URL(String(url || ''));
+    if (!/(?:^|\.)comix\.(?:to|ws)$/i.test(parsed.hostname)) return '';
+    const match = parsed.pathname.match(/^\/title\/[^/]+\/(\d+)(?:-[^/]*)?\/?$/);
+    return match ? match[1] : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+// Runs inside the comix page (MAIN world): the same-origin request the reader makes.
+async function comixPageFetchApi(apiPath, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(location.origin + '/api/v1' + apiPath, {
+      credentials: 'include',
+      headers: { Accept: 'application/json, text/plain, */*' },
+      signal: controller.signal,
+    });
+    const headers = {};
+    for (const name of ['content-type', 'x-enc', 'retry-after', 'cf-mitigated', 'server', 'cf-ray']) {
+      const value = response.headers.get(name);
+      if (value) headers[name] = value;
+    }
+    return { status: response.status, headers, text: await response.text() };
+  } catch (error) {
+    const timedOut = !!error && error.name === 'AbortError';
+    return { status: 0, timedOut, message: timedOut ? 'timed out' : String((error && error.message) || error) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Reads a chapter's pages from comix's API through a comix tab. Returns null when that
+// route cannot be used (not a comix chapter address, no comix tab, or comix changed its
+// signing keys), so the caller reads the chapter in a background tab instead. Throws for
+// Cloudflare blocks (downloads pause) and for server or network errors (retried).
+async function chapterImagesFromApi(chapterUrl, preferredTabId = null) {
+  const id = comixChapterIdFromUrl(chapterUrl);
+  if (!id || Date.now() < comixApiUnusableUntil) return null;
+  const tabId = await comixTabForImages(preferredTabId);
+  if (tabId == null) return null;
+  let injection;
+  try {
+    injection = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: comixPageFetchApi,
+      args: [`/chapters/${id}?_=${comixApiEncode(`/chapters/${id}`)}`, 30000],
+    });
+  } catch (_) {
+    comixImageTabId = null;
+    return null;
+  }
+  const result = injection && injection[0] && injection[0].result;
+  if (!result) return null;
+  if (!result.status) {
+    if (result.timedOut) throw new DOMException('The chapter page list timed out.', 'TimeoutError');
+    throw new TypeError(`Failed to fetch the chapter page list (${result.message || 'network error'})`);
+  }
+  const headers = result.headers || {};
+  await checkCloudflareResponse(new Response(result.text || '', { status: result.status, headers }), chapterUrl, false);
+  if (result.status === 429 || result.status >= 500) {
+    const error = new Error(`HTTP ${result.status}`);
+    error.status = result.status;
+    error.retryAfterMs = parseRetryAfterMs(headers['retry-after']);
+    throw error;
+  }
+  const unusable = (reason) => {
+    comixApiUnusableUntil = Date.now() + COMIX_API_RETRY_AFTER_MS;
+    cdlLog('warn', `comix's chapter API ${reason}; chapters are read in a background tab for now`);
+    return null;
+  };
+  if (result.status !== 200) return unusable(`answered HTTP ${result.status}`);
+  let data;
+  try {
+    data = JSON.parse(result.text);
+    if (data && typeof data.e === 'string') data = JSON.parse(comixApiDecode(data.e));
+  } catch (_) {
+    return unusable('answer could not be read');
+  }
+  const pages = (data && data.result && data.result.pages) || (data && data.pages);
+  const items = Array.isArray(pages) ? pages : pages && Array.isArray(pages.items) ? pages.items : null;
+  if (!items || !items.length) return unusable('listed no pages');
+  const base = String((pages && pages.baseUrl) || '').replace(/\/+$/, '');
+  const images = items.map((item, index) => {
+    const url = String(typeof item === 'string' ? item : (item && (item.url || item.src)) || '');
+    return { index: index + 1, src: /^https?:\/\//i.test(url) ? url : base && url ? `${base}/${url.replace(/^\/+/, '')}` : '' };
+  });
+  if (images.some((image) => !image.src)) return unusable('listed pages without an address');
+  return images;
+}
+
 // Fetch an image and, when comix.to marks it as scrambled, redraw the CDN
 // tile mosaic back into normal page order before it goes into the ZIP.
 // Honors user settings: fetch timeout, disable-scramble, and image re-encoding.
 async function fetchImageForZip(src, cfg, externalSignal, sourceUrl) {
   cfg = cfg || {};
+  const direct = canFetchImageDirectly(src);
   const timeoutMs = cfg['perf.imageTimeoutMs'] || 30000;
   const disableScramble = !!cfg['advanced.disableScramble'];
   const fmt = cfg['advanced.imageFormat'] || 'preserve';
@@ -3776,7 +4011,7 @@ async function fetchImageForZip(src, cfg, externalSignal, sourceUrl) {
   }
 
   try {
-    const response = canFetchImageDirectly(src)
+    const response = direct
       ? await fetch(src, {
         signal: controller.signal,
         credentials: 'include',   // new reader serves images from *.comix.to — may be cookie-gated
@@ -6349,7 +6584,7 @@ async function handleDownloadAllRequest(
     for (let attempt = 0; attempt <= chapterRetries; attempt++) {
       if (downloadAllShouldStop()) return cancelledResult();
       try {
-        images = await access.run(() => extractFromTab(chapterUrl, cfg, {
+        images = await access.run(async () => (await chapterImagesFromApi(chapterUrl, originTabId)) || extractFromTab(chapterUrl, cfg, {
           originTabId,
           expectedSeriesSlug,
           expectedChapterUrl: chapterUrl,

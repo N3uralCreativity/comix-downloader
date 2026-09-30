@@ -30,7 +30,7 @@ const context = {
 vm.createContext(context);
 const names = ['detectCloudflareChallengeDocument', 'makeCloudflareAccessError', 'isCloudflareAccessError',
   'checkCloudflareResponse', 'createCloudflarePauseControl', 'makeDownloadAllStoppedError', 'isDownloadAllStoppedError',
-  'probeImageUrl', 'fetchImageForZip', 'parseRetryAfterMs', 'getImageExtension',
+  'probeImageUrl', 'fetchImageForZip', 'withComixPageSlot', 'parseRetryAfterMs', 'getImageExtension',
   'createChapterAccessTask', 'downloadImagesAsZip', 'forEachPageInPool', 'fetchImageToFile', 'fetchImageWithRetry',
   'raceCloudflareCancellation', 'reportCloudflareChallenge', 'coordinateCloudflareChallenge', 'waitForCloudflareChallengeClear'];
 vm.runInContext(`

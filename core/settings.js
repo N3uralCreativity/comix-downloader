@@ -68,6 +68,7 @@
     'subscribe.autoDownload': false,       // auto-download new chapters when found
 
     // Performance & Network
+    'perf.pagePace': 'balanced',           // pages from comix's image hosts: 'gentle' | 'balanced' | 'fast'
     'perf.batchSize': 3,                   // BATCH_SIZE
     'perf.rateLimitMode': 'dynamic',       // 'dynamic' | 'fixed' | 'off'
     'perf.rateBaseMs': 1500,
@@ -223,8 +224,12 @@
       label: 'Auto-download new chapters', help: 'When new chapters are found, download just those automatically using your saved output settings.',
       warn: 'Runs a download in the background without asking. On ongoing series this uses bandwidth and disk space, and counts against the site like any other download.' },
 
+    'perf.pagePace': { type: 'enum', enum: ['gentle', 'balanced', 'fast'], risk: 'risky',
+      label: 'Download pace', help: 'How quickly pages are fetched from comix’s image servers, shared by every download. comix blocks addresses that load pages much faster than a person reads, so pages are loaded the way its reader loads them, at most three at a time.',
+      options: { gentle: 'Gentle (about 30 pages a minute)', balanced: 'Balanced (about 50 pages a minute, recommended)', fast: 'Fast (about 120 pages a minute)' },
+      warn: 'Fast is closer to what gets addresses blocked by comix. A block usually lasts a few hours and stops every download and the site itself.' },
     'perf.batchSize': { type: 'int', min: 1, max: 8, risk: 'glitchy',
-      label: 'Parallel image downloads', help: 'How many images are fetched at once per chapter.',
+      label: 'Parallel image downloads', help: 'How many images are fetched at once per chapter. Pages from comix’s image servers also follow the Download pace: never more than three at once in total.',
       warn: 'More than 5 parallel downloads can trip the site’s rate-limiting and cause skipped images.' },
     'perf.rateLimitMode': { type: 'enum', enum: ['dynamic', 'fixed', 'off'], risk: 'risky',
       label: 'Rate limiting', help: 'Pacing between chapters during "Download All".',
@@ -380,7 +385,7 @@
     { id: 'output', label: 'Output & Library', icon: 'box',
       keys: ['output.format', 'output.directCbz', 'output.downloadSubfolder', 'output.includeComicInfo', 'output.includeSeriesMeta', 'output.folderLayout', 'download.skipDownloaded'] },
     { id: 'perf', label: 'Performance', icon: 'gauge',
-      keys: ['perf.batchSize', 'perf.rateLimitMode', 'perf.rateBaseMs', 'perf.rateMinMs', 'perf.rateMaxMs', 'perf.imageTimeoutMs', 'perf.tabLoadTimeoutMs', 'perf.pagePollMs', 'perf.pageSettleMs', 'perf.scrollSettleMs'] },
+      keys: ['perf.pagePace', 'perf.batchSize', 'perf.rateLimitMode', 'perf.rateBaseMs', 'perf.rateMinMs', 'perf.rateMaxMs', 'perf.imageTimeoutMs', 'perf.tabLoadTimeoutMs', 'perf.pagePollMs', 'perf.pageSettleMs', 'perf.scrollSettleMs'] },
     { id: 'retry', label: 'Retries', icon: 'repeat',
       keys: ['retry.imageRetries', 'retry.chapterRetries'] },
     { id: 'naming', label: 'Naming', icon: 'tag',
