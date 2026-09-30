@@ -84,6 +84,8 @@ vm.runInContext(`
   ${extractFunction('cacheBustedImageUrl')}
   // Page pacing has its own tests (tests/comix-tab-image-fetch.test.js).
   function withComixPageSlot(src, cfg, signal, task) { return task(); }
+  function canFetchImageDirectly() { return true; }
+  function slowComixPagesAfterWarning() {}
   ${extractFunction('fetchImageWithRetry')}
   globalThis.retryApi = {
     isRetryableImageRequestError,

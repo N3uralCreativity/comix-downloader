@@ -38,11 +38,12 @@ const CHAPTER = 'https://comix.to/title/grrd7-the-archmages-restaurant/11411479-
 const comixTab = { id: 7, url: 'https://comix.to/title/grrd7-the-archmages-restaurant', status: 'complete', discarded: false };
 
 function makeContext({ tabs = [comixTab], answer } = {}) {
-  const calls = { injected: [], logs: [] };
+  const calls = { injected: [], logs: [], slowed: 0 };
   const context = {
     console, URL, Response, TextEncoder, TextDecoder, Uint8Array, DOMException, atob, btoa, Date, JSON,
     downloadAllSession: null,
     cdlLog: (level, message) => calls.logs.push({ level, message }),
+    slowComixPagesAfterWarning: () => { calls.slowed++; },
     chrome: {
       tabs: {
         get: async (id) => { const tab = tabs.find((t) => t.id === id); if (!tab) throw new Error('No tab'); return tab; },
@@ -126,10 +127,11 @@ async function run() {
 
   // Blocks, server errors and network failures are not fallbacks
   {
-    const { api } = makeContext({ answer: () => ({ status: 403, headers: { 'content-type': 'text/html', server: 'cloudflare' },
+    const { api, calls } = makeContext({ answer: () => ({ status: 403, headers: { 'content-type': 'text/html', server: 'cloudflare' },
       text: '<title>Attention Required! | Cloudflare</title><h1>Sorry, you have been blocked</h1>' }) });
     const error = await api.chapterImagesFromApi(CHAPTER, 7).catch((e) => e);
     check('a Cloudflare block pauses the download instead of opening tabs', api.isCloudflareAccessError(error));
+    check('a Cloudflare block also slows the page pace', calls.slowed === 1);
   }
   {
     const { api } = makeContext({ answer: () => ({ status: 503, headers: { 'content-type': 'text/html', 'retry-after': '3' }, text: 'busy' }) });

@@ -3541,6 +3541,8 @@ async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal,
         () => (access ? access.run(request, { chapterUrl: sourceUrl }) : request()));
     } catch (error) {
       if (signal && signal.aborted) throw makeDownloadAllStoppedError();
+      const warned = isCloudflareAccessError(error) || imageRequestStatus(error) === 429;
+      if (warned && !canFetchImageDirectly(src)) slowComixPagesAfterWarning();
       if (isCloudflareAccessError(error)) throw error;
       lastError = error;
       if (imageRequestStatus(error) >= 500) edgeHoldsError = true;
@@ -3796,17 +3798,30 @@ async function fetchImageThroughComixTab(src, timeoutMs, signal) {
 }
 
 // comix blocks addresses that pull pages much faster than a person reads them. Pages
-// from its image hosts therefore share one schedule across every download: at most
-// three at a time (the reader preloads three) and a steady pace chosen in
-// Settings > Performance > Download pace. Each page waits for its turn before its
-// timeout starts.
-const COMIX_PAGE_PACE_MS = { gentle: 2000, balanced: 1200, fast: 500 };
-const COMIX_PAGES_IN_FLIGHT = 3;
-const comixPagePacer = { inFlight: 0, nextStartAt: 0 };
+// from its image hosts therefore share one schedule across every download: a steady
+// number of new pages a second, chosen in Settings > Performance > Download pace (Fast,
+// about 12 a second, held for 1,800 pages across 15 chapters on live comix), and at
+// most twelve loading at once so a slow image server does not drag the pace below that.
+// When comix warns (a bot check, a block, or "too many requests"), the pace drops to a
+// quarter for half an hour, and to an eighth if it warns again. Each page waits for its turn before
+// its timeout starts.
+const COMIX_PAGE_PACE_MS = { gentle: 250, balanced: 140, fast: 70 };
+const COMIX_PAGES_IN_FLIGHT = 12;
+const COMIX_PAGE_SLOWDOWN_MS = 30 * 60 * 1000;
+const comixPagePacer = { inFlight: 0, nextStartAt: 0, slowFactor: 1, slowUntil: 0 };
+
+function slowComixPagesAfterWarning() {
+  const now = Date.now();
+  const current = now < comixPagePacer.slowUntil ? comixPagePacer.slowFactor : 1;
+  comixPagePacer.slowFactor = Math.min(8, current * 4);
+  comixPagePacer.slowUntil = now + COMIX_PAGE_SLOWDOWN_MS;
+  cdlLog('warn', `comix asked for a slower pace; pages now load ${comixPagePacer.slowFactor} times slower for 30 minutes`);
+}
 
 async function acquireComixPageSlot(pace, signal) {
-  const interval = COMIX_PAGE_PACE_MS[pace] || COMIX_PAGE_PACE_MS.balanced;
   for (;;) {
+    const slowed = Date.now() < comixPagePacer.slowUntil ? comixPagePacer.slowFactor : 1;
+    const interval = (COMIX_PAGE_PACE_MS[pace] || COMIX_PAGE_PACE_MS.fast) * slowed;
     if (signal && signal.aborted) throw new DOMException('The image request was aborted.', 'AbortError');
     const now = Date.now();
     if (comixPagePacer.inFlight < COMIX_PAGES_IN_FLIGHT && now >= comixPagePacer.nextStartAt) {
@@ -3959,7 +3974,13 @@ async function chapterImagesFromApi(chapterUrl, preferredTabId = null) {
     throw new TypeError(`Failed to fetch the chapter page list (${result.message || 'network error'})`);
   }
   const headers = result.headers || {};
-  await checkCloudflareResponse(new Response(result.text || '', { status: result.status, headers }), chapterUrl, false);
+  try {
+    await checkCloudflareResponse(new Response(result.text || '', { status: result.status, headers }), chapterUrl, false);
+  } catch (error) {
+    if (isCloudflareAccessError(error)) slowComixPagesAfterWarning();
+    throw error;
+  }
+  if (result.status === 429) slowComixPagesAfterWarning();
   if (result.status === 429 || result.status >= 500) {
     const error = new Error(`HTTP ${result.status}`);
     error.status = result.status;

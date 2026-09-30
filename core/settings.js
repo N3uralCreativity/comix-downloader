@@ -68,7 +68,7 @@
     'subscribe.autoDownload': false,       // auto-download new chapters when found
 
     // Performance & Network
-    'perf.pagePace': 'balanced',           // pages from comix's image hosts: 'gentle' | 'balanced' | 'fast'
+    'perf.pagePace': 'fast',               // pages from comix's image hosts: 'gentle' | 'balanced' | 'fast'
     'perf.batchSize': 3,                   // BATCH_SIZE
     'perf.rateLimitMode': 'dynamic',       // 'dynamic' | 'fixed' | 'off'
     'perf.rateBaseMs': 1500,
@@ -225,11 +225,11 @@
       warn: 'Runs a download in the background without asking. On ongoing series this uses bandwidth and disk space, and counts against the site like any other download.' },
 
     'perf.pagePace': { type: 'enum', enum: ['gentle', 'balanced', 'fast'], risk: 'risky',
-      label: 'Download pace', help: 'How quickly pages are fetched from comix’s image servers, shared by every download. comix blocks addresses that load pages much faster than a person reads, so pages are loaded the way its reader loads them, at most three at a time.',
-      options: { gentle: 'Gentle (about 30 pages a minute)', balanced: 'Balanced (about 50 pages a minute, recommended)', fast: 'Fast (about 120 pages a minute)' },
-      warn: 'Fast is closer to what gets addresses blocked by comix. A block usually lasts a few hours and stops every download and the site itself.' },
+      label: 'Download pace', help: 'How many pages a second are fetched from comix’s image servers, shared by every download (two chapters at once each get about half). At Fast, 100 pages take about 8 seconds. comix blocks addresses that load pages much faster than a person reads, so pages are loaded the way its reader loads them, and the pace drops to a quarter for half an hour whenever comix warns.',
+      options: { gentle: 'Gentle (about 4 pages a second)', balanced: 'Balanced (about 7 pages a second)', fast: 'Fast (about 12 pages a second, recommended)' },
+      warn: 'If comix has blocked you before, choose Gentle for a while. A block usually lasts a few hours and stops every download and the site itself.' },
     'perf.batchSize': { type: 'int', min: 1, max: 8, risk: 'glitchy',
-      label: 'Parallel image downloads', help: 'How many images are fetched at once per chapter. Pages from comix’s image servers also follow the Download pace: never more than three at once in total.',
+      label: 'Parallel image downloads', help: 'How many images are fetched at once per chapter. Pages from comix’s image servers also follow the Download pace: never more than twelve at once in total.',
       warn: 'More than 5 parallel downloads can trip the site’s rate-limiting and cause skipped images.' },
     'perf.rateLimitMode': { type: 'enum', enum: ['dynamic', 'fixed', 'off'], risk: 'risky',
       label: 'Rate limiting', help: 'Pacing between chapters during "Download All".',

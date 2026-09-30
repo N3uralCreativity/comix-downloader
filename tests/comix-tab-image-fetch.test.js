@@ -74,15 +74,16 @@ function makeContext({ tabs = [], inject }) {
     extractConst('COMIX_TAB_PATTERNS'),
     extractConst('COMIX_PAGE_PACE_MS'),
     extractConst('COMIX_PAGES_IN_FLIGHT'),
+    extractConst('COMIX_PAGE_SLOWDOWN_MS'),
     extractConst('comixPagePacer'),
     'let comixImageTabId = null;',
     ...['canFetchImageDirectly', 'isComixTabUrl', 'comixTabForImages', 'makeComixTabRequiredError', 'raceAbort',
       'base64ToBytes', 'comixPageFetchImage', 'fetchImageThroughComixTab', 'parseRetryAfterMs',
       'imageRequestStatus', 'isRetryableImageRequestError', 'fetchImageForZip', 'withComixPageSlot',
-      'acquireComixPageSlot', 'releaseComixPageSlot', 'checkCloudflareResponse',
+      'acquireComixPageSlot', 'releaseComixPageSlot', 'slowComixPagesAfterWarning', 'checkCloudflareResponse',
       'detectCloudflareChallengeDocument', 'makeCloudflareAccessError', 'isCloudflareAccessError',
       'getImageExtension', 'getScrambleInfo'].map(extractFunction),
-    'globalThis.api = { canFetchImageDirectly, fetchImageThroughComixTab, fetchImageForZip, isRetryableImageRequestError, isCloudflareAccessError, comixTabForImages, acquireComixPageSlot, releaseComixPageSlot, withComixPageSlot, pacer: comixPagePacer };',
+    'globalThis.api = { canFetchImageDirectly, fetchImageThroughComixTab, fetchImageForZip, isRetryableImageRequestError, isCloudflareAccessError, comixTabForImages, acquireComixPageSlot, releaseComixPageSlot, withComixPageSlot, slowComixPagesAfterWarning, pacer: comixPagePacer };',
   ].join('\n'), context);
   return { api: context.api, calls, context };
 }
@@ -289,23 +290,37 @@ async function run() {
       await new Promise((resolve) => hold.push(resolve));
       api.releaseComixPageSlot();
     };
-    const tasks = [run(), run(), run(), run(), run()];
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    check('never more than three pages at once', starts.length === 3 && api.pacer.inFlight === 3);
+    const tasks = Array.from({ length: 14 }, run);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    check('never more than twelve pages at once', starts.length === 12 && api.pacer.inFlight === 12);
     const gaps = starts.slice(1).map((t, i) => t - starts[i]);
-    check('pages start spaced out, like a reader turning pages (fast: 350-650 ms)', gaps.every((gap) => gap >= 330 && gap <= 700));
+    check('pages start spaced out (fast: 49-91 ms apart)', gaps.every((gap) => gap >= 40 && gap <= 130));
     hold.shift()();
-    await new Promise((resolve) => setTimeout(resolve, 900));
-    check('a finished page frees a slot for the next one', starts.length === 4);
-    while (hold.length || starts.length < 5) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    check('a finished page frees a slot for the next one', starts.length === 13);
+    while (hold.length || starts.length < 14) {
       if (hold.length) hold.shift()();
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     await Promise.all(tasks);
     check('every slot is given back', api.pacer.inFlight === 0);
 
+    api.pacer.nextStartAt = 0;
+    api.slowComixPagesAfterWarning();
+    const t1 = Date.now();
+    await api.acquireComixPageSlot('fast');
+    await api.acquireComixPageSlot('fast');
+    const slowedGap = Date.now() - t1;
+    api.releaseComixPageSlot(); api.releaseComixPageSlot();
+    check('after a warning from comix the pace drops to a quarter (fast: 196-364 ms)', slowedGap >= 180 && slowedGap <= 420 && api.pacer.slowFactor === 4);
+    api.slowComixPagesAfterWarning();
+    api.slowComixPagesAfterWarning();
+    check('repeated warnings slow it to an eighth at most', api.pacer.slowFactor === 8);
+    api.pacer.slowUntil = 0;
+    api.pacer.slowFactor = 1;
+
     const controller = new AbortController();
-    api.pacer.inFlight = 3;
+    api.pacer.inFlight = 12;
     const waiting = api.acquireComixPageSlot('balanced', controller.signal).catch((e) => e);
     controller.abort();
     check('stopping a download ends a wait for a slot', (await waiting).name === 'AbortError');
