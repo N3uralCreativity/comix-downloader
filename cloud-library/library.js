@@ -63,8 +63,6 @@ let data = { nodes: [], progress: [] },
   progressTimer = null,
   pendingProgress = null,
   progressChain = Promise.resolve(),
-  pageLoads = Promise.resolve(),
-  objectUrls = new Set(),
   scrollFrame = 0,
   authSignature = null,
   sessionBusy = false;
@@ -741,12 +739,177 @@ async function renderTransfers() {
   }
   icons();
 }
-function releasePages() {
+// Pages are fetched and decrypted ahead of the reader, a few at a time, and kept in
+// memory once decoded, so a page is ready before it scrolls into view or before a page
+// turn, and scrolling back never downloads it again. Near the end of a chapter the
+// next chapter's first pages are fetched too.
+const PAGE_LOADS_AT_ONCE = 3,
+  PAGES_AHEAD = 8,
+  PAGES_BEHIND = 2,
+  PAGES_KEPT = 60,
+  NEXT_CHAPTER_PAGES = 3;
+const pageCache = new Map(), // "node:index" -> { url, width, height }, least recently used first
+  pageLoading = new Map();
+let pageQueue = [],
+  pagesRunning = 0,
+  pageEpoch = 0; // changes whenever the cache is emptied, so late loads are dropped
+const pageKey = (n, index) => n.id + ":" + index;
+function cachedPage(n, index) {
+  const key = pageKey(n, index),
+    entry = pageCache.get(key);
+  if (entry) {
+    pageCache.delete(key);
+    pageCache.set(key, entry);
+  }
+  return entry;
+}
+function evictPages() {
+  while (pageCache.size > PAGES_KEPT) {
+    const [key, entry] = pageCache.entries().next().value;
+    pageCache.delete(key);
+    for (const img of $("pages").querySelectorAll("img"))
+      if (img.dataset.key === key) placeholder(img.parentElement);
+    URL.revokeObjectURL(entry.url);
+  }
+}
+function clearPageCache() {
+  pageEpoch++;
+  pageQueue = [];
+  for (const entry of pageCache.values()) URL.revokeObjectURL(entry.url);
+  pageCache.clear();
+}
+function loadPage(n, index) {
+  const cached = cachedPage(n, index);
+  if (cached) return Promise.resolve(cached);
+  const key = pageKey(n, index);
+  if (pageLoading.has(key)) return pageLoading.get(key);
+  const epoch = pageEpoch;
+  const promise = (async () => {
+    const bytes = await library.page(n.id, index);
+    const mime =
+      imageTypes[(n.details.names[index] || "").split(".").pop().toLowerCase()] ||
+      "image/jpeg";
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+    const img = new Image();
+    img.src = url;
+    // Decode before showing, so the page appears whole instead of painting in.
+    await img.decode().catch(() => {});
+    if (epoch !== pageEpoch) {
+      URL.revokeObjectURL(url);
+      throw new Error("The reader was closed.");
+    }
+    const entry = { url, width: img.naturalWidth, height: img.naturalHeight };
+    pageCache.set(key, entry);
+    evictPages();
+    return entry;
+  })();
+  pageLoading.set(key, promise);
+  promise.then(
+    () => pageLoading.delete(key),
+    () => pageLoading.delete(key),
+  );
+  return promise;
+}
+function pumpPages() {
+  while (pagesRunning < PAGE_LOADS_AT_ONCE && pageQueue.length) {
+    const [n, index] = pageQueue.shift();
+    const key = pageKey(n, index);
+    if (pageCache.has(key) || pageLoading.has(key)) continue;
+    pagesRunning++;
+    loadPage(n, index)
+      .then((entry) => showLoaded(n, index, entry))
+      .catch(() => {}) // a page that failed ahead of time is retried when it is shown
+      .finally(() => {
+        pagesRunning--;
+        pumpPages();
+      });
+  }
+}
+function nextChapter(n) {
+  if (!n) return null;
+  const siblings = data.nodes
+    .filter(
+      (c) =>
+        c.parent_id === n.parent_id &&
+        c.kind === "chapter" &&
+        c.state === "ready" &&
+        !c.deleted_at,
+    )
+    .sort((a, b) =>
+      a.details.name.localeCompare(b.details.name, undefined, {
+        numeric: true,
+      }),
+    );
+  return siblings[siblings.findIndex((c) => c.id === n.id) + 1] || null;
+}
+// Queue the pages around the reading position, nearest first; this replaces whatever
+// was still waiting from an older position.
+function prefetchAround(index) {
+  const n = readerNode;
+  if (!n) return;
+  const wanted = [];
+  for (let i = 1; i <= PAGES_AHEAD; i++) wanted.push([n, index + i]);
+  for (let i = 1; i <= PAGES_BEHIND; i++) wanted.push([n, index - i]);
+  const next = index >= n.page_count - 4 ? nextChapter(n) : null;
+  if (next)
+    for (let i = 0; i < Math.min(NEXT_CHAPTER_PAGES, next.page_count); i++)
+      wanted.push([next, i]);
+  pageQueue = wanted.filter(
+    ([c, i]) => i >= 0 && i < c.page_count && !cachedPage(c, i),
+  );
+  pumpPages();
+}
+function placeholder(holder) {
+  if (!holder) return;
+  holder.replaceChildren(
+    document.createTextNode("Page " + (Number(holder.dataset.page) + 1)),
+  );
+  delete holder.dataset.loaded;
+  holder.classList.add("loading");
+}
+function showLoaded(n, index, entry) {
+  if (n !== readerNode) return;
+  const holder = $("pages").children[index];
+  if (!holder || holder.dataset.loaded) return;
+  const img = new Image();
+  img.src = entry.url;
+  img.alt = n.details.name + " - page " + (index + 1);
+  img.dataset.key = pageKey(n, index);
+  if (entry.width && entry.height) {
+    img.width = entry.width;
+    img.height = entry.height;
+    holder.style.aspectRatio = entry.width + "/" + entry.height;
+  }
+  holder.replaceChildren(img);
+  holder.classList.remove("loading");
+  holder.dataset.loaded = "true";
+}
+// Show one page now: from memory when it was fetched ahead, otherwise fetched at once.
+function showPage(index) {
+  const n = readerNode,
+    holder = $("pages").children[index];
+  if (!n || !holder || holder.dataset.loaded) return;
+  const cached = cachedPage(n, index);
+  if (cached) return showLoaded(n, index, cached);
+  loadPage(n, index)
+    .then((entry) => showLoaded(n, index, entry))
+    .catch((e) => {
+      if (n !== readerNode || holder.dataset.loaded) return;
+      holder.replaceChildren(
+        button("Retry page", "refresh-cw", () => {
+          placeholder(holder);
+          showPage(index);
+        }),
+      );
+      report(e);
+    });
+}
+function releasePages(keepCache = false) {
   readerGeneration++;
   observer?.disconnect();
   observer = null;
-  for (const url of objectUrls) URL.revokeObjectURL(url);
-  objectUrls.clear();
+  pageQueue = [];
+  if (!keepCache) clearPageCache();
   $("pages").replaceChildren();
 }
 async function closeReader() {
@@ -761,7 +924,8 @@ async function read(n, pageOverride) {
   if (n.state !== "ready")
     throw new Error("Resume this chapter in Transfers before reading it.");
   await flushProgress();
-  releasePages();
+  // Pages fetched ahead (this chapter or the next one) stay ready.
+  releasePages(true);
   readerNode = n;
   $("workspace").hidden = true;
   $("reader").hidden = false;
@@ -774,17 +938,13 @@ async function read(n, pageOverride) {
   $("page-total").textContent = "/ " + n.page_count;
   $("page-number").max = n.page_count;
   $("page-number").value = currentPage + 1;
-  const generation = readerGeneration,
-    mode = $("reading-mode").value;
+  const mode = $("reading-mode").value;
   observer = new IntersectionObserver(
     (entries) => {
-      for (const e of entries) {
-        e.target.dataset.near = String(e.isIntersecting);
-        if (e.isIntersecting) load(Number(e.target.dataset.page), generation);
-        else unload(e.target);
-      }
+      for (const e of entries)
+        if (e.isIntersecting) showPage(Number(e.target.dataset.page));
     },
-    { rootMargin: "500px 0px" },
+    { rootMargin: "1500px 0px" },
   );
   for (let i = 0; i < n.page_count; i++) {
     const holder = document.createElement("div");
@@ -793,26 +953,15 @@ async function read(n, pageOverride) {
     holder.textContent = "Page " + (i + 1);
     holder.hidden = mode !== "scroll" && i !== currentPage;
     $("pages").append(holder);
+    const cached = pageCache.get(pageKey(n, i));
+    if (cached) showLoaded(n, i, cached);
     if (mode === "scroll") observer.observe(holder);
   }
+  showPage(currentPage);
   if (mode === "scroll") $("pages").children[currentPage].scrollIntoView();
-  else {
-    load(currentPage, generation);
-    window.scrollTo(0, 0);
-  }
+  else window.scrollTo(0, 0);
+  prefetchAround(currentPage);
   icons();
-}
-function unload(holder) {
-  const img = holder.querySelector("img");
-  if (!img) return;
-  const rect = holder.getBoundingClientRect();
-  holder.style.aspectRatio = rect.width + "/" + rect.height;
-  URL.revokeObjectURL(img.src);
-  objectUrls.delete(img.src);
-  holder.textContent = "Page " + (Number(holder.dataset.page) + 1);
-  delete holder.dataset.loading;
-  delete holder.dataset.loaded;
-  holder.classList.add("loading");
 }
 window.addEventListener(
   "scroll",
@@ -840,55 +989,12 @@ window.addEventListener(
         currentPage = best;
         $("page-number").value = best + 1;
         scheduleProgress();
+        prefetchAround(best);
       }
     });
   },
   { passive: true },
 );
-function load(index, generation) {
-  const holder = $("pages").children[index];
-  if (!holder || holder.dataset.loading || holder.dataset.loaded) return;
-  holder.dataset.loading = "true";
-  const n = readerNode;
-  pageLoads = pageLoads
-    .catch(() => {})
-    .then(async () => {
-      if (generation !== readerGeneration) return;
-      try {
-        if (holder.hidden || holder.dataset.near === "false") {
-          delete holder.dataset.loading;
-          return;
-        }
-        const data = await library.page(n.id, index);
-        if (generation !== readerGeneration) return;
-        if (holder.hidden || holder.dataset.near === "false") {
-          delete holder.dataset.loading;
-          return;
-        }
-        const mime =
-          imageTypes[
-            (n.details.names[index] || "").split(".").pop().toLowerCase()
-          ] || "image/jpeg";
-        const url = URL.createObjectURL(new Blob([data], { type: mime }));
-        objectUrls.add(url);
-        const img = new Image();
-        img.src = url;
-        img.alt = n.details.name + " - page " + (index + 1);
-        holder.replaceChildren(img);
-        holder.classList.remove("loading");
-        holder.dataset.loaded = "true";
-      } catch (e) {
-        if (generation !== readerGeneration) return;
-        holder.replaceChildren(
-          button("Retry page", "refresh-cw", () => {
-            delete holder.dataset.loading;
-            load(index, generation);
-          }),
-        );
-        report(e);
-      }
-    });
-}
 function scheduleProgress() {
   clearTimeout(progressTimer);
   if (!readerNode || data.offline || !data.writable) return;
@@ -939,11 +1045,11 @@ function jump(index) {
   else {
     [...$("pages").children].forEach((p, i) => {
       p.hidden = i !== currentPage;
-      if (p.hidden) unload(p);
     });
-    load(currentPage, readerGeneration);
+    showPage(currentPage);
     window.scrollTo(0, 0);
   }
+  prefetchAround(currentPage);
   scheduleProgress();
 }
 $("page-number").onchange = () => jump(Number($("page-number").value) - 1);
@@ -966,21 +1072,7 @@ document.addEventListener("keydown", (e) => {
 });
 $("next-chapter").onclick = () =>
   task(async () => {
-    const siblings = data.nodes
-      .filter(
-        (n) =>
-          n.parent_id === readerNode.parent_id &&
-          n.kind === "chapter" &&
-          n.state === "ready" &&
-          !n.deleted_at,
-      )
-      .sort((a, b) =>
-        a.details.name.localeCompare(b.details.name, undefined, {
-          numeric: true,
-        }),
-      );
-    const next =
-      siblings[siblings.findIndex((n) => n.id === readerNode.id) + 1];
+    const next = nextChapter(readerNode);
     if (next) await read(next);
     else notice("You reached the last saved chapter.");
   });
