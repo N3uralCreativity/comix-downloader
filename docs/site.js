@@ -225,3 +225,73 @@
     });
   });
 })();
+
+/* Demo videos (<video data-play-in-view>): start loading shortly before they scroll into
+   view, play muted while on screen and pause off screen. A pause the visitor makes sticks.
+   A .demo-toggle button next to the video replaces the native control bar; clicking the
+   video does the same. With reduced motion the video stays still until the visitor
+   starts it. Without this script the video keeps its native controls. */
+(function () {
+  "use strict";
+  var videos = document.querySelectorAll("video[data-play-in-view]");
+  if (!videos.length) return;
+  var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var watch = !still && "IntersectionObserver" in window;
+
+  function start(v) {
+    var started = v.play();
+    if (started && started.catch) started.catch(function () {});
+  }
+
+  var near = watch && new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.preload = "auto";
+      near.unobserve(e.target);
+    });
+  }, { rootMargin: "400px 0px" });
+
+  var onScreen = watch && new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      var v = e.target;
+      if (e.isIntersecting) {
+        if (!v.hasAttribute("data-user-paused")) start(v);
+      } else if (!v.paused) {
+        v.setAttribute("data-auto-paused", "");
+        v.pause();
+      }
+    });
+  }, { threshold: 0.35 });
+
+  Array.prototype.forEach.call(videos, function (v) {
+    var frame = v.parentElement;
+    var toggle = frame && frame.querySelector(".demo-toggle");
+    v.muted = true;
+    if (toggle) {
+      v.controls = false;
+      toggle.hidden = false;
+      frame.classList.add("is-enhanced");
+      var flip = function () {
+        if (v.paused) start(v);
+        else v.pause();
+      };
+      var show = function () {
+        frame.classList.toggle("is-playing", !v.paused);
+        toggle.setAttribute("aria-label", v.paused ? "Play the demo" : "Pause the demo");
+      };
+      toggle.addEventListener("click", flip);
+      v.addEventListener("click", flip);
+      v.addEventListener("play", show);
+      v.addEventListener("pause", show);
+    }
+    v.addEventListener("pause", function () {
+      if (v.hasAttribute("data-auto-paused")) v.removeAttribute("data-auto-paused");
+      else if (!v.ended) v.setAttribute("data-user-paused", "");
+    });
+    v.addEventListener("play", function () { v.removeAttribute("data-user-paused"); });
+    if (watch) {
+      near.observe(v);
+      onScreen.observe(v);
+    }
+  });
+})();

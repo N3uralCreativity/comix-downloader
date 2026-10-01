@@ -98,6 +98,56 @@
   }
   .hero-visual .float .shot { box-shadow: var(--shadow-lg); }
 
+  /* demo video band — the video's own black, so the video has no visible edge */
+  .demo-band {
+    --film: #06070b;
+    background: var(--film);
+    color: oklch(95% 0.008 290);
+    padding: 64px 0 72px;
+  }
+  .demo-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 26px;
+  }
+  .demo-band .eyebrow { display: inline-block; margin-bottom: 14px; color: oklch(74% 0.14 293); }
+  .demo-band h2 { font-size: 32px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.08; text-wrap: balance; }
+  .demo-len { font: 500 12.5px/1 var(--mono); color: oklch(76% 0.02 290); white-space: nowrap; }
+  .demo-video {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius);
+    background: var(--film);
+  }
+  /* site.js swaps the native control bar for one small pause/play button */
+  .demo-frame { position: relative; }
+  .demo-frame.is-enhanced .demo-video { cursor: pointer; }
+  .demo-toggle {
+    position: absolute;
+    right: 14px;
+    bottom: 14px;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border: 1px solid oklch(100% 0 0 / 0.18);
+    border-radius: 50%;
+    background: oklch(15% 0.01 290 / 0.6);
+    color: oklch(97% 0.005 290);
+    cursor: pointer;
+    opacity: 0.75;
+    transition: opacity .15s, background .15s;
+  }
+  .demo-toggle[hidden] { display: none; }
+  .demo-toggle:hover, .demo-toggle:focus-visible { opacity: 1; background: oklch(25% 0.03 290 / 0.85); }
+  .demo-toggle svg { width: 16px; height: 16px; }
+  .demo-toggle .i-pause, .demo-frame.is-playing .demo-toggle .i-play { display: none; }
+  .demo-frame.is-playing .demo-toggle .i-pause { display: block; }
+
   /* steps / feature list */
   .band { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface-2); }
   .steps {
@@ -162,6 +212,9 @@
   @media (max-width: 820px) {
     .hero { grid-template-columns: 1fr; gap: 40px; padding-top: 56px; }
     .hero-visual .float { display: none; }
+    .demo-band { padding: 44px 0 48px; }
+    .demo-head { flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 20px; }
+    .demo-band h2 { font-size: 26px; }
     .steps { grid-template-columns: 1fr; gap: 28px; padding: 40px 0; }
     .split { grid-template-columns: 1fr; gap: 32px; padding-top: 56px; }
     .android-card .btn { margin-left: 0; }
@@ -249,6 +302,30 @@
     </div>
   </section>
 </main>
+
+<!-- demo video: loads as it comes near and plays muted while on screen (site.js) -->
+<section class="demo-band" aria-labelledby="demo-title">
+  <div class="container">
+    <div class="demo-head">
+      <div>
+        <span class="eyebrow">See it in 15 seconds</span>
+        <h2 id="demo-title">From a title page to a sorted ZIP.</h2>
+      </div>
+      <span class="demo-len">0:15 · no sound</span>
+    </div>
+    <div class="demo-frame">
+      <video class="demo-video" data-play-in-view controls muted loop playsinline preload="none"
+        width="1280" height="720" poster="assets/demo-poster.jpg"
+        aria-label="Demo: Download All on a comix.to title page saves 235 chapters into one sorted ZIP">
+        <source src="assets/demo.mp4" type="video/mp4">
+      </video>
+      <button type="button" class="demo-toggle" aria-label="Play the demo" hidden>
+        <svg class="i-play" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+        <svg class="i-pause" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1"/><rect x="13.5" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+    </div>
+  </div>
+</section>
 
 <!-- steps band -->
 <section class="band">
