@@ -8,7 +8,23 @@ const JSZip = require('../../lib/jszip.min.js');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const titleUrl = 'https://comix.to/title/cloudflare-smoke';
 const imageHost = 'https://image-fixture.invalid/';
-const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare pause test</title><style>
+// A stand-in for comix's secure-*.js, shaped like its obfuscated build (every top-level name
+// also kept on a namespace object, export list last): the installer the extension borrows to
+// sign chapter API requests and decrypt the answers ("x-enc: 2" answers are base64 JSON here).
+const secureUrl = 'https://comix.to/assets/build/fixture/dist/secure-fixture-T1.js';
+const secureModule = `let vmdd=globalThis,vmd7_fixture=vmdd.vmd7_fixture||(vmdd.vmd7_fixture={});
+const i={};vmd7_fixture.i=i,globalThis.i=vmd7_fixture.i;
+function $(client) {
+  client.interceptors.request.use((config) => { config.params = { ...config.params, _: 'sig.' + btoa(config.url) }; return config; });
+  client.interceptors.response.use((response) => {
+    if (response.headers.get('x-enc') === '2' && typeof response.data.e === 'string') response.data = JSON.parse(atob(response.data.e));
+    return response;
+  });
+}
+vmd7_fixture.$=$,globalThis.$=vmd7_fixture.$;
+export{i as i,$ as r};`;
+const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare pause test</title>
+<script type="module" src="${secureUrl}"></script><style>
   :root { --surface:#202426; --surface-2:#272b2e; --text:#cdd5d6; --text-emphasis:#ecf4f5; --text-2:#9a9ca6; --accent:#8b5cf6; }
   * { box-sizing:border-box; } body { background:#17191a; color:var(--text); font:14px Arial,sans-serif; padding:24px; }
   .mpage__actions { display:flex; gap:10px; } .btn { padding:12px; background:var(--surface); color:var(--text); border:0; }
@@ -38,11 +54,12 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
     const cors = { 'access-control-allow-origin': '*' };
     await context.route(/^https?:/, (route) => {
       const url = route.request().url();
-      const api = url.match(/^https:\/\/comix\.to\/api\/v1\/chapters\/(\d+)\?_=/);
-      if (api && apiAnswers[api[1]]) {
+      const api = url.match(/^https:\/\/comix\.to\/api\/v1\/chapters\/(\d+)\?_=([^&]+)$/);
+      if (api && apiAnswers[api[1]] && decodeURIComponent(api[2]) === 'sig.' + Buffer.from(`/chapters/${api[1]}`).toString('base64')) {
         apiRequests++;
-        return route.fulfill({ contentType: 'application/json', headers: { 'x-enc': '1' }, body: apiAnswers[api[1]] });
+        return route.fulfill({ contentType: 'application/json', headers: { 'x-enc': '2' }, body: apiAnswers[api[1]] });
       }
+      if (url === secureUrl) return route.fulfill({ contentType: 'text/javascript', body: secureModule });
       if (url.startsWith(titleUrl)) return route.fulfill({ contentType: 'text/html', body: fixture });
       if (!url.startsWith(imageHost)) return route.abort();
       const page = url.split('?')[0];
@@ -61,9 +78,11 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
     page.on('pageerror', error => errors.push(error.message));
     const cdp = await context.newCDPSession(page);
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: temp });
-    Object.assign(apiAnswers, await worker.evaluate((host) => Object.fromEntries([1, 2].map((n) => [n, JSON.stringify({
-      e: comixApiEncode(JSON.stringify({ result: { pages: { baseUrl: `${host}${n}/`, items: [1, 2, 3].map((index) => ({ url: String(index) })) } } })),
-    })])), imageHost));
+    // Answers in the shape comix's API has used since 10 Oct 2026: full page addresses, no base.
+    for (const n of [1, 2]) {
+      apiAnswers[n] = JSON.stringify({ e: Buffer.from(JSON.stringify({ id: n, pages: { alt: [], node: null,
+        items: [1, 2, 3].map((index) => ({ width: 10, height: 10, url: `${imageHost}${n}/${index}` })) } })).toString('base64') });
+    }
     await page.goto(titleUrl);
     await page.locator('.cdl-dl-all-btn').first().waitFor();
     await worker.evaluate(async (url) => {

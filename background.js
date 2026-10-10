@@ -3527,15 +3527,61 @@ function cacheBustedImageUrl(src, attempt) {
   return `${base}${base.includes('?') ? '&' : '?'}r=${Math.max(1, Math.floor(Number(attempt)) || 1)}${hash}`;
 }
 
+// Alternative hosts comix's chapter API lists for a chapter's pages (pages.alt and
+// pages.node), by page address. comix's reader retries a page that fails to load on them
+// (comixReaderRetryUrl), so a page whose list came from the API is retried the same way.
+const COMIX_PAGE_HOSTS_KEPT = 5000;
+const comixPageHosts = new Map();
+// comix's reader retries a page that fails to load 3 times on its own, 2 s apart.
+const COMIX_READER_RETRIES = 3;
+const COMIX_READER_RETRY_DELAY_MS = 2000;
+
+function rememberComixPageHosts(src, hosts) {
+  comixPageHosts.delete(src);
+  comixPageHosts.set(src, hosts);
+  while (comixPageHosts.size > COMIX_PAGE_HOSTS_KEPT) comixPageHosts.delete(comixPageHosts.keys().next().value);
+}
+
+// The address comix's reader loads for retry number `attempt` of a page (reader build
+// "tmonyg", 10 Oct 2026). Retries 1, 4, 7... keep the host; 2, 5, 8... move to one of the
+// alternative domains, picked by the page's position; 3, 6, 9... also replace the host's
+// first label with the API's node. Every retry adds "r=<attempt>".
+function comixReaderRetryUrl(src, hosts, attempt) {
+  if (!src || !(attempt > 0)) return src;
+  let url = src;
+  const match = /^(https?:\/\/)([^/?#]+)/.exec(src);
+  if (match && hosts) {
+    const [label = '', ...rest] = match[2].split('.');
+    const mode = (attempt - 1) % 3;
+    const altDomains = Array.isArray(hosts.altDomains) ? hosts.altDomains : [];
+    const altDomain = altDomains.length ? altDomains[(Number(hosts.idx) || 0) % altDomains.length] : '';
+    const sub = mode === 2 && hosts.altNode ? hosts.altNode : label;
+    const domain = mode >= 1 && altDomain ? altDomain : rest.join('.');
+    if (sub && domain) url = match[1] + sub + '.' + domain + src.slice(match[0].length);
+  }
+  return cacheBustedImageUrl(url, attempt);
+}
+
 async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal, sourceUrl, access = null) {
   let retryLimit = Math.max(0, Math.floor(Number(configuredRetries) || 0));
   let lastError = null;
   let edgeHoldsError = false;
+  // Pages listed by comix's API are retried like comix's reader retries them: on its
+  // alternative hosts, after any failure, 2 s apart. Others get a fresh "r=" once the
+  // edge is known to hold an error for their address.
+  const hosts = comixPageHosts.get(src) || null;
+  if (hosts) retryLimit = Math.max(retryLimit, COMIX_READER_RETRIES);
   for (let attempt = 0; attempt <= retryLimit; attempt++) {
-    await waitForImageHostCooldown(src, signal);
+    const requestSrc = attempt > 0 && hosts ? comixReaderRetryUrl(src, hosts, attempt)
+      : edgeHoldsError ? cacheBustedImageUrl(src, attempt) : src;
+    if (attempt > 0 && hosts) {
+      // The next try may be on another host, which the failed host's cool-down does not cover.
+      await new Promise((resolve) => setTimeout(resolve, COMIX_READER_RETRY_DELAY_MS));
+      if (signal && signal.aborted) throw makeDownloadAllStoppedError();
+    }
+    await waitForImageHostCooldown(requestSrc, signal);
     if (signal && signal.aborted) throw makeDownloadAllStoppedError();
     try {
-      const requestSrc = edgeHoldsError ? cacheBustedImageUrl(src, attempt) : src;
       const request = () => fetchImageForZip(requestSrc, cfg, signal, sourceUrl);
       return await withComixPageSlot(requestSrc, cfg, signal,
         () => (access ? access.run(request, { chapterUrl: sourceUrl }) : request()));
@@ -3548,10 +3594,10 @@ async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal,
       if (imageRequestStatus(error) >= 500) edgeHoldsError = true;
       retryLimit = Math.max(retryLimit, imageRetryLimit(configuredRetries, error));
       if (attempt >= retryLimit) break;
-      let retryDelayMs = 0;
+      let retryDelayMs = hosts ? COMIX_READER_RETRY_DELAY_MS : 0;
       if (isRetryableImageRequestError(error)) {
-        retryDelayMs = imageRetryDelayMs(error, attempt + 1);
-        deferImageHost(src, retryDelayMs);
+        retryDelayMs = Math.max(retryDelayMs, imageRetryDelayMs(error, attempt + 1));
+        deferImageHost(requestSrc, retryDelayMs);
       }
       if (typeof onRetry === 'function') {
         try {
@@ -3851,65 +3897,15 @@ async function withComixPageSlot(src, cfg, signal, task) {
   }
 }
 
-// comix signs its chapter API: each /api/v1/chapters/<id> request carries a "_" token
-// made from the path, and the answer is encrypted. This is the cipher the Mihon source
-// uses (mihon-support/.../ComixCrypto.kt, ported from comix's secure-*.js). With it the
-// extension asks for a chapter's page list with the same single request the reader
-// makes, from the comix tab, instead of loading the whole chapter in a background tab.
-const COMIX_API_CIPHER = [
-  ['gbicCvAMzfcXEtGAyjvvhmb2yCWzWhjqcxXZ7ZhpzANOzoQLo3nuPZ2vK9dkb9hJExC0Vni/hdQBceI+mw611gkhQFjBuf4bJg1TxYqM+SL4YDqtwjxiGSdeH7so7Fn1HiRo37Z+RNvl44twXWVhomtMjw+8bemfmv9XEXr7mS82MxaCOJZRR0oHd9PLI5O+gyBGT6hcLoduNa7yCObVVCk3bFWsoD+xcqTrBcP6dNJN/NB1Br2QGhSN2snHAqeRNKVFQiyeAFLPSKGwY8aq9EPgsi17qd4ywPMxiH8w6N1qX1tLKtzhOeemHWeJQfFQ5H23q7qSlJUcjgTEl3x2/Q==', 'rafYl4oSAKQX+GYoic9oW4iGwiYpZzs0', 189],
-  ['2lQehmgyYFAoWUi0haazZqHy5zZ34NN+VzlfsoB2Y1yY0IuMLjgVcV2xt8t4moH+AP0NMJ5qekW7DFIHEWKkOgIBIMhDdA8lbM6iHKjDlq6IChpb3CnA9NmsvQW/afdt1SfJjTdwcvpKqunCJLxBFmXX9hecm6tGb+HRxD7BC3njoxPxgnX5pdKP1IMSkd4/O3NRfZSE6DVLG2s9uexaipA05cpJzE8Qkv/z5jzHAwlEWOLd3yxA+0cvVbpOoJPFGc8f1lb4vu2HUxjuuEwEQk0GsPCVnyKvfOoh9TG2YYmZLV4I67UU2NsrrakqZ47k/O+ne25/DjPGZCMdnZcmzQ==', '2USAq+VTo5ht4bQn+K9DUcpUQRTtrB56', 133],
-  ['+mhJSFwzaV+PQPDyKp2scO/S9SdFsy/7e56UWT8XHbK3E2+19nEPwfwOgE9uVCaDtOAWTobCZX+cBCXlIbBqyDyQB1beKLspW6kGPhBCV9x0jf0KUeFhHjmlMf7qMFIB41PfDFprZ3bJiK4YxrZDv+K6dcwJmggVO8f5ktrXTM0cZL4fer0SpnkbvNajPbHxfuTz5lVEBarOI4rdc+2V6zTsjpfQYjgN1MMr6EvA6eehN6dQ1bgUogt9rZOBbQBeNnLYY00uZqSoJBnFi5gthCJsWF33ykosn9v/9KB8udMCz0YRYImrA4VHr5mMgpH4xDXLeEHRd5vZOiAalofuMg==', 'yNHlokVEnuecesDrB/lDhVuUNiheWc3a47VtkwZ2ENg=', 32],
-];
+// comix signs its chapter API (each /api/v1/chapters/<id> request carries a "_" token) and
+// encrypts the answers. The scheme and its keys live in comix's secure-*.js script, which
+// changes with comix's builds: on 10 Oct 2026 both changed and the script became
+// obfuscated, so a copy of the cipher in the extension stops working without warning.
+// The extension borrows the page's own code instead (comixPageReadChapter): the extension
+// then asks for a chapter's page list with the same single request the reader makes, from
+// the comix tab, instead of loading the whole chapter in a background tab.
 const COMIX_API_RETRY_AFTER_MS = 30 * 60 * 1000;
-let comixApiLayers = null;
 let comixApiUnusableUntil = 0;
-
-function comixApiCipherLayers() {
-  if (comixApiLayers) return comixApiLayers;
-  const bytes = (base64) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  comixApiLayers = COMIX_API_CIPHER.map(([sboxB64, keyB64, iv]) => {
-    const sbox = bytes(sboxB64);
-    const inverse = new Uint8Array(256);
-    for (let i = 0; i < sbox.length; i++) inverse[sbox[i]] = i;
-    return { sbox, inverse, key: bytes(keyB64), iv };
-  });
-  return comixApiLayers;
-}
-
-function comixApiEncode(text) {
-  let bytes = new TextEncoder().encode(String(text));
-  for (const layer of comixApiCipherLayers()) {
-    const out = new Uint8Array(bytes.length);
-    let prev = layer.iv;
-    for (let i = 0; i < bytes.length; i++) {
-      prev = layer.sbox[(bytes[i] ^ layer.key[i % layer.key.length] ^ prev) & 0xff];
-      out[i] = prev;
-    }
-    bytes = out;
-  }
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
-}
-
-function comixApiDecode(token) {
-  const base64 = String(token).replace(/-/g, '+').replace(/_/g, '/');
-  let bytes = Uint8Array.from(atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4)), (c) => c.charCodeAt(0));
-  const layers = comixApiCipherLayers();
-  for (let l = layers.length - 1; l >= 0; l--) {
-    const layer = layers[l];
-    const out = new Uint8Array(bytes.length);
-    let prev = layer.iv;
-    for (let i = 0; i < bytes.length; i++) {
-      const cipher = bytes[i];
-      out[i] = (layer.inverse[cipher] ^ layer.key[i % layer.key.length] ^ prev) & 0xff;
-      prev = cipher;
-    }
-    bytes = out;
-  }
-  return new TextDecoder().decode(bytes);
-}
 
 function comixChapterIdFromUrl(url) {
   try {
@@ -3922,22 +3918,138 @@ function comixChapterIdFromUrl(url) {
   }
 }
 
-// Runs inside the comix page (MAIN world): the same-origin request the reader makes.
-async function comixPageFetchApi(apiPath, timeoutMs) {
+// Runs inside the comix page (MAIN world). comix's secure-*.js module exports an installer
+// that adds two interceptors to an axios-style client: one signs each API request, the
+// other decrypts each answer. Handed a stand-in client, the installer gives those two
+// functions, which this uses to sign the chapter request, make it like the reader does, and
+// decrypt the answer, whatever cipher the current comix build uses. Returns plain data:
+// results cross back serialized. `unsupported` means comix's code could not be borrowed
+// (the caller then reads the chapter in a background tab).
+async function comixPageReadChapter(chapterId, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const pickHeaders = (all) => {
+    const picked = {};
+    for (const name of ['content-type', 'x-enc', 'x-build-id', 'retry-after', 'cf-mitigated', 'server', 'cf-ray']) {
+      if (all[name]) picked[name] = all[name];
+    }
+    return picked;
+  };
+  // Header bags the interceptors may read or write either as plain objects or the way
+  // axios's AxiosHeaders works (get/set/has/delete).
+  const headerBag = (entries) => {
+    const bag = {};
+    Object.defineProperties(bag, {
+      get: { value: (name) => bag[String(name).toLowerCase()] },
+      has: { value: (name) => String(name).toLowerCase() in bag },
+      set: { value: (name, value) => { bag[String(name).toLowerCase()] = value; return bag; } },
+      delete: { value: (name) => delete bag[String(name).toLowerCase()] },
+    });
+    for (const [name, value] of Object.entries(entries || {})) bag[name.toLowerCase()] = value;
+    return bag;
+  };
   try {
-    const response = await fetch(location.origin + '/api/v1' + apiPath, {
+    let secureUrl = performance.getEntriesByType('resource').map((entry) => entry.name)
+      .find((name) => /\/secure-[^/?#]+\.js(?:[?#]|$)/.test(name));
+    if (!secureUrl) {
+      // The resource list can be full on a page that has been open a long time: find the
+      // script through the page's entry module instead (a cached, static file).
+      for (const script of document.querySelectorAll('script[type="module"][src]')) {
+        const text = await (await fetch(script.src, { credentials: 'same-origin', signal: controller.signal })).text();
+        const match = /["'](\.\/secure-[^"']+\.js)["']/.exec(text);
+        if (match) { secureUrl = new URL(match[1], script.src).href; break; }
+      }
+    }
+    if (!secureUrl) return { unsupported: 'no signing script was found on the page' };
+    // Kept on the page for later chapters, until comix serves another build.
+    const kept = window[Symbol.for('comix-downloader.chapter-api')];
+    let signers = kept && kept.secureUrl === secureUrl ? kept.signers : null;
+    let decrypters = kept && kept.secureUrl === secureUrl ? kept.decrypters : null;
+    if (!signers) {
+      // The module's exported functions, from the instance the page already runs: comix's
+      // obfuscator keeps every top-level name of the module on a namespace object on the
+      // page ("<namespace>.<name>=<name>"), and the module's last statement lists which
+      // names it exports. (Extensions may not import() an address their code does not
+      // spell out, so the module is not imported again.) The script is a static file the
+      // page has just loaded, so reading it comes from the browser cache.
+      const text = (await (await fetch(secureUrl, { credentials: 'same-origin', signal: controller.signal })).text()).trim();
+      const exportList = /export\s*\{([^}]*)\}\s*;?$/.exec(text);
+      const exported = [];
+      for (const entry of exportList ? exportList[1].split(',') : []) {
+        const local = entry.trim().split(/\s+as\s+/)[0];
+        if (!/^[A-Za-z_$][\w$]*$/.test(local)) continue;
+        // Find "<namespace>.<name>=<name>" and read the namespace name back from there.
+        const needle = `.${local}=${local}`;
+        let owner = '';
+        for (let at = text.indexOf(needle); at !== -1 && !owner; at = text.indexOf(needle, at + 1)) {
+          if (!/[,;)]/.test(text[at + needle.length] || '')) continue;
+          let start = at;
+          while (start > 0 && /[\w$]/.test(text[start - 1])) start--;
+          if (start < at && !/\d/.test(text[start])) owner = text.slice(start, at);
+        }
+        const namespace = owner ? window[owner] : null;
+        const value = namespace ? namespace[local] : undefined;
+        if (typeof value === 'function') exported.push(value);
+      }
+      for (const install of exported) {
+        const requests = [];
+        const responses = [];
+        try {
+          const installed = install({
+            defaults: { baseURL: '/api/v1', headers: { common: {} }, params: {} },
+            interceptors: {
+              request: { use: (onFulfilled) => requests.push(onFulfilled) - 1, eject() {} },
+              response: { use: (onFulfilled) => responses.push(onFulfilled) - 1, eject() {} },
+            },
+          });
+          if (installed && typeof installed.then === 'function') await installed;
+        } catch (_) {
+          continue;
+        }
+        if (requests.length && responses.length) {
+          signers = requests;
+          decrypters = responses;
+          break;
+        }
+      }
+      if (!signers) return { unsupported: "comix's signing script did not offer a request signer" };
+      window[Symbol.for('comix-downloader.chapter-api')] = { secureUrl, signers, decrypters };
+    }
+    let config = { url: `/chapters/${chapterId}`, method: 'get', baseURL: '/api/v1', params: {}, headers: headerBag() };
+    for (const sign of signers) config = (await sign(config)) || config;
+    const query = new URLSearchParams();
+    for (const [name, value] of Object.entries(config.params || {})) {
+      if (value != null) query.append(name, String(value));
+    }
+    const requestHeaders = { Accept: 'application/json, text/plain, */*' };
+    for (const [name, value] of Object.entries(config.headers || {})) {
+      if (typeof value === 'string') requestHeaders[name] = value;
+    }
+    const queryText = query.toString();
+    const response = await fetch(`${location.origin}${config.baseURL || '/api/v1'}${config.url}${queryText ? `?${queryText}` : ''}`, {
       credentials: 'include',
-      headers: { Accept: 'application/json, text/plain, */*' },
+      headers: requestHeaders,
       signal: controller.signal,
     });
-    const headers = {};
-    for (const name of ['content-type', 'x-enc', 'retry-after', 'cf-mitigated', 'server', 'cf-ray']) {
-      const value = response.headers.get(name);
-      if (value) headers[name] = value;
+    const all = {};
+    response.headers.forEach((value, name) => { all[name.toLowerCase()] = value; });
+    const text = await response.text();
+    if (response.status !== 200) return { status: response.status, headers: pickHeaders(all), text: text.slice(0, 65536) };
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (_) {
+      return { status: response.status, headers: pickHeaders(all), text: text.slice(0, 65536), unreadable: true };
     }
-    return { status: response.status, headers, text: await response.text() };
+    let answer = { data, status: response.status, statusText: response.statusText, headers: headerBag(all), config, request: { responseURL: response.url } };
+    for (const decrypt of decrypters) answer = (await decrypt(answer)) || answer;
+    const decrypted = answer && answer.data !== undefined ? answer.data : answer;
+    return {
+      status: response.status,
+      headers: pickHeaders(all),
+      data: JSON.parse(JSON.stringify(decrypted)),
+      encrypted: !!decrypted && typeof decrypted === 'object' && typeof decrypted.e === 'string',
+    };
   } catch (error) {
     const timedOut = !!error && error.name === 'AbortError';
     return { status: 0, timedOut, message: timedOut ? 'timed out' : String((error && error.message) || error) };
@@ -3946,10 +4058,11 @@ async function comixPageFetchApi(apiPath, timeoutMs) {
   }
 }
 
-// Reads a chapter's pages from comix's API through a comix tab. Returns null when that
-// route cannot be used (not a comix chapter address, no comix tab, or comix changed its
-// signing keys), so the caller reads the chapter in a background tab instead. Throws for
-// Cloudflare blocks (downloads pause) and for server or network errors (retried).
+// Reads a chapter's pages from comix's API through a comix tab, signed and decrypted by
+// comix's own code (comixPageReadChapter). Returns null when that route cannot be used
+// (not a comix chapter address, no comix tab, comix's code could not be borrowed, or the
+// API refused the request), so the caller reads the chapter in a background tab instead.
+// Throws for Cloudflare blocks (downloads pause) and for server or network errors (retried).
 async function chapterImagesFromApi(chapterUrl, preferredTabId = null) {
   const id = comixChapterIdFromUrl(chapterUrl);
   if (!id || Date.now() < comixApiUnusableUntil) return null;
@@ -3960,8 +4073,8 @@ async function chapterImagesFromApi(chapterUrl, preferredTabId = null) {
     injection = await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
-      func: comixPageFetchApi,
-      args: [`/chapters/${id}?_=${comixApiEncode(`/chapters/${id}`)}`, 30000],
+      func: comixPageReadChapter,
+      args: [id, 30000],
     });
   } catch (_) {
     comixImageTabId = null;
@@ -3969,6 +4082,12 @@ async function chapterImagesFromApi(chapterUrl, preferredTabId = null) {
   }
   const result = injection && injection[0] && injection[0].result;
   if (!result) return null;
+  const unusable = (reason) => {
+    comixApiUnusableUntil = Date.now() + COMIX_API_RETRY_AFTER_MS;
+    cdlLog('warn', `comix's chapter API ${reason}; chapters are read in a background tab for now`);
+    return null;
+  };
+  if (result.unsupported) return unusable(`could not be used (${result.unsupported})`);
   if (!result.status) {
     if (result.timedOut) throw new DOMException('The chapter page list timed out.', 'TimeoutError');
     throw new TypeError(`Failed to fetch the chapter page list (${result.message || 'network error'})`);
@@ -3987,19 +4106,9 @@ async function chapterImagesFromApi(chapterUrl, preferredTabId = null) {
     error.retryAfterMs = parseRetryAfterMs(headers['retry-after']);
     throw error;
   }
-  const unusable = (reason) => {
-    comixApiUnusableUntil = Date.now() + COMIX_API_RETRY_AFTER_MS;
-    cdlLog('warn', `comix's chapter API ${reason}; chapters are read in a background tab for now`);
-    return null;
-  };
   if (result.status !== 200) return unusable(`answered HTTP ${result.status}`);
-  let data;
-  try {
-    data = JSON.parse(result.text);
-    if (data && typeof data.e === 'string') data = JSON.parse(comixApiDecode(data.e));
-  } catch (_) {
-    return unusable('answer could not be read');
-  }
+  if (result.unreadable || result.encrypted) return unusable('answer could not be read');
+  const data = result.data;
   const pages = (data && data.result && data.result.pages) || (data && data.pages);
   const items = Array.isArray(pages) ? pages : pages && Array.isArray(pages.items) ? pages.items : null;
   if (!items || !items.length) return unusable('listed no pages');
@@ -4009,6 +4118,13 @@ async function chapterImagesFromApi(chapterUrl, preferredTabId = null) {
     return { index: index + 1, src: /^https?:\/\//i.test(url) ? url : base && url ? `${base}/${url.replace(/^\/+/, '')}` : '' };
   });
   if (images.some((image) => !image.src)) return unusable('listed pages without an address');
+  // The alternative hosts comix's reader retries a failed page on.
+  const altDomains = (pages && Array.isArray(pages.alt) ? pages.alt : [])
+    .filter((domain) => typeof domain === 'string' && /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(domain));
+  const altNode = pages && typeof pages.node === 'string' && /^[a-z0-9-]+$/i.test(pages.node) ? pages.node : null;
+  if (altDomains.length || altNode) {
+    images.forEach((image, idx) => rememberComixPageHosts(image.src, { altDomains, altNode, idx }));
+  }
   return images;
 }
 

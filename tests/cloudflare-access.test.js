@@ -38,6 +38,7 @@ vm.runInContext(`
   const CLOUDFLARE_CHALLENGE_POLL_MS = 0, CLOUDFLARE_FOLLOWER_RELEASE_MS = 0;
   let _cloudflareChallengeGate = null, _cloudflareFollowerReleaseChain = Promise.resolve();
   const _chapterAccessTasks = new Map();
+  ${source.slice(source.indexOf('const COMIX_PAGE_HOSTS_KEPT'), source.indexOf('function rememberComixPageHosts'))}
   ${names.map(extract).join('\n')}
   globalThis.api = { ${names.join(',')} };
 `, context);

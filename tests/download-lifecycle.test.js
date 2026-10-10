@@ -132,6 +132,7 @@ function harness(overrides = {}) {
     ${extractFunction('cancelDownloadAllForTab')}
     // Page pacing has its own tests (tests/comix-tab-image-fetch.test.js).
     function withComixPageSlot(src, cfg, signal, task) { return task(); }
+    ${source.slice(source.indexOf('const COMIX_PAGE_HOSTS_KEPT'), source.indexOf('function rememberComixPageHosts'))}
     ${['createCloudflarePauseControl', 'isCloudflareAccessError', 'makeCloudflareAccessError',
       'showCloudflareBlockedNotification', 'fetchImageWithRetry', 'fetchImageToFile', 'forEachPageInPool',
       'detectCloudflareChallengeDocument', 'checkCloudflareResponse'].map((name) => extractFunction(name)).join('\n')}

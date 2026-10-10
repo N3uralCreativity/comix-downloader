@@ -64,9 +64,13 @@ check('a server-error failure names comix as the cause instead of asking for a r
 })());
 
 const retryContext = {
-  Date, Math, Number, String,
+  Date, Math, Number, String, Map, Array, Promise,
   fetchCalls: 0,
   cooldowns: [],
+  sleeps: [],
+  requested: [],
+  // Waits between reader-style retries are recorded instead of slept.
+  setTimeout: (fn, ms) => { retryContext.sleeps.push(ms); fn(); return 0; },
   fetchImageForZip: async () => ({ buffer: new ArrayBuffer(1), ext: 'webp' }),
   waitForImageHostCooldown: async () => {},
   deferImageHost: (_src, delay) => retryContext.cooldowns.push(delay),
@@ -82,6 +86,9 @@ vm.runInContext(`
   ${extractFunction('parseRetryAfterMs')}
   ${extractFunction('isCloudflareAccessError')}
   ${extractFunction('cacheBustedImageUrl')}
+  ${source.slice(source.indexOf('const COMIX_PAGE_HOSTS_KEPT'), source.indexOf('function rememberComixPageHosts'))}
+  ${extractFunction('rememberComixPageHosts')}
+  ${extractFunction('comixReaderRetryUrl')}
   // Page pacing has its own tests (tests/comix-tab-image-fetch.test.js).
   function withComixPageSlot(src, cfg, signal, task) { return task(); }
   function canFetchImageDirectly() { return true; }
@@ -93,6 +100,7 @@ vm.runInContext(`
     parseRetryAfterMs,
     cacheBustedImageUrl,
     fetchImageWithRetry,
+    rememberComixPageHosts,
   };
 `, retryContext);
 
@@ -434,6 +442,44 @@ async function run() {
   await retryContext.retryApi.fetchImageWithRetry('https://wowpic.example/page.webp', {}, 1);
   check('a transient image succeeds after the automatic retry budget',
     retryContext.fetchCalls === 4 && retryContext.cooldowns.length === 3);
+  check('a page without alternative hosts is not held by the reader-style wait', retryContext.sleeps.length === 0);
+
+  // A page listed by comix's API whose host is down is retried like comix's reader retries it.
+  retryContext.fetchCalls = 0;
+  retryContext.cooldowns.length = 0;
+  retryContext.sleeps.length = 0;
+  retryContext.requested.length = 0;
+  retryContext.retryApi.rememberComixPageHosts('https://c150.kkplayer.wtf/hi/page-2',
+    { altDomains: ['pureheart42.site', 'deepblue90.site'], altNode: '1xx', idx: 1 });
+  retryContext.fetchImageForZip = async (src) => {
+    retryContext.fetchCalls++;
+    retryContext.requested.push(src);
+    if (!src.includes('1xx.deepblue90.site')) throw new TypeError('Failed to fetch');
+    return { buffer: new ArrayBuffer(1), ext: 'webp' };
+  };
+  await retryContext.retryApi.fetchImageWithRetry('https://c150.kkplayer.wtf/hi/page-2', {}, 0);
+  check('a page whose host is down is retried on the same host, the alternative domain, then the node',
+    retryContext.requested.join(' ') === [
+      'https://c150.kkplayer.wtf/hi/page-2',
+      'https://c150.kkplayer.wtf/hi/page-2?r=1',
+      'https://c150.deepblue90.site/hi/page-2?r=2',
+      'https://1xx.deepblue90.site/hi/page-2?r=3',
+    ].join(' '));
+  check('each of those retries waits 2 s, like the reader', retryContext.sleeps.join() === '2000,2000,2000');
+
+  retryContext.fetchCalls = 0;
+  retryContext.requested.length = 0;
+  retryContext.fetchImageForZip = async (src) => {
+    retryContext.fetchCalls++;
+    retryContext.requested.push(src);
+    throw Object.assign(new Error('HTTP 404'), { status: 404 });
+  };
+  const missing = await retryContext.retryApi.fetchImageWithRetry('https://c150.kkplayer.wtf/hi/page-2', {}, 0).catch((e) => e);
+  check("a page with alternative hosts gets the reader's three retries even for a 404",
+    missing.status === 404 && retryContext.fetchCalls === 4);
+  retryContext.fetchCalls = 0;
+  await retryContext.retryApi.fetchImageWithRetry('https://other.example/page.webp', {}, 0).catch(() => {});
+  check('a page without alternative hosts still gives up on a 404 at once', retryContext.fetchCalls === 1);
 
   retryContext.fetchCalls = 0;
   retryContext.cooldowns.length = 0;
