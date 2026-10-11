@@ -311,6 +311,14 @@
           Message
           <textarea class="message-input"></textarea>
         </label>
+        <label class="wide standard-only">
+          Image URL (optional, https, shown above the message in warnings)
+          <input class="image-url-input" type="url" spellcheck="false" placeholder="https://n3uralcreativity.top/comix-downloader/assets/notices/...">
+        </label>
+        <label class="wide standard-only">
+          Image description (read aloud to people who can't see the image)
+          <input class="image-alt-input" type="text">
+        </label>
       </div>
       <div class="actions">
         <div class="row">
@@ -449,6 +457,8 @@
           message: 'Write the message users should see.',
           ctaLabel: '',
           ctaUrl: '',
+          imageUrl: '',
+          imageAlt: '',
         });
         render();
         setStatus('Added a local notice draft. Edit it, then click Save All.');
@@ -483,6 +493,8 @@
             message: node.querySelector('.message-input').value.trim(),
             ctaLabel: node.querySelector('.cta-label-input').value.trim(),
             ctaUrl: node.querySelector('.cta-url-input').value.trim(),
+            imageUrl: node.querySelector('.image-url-input').value.trim(),
+            imageAlt: node.querySelector('.image-alt-input').value.trim(),
           };
           if (notice.type === 'promotion') notice.phase = node.querySelector('.phase-input').value;
           return notice;
@@ -525,6 +537,8 @@
         node.querySelector('.message-input').value = notice.message || '';
         node.querySelector('.cta-label-input').value = notice.ctaLabel || '';
         node.querySelector('.cta-url-input').value = notice.ctaUrl || '';
+        node.querySelector('.image-url-input').value = notice.imageUrl || '';
+        node.querySelector('.image-alt-input').value = notice.imageAlt || '';
         node.querySelector('.phase-input').value = notice.phase === 'launch' ? 'launch' : 'soon';
         applyTypeView(node);
         node.querySelector('.type-input').addEventListener('change', () => applyTypeView(node));

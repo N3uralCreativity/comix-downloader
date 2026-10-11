@@ -63,6 +63,11 @@
       ctaUrl: safeUrl(raw.ctaUrl || (raw.button && raw.button.url)),
     };
     if (type === 'promotion') notice.phase = asText(raw.phase, 20).toLowerCase() === 'launch' ? 'launch' : 'soon';
+    else {
+      const imageUrl = safeUrl(raw.imageUrl);
+      notice.imageUrl = imageUrl.startsWith('https://') ? imageUrl : '';
+      notice.imageAlt = asText(raw.imageAlt, 200);
+    }
     return notice;
   }
 
@@ -313,6 +318,22 @@
           font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
         }
         .cdl-warning-message { margin: 0 0 20px; white-space: pre-line; }
+        .cdl-warning-figure {
+          display: block;
+          margin: 0 0 16px;
+          overflow: hidden;
+          border: 1px solid #d7dde5;
+          border-radius: 6px;
+          background: #14161a;
+          cursor: zoom-in;
+        }
+        .cdl-warning-figure img {
+          display: block;
+          width: 100%;
+          height: auto;
+          max-height: min(34vh, 320px);
+          object-fit: contain;
+        }
         .cdl-warning-actions, .cdl-note-actions {
           display: flex;
           flex-wrap: wrap;
@@ -372,6 +393,7 @@
         .cdl-icon-close:focus-visible,
         .cdl-warning-close:focus-visible,
         .cdl-warning-link:focus-visible,
+        .cdl-warning-figure:focus-visible,
         .cdl-note-link:focus-visible {
           outline: 3px solid rgba(34, 211, 238, 0.48);
           outline-offset: 2px;
@@ -580,6 +602,25 @@
     return a;
   }
 
+  // The notice's image, opening full size in a new tab. A broken image is removed so
+  // the warning still reads well.
+  function noticeImage(notice) {
+    const link = document.createElement('a');
+    link.className = 'cdl-warning-figure';
+    link.href = notice.imageUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.title = 'Open the full image';
+    const img = document.createElement('img');
+    img.src = notice.imageUrl;
+    img.alt = notice.imageAlt || '';
+    img.decoding = 'async';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => link.remove());
+    link.appendChild(img);
+    return link;
+  }
+
   function renderWarnings(shadow, notices) {
     if (!notices.length) return;
     const overlay = document.createElement('div');
@@ -619,6 +660,7 @@
 
       const body = document.createElement('div');
       body.className = 'cdl-warning-body';
+      if (notice.imageUrl) body.appendChild(noticeImage(notice));
       const msg = document.createElement('p');
       msg.className = 'cdl-warning-message';
       msg.id = 'cdl-warning-message-' + notice.id;

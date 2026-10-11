@@ -143,6 +143,13 @@ function cleanUrl(value) {
   }
 }
 
+// A notice image is shown inside the extension's own dialog on comix pages, so only
+// https addresses are kept.
+function cleanImageUrl(value) {
+  const url = cleanUrl(value);
+  return url.startsWith('https://') ? url : '';
+}
+
 function sanitizeNotice(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const id = stringValue(raw.id, 81);
@@ -166,6 +173,13 @@ function sanitizeNotice(raw) {
   } else if (ctaLabel && ctaUrl) {
     notice.ctaLabel = ctaLabel;
     notice.ctaUrl = ctaUrl;
+  }
+  if (!promotion) {
+    const imageUrl = cleanImageUrl(raw.imageUrl);
+    if (imageUrl) {
+      notice.imageUrl = imageUrl;
+      notice.imageAlt = stringValue(raw.imageAlt, 200);
+    }
   }
   return notice;
 }
@@ -210,6 +224,8 @@ function noticeRevisionFields(notice) {
     ctaLabel: notice.ctaLabel || '',
     ctaUrl: notice.ctaUrl || '',
     phase: notice.phase || '',
+    imageUrl: notice.imageUrl || '',
+    imageAlt: notice.imageAlt || '',
   });
 }
 

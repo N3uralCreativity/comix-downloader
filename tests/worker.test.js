@@ -379,6 +379,36 @@ async function loadWorker() {
     assert.equal(data.notices[1].updatedAt, oldState.notices[1].updatedAt);
   });
 
+  await test('notices keep an https image and its description, and a new image is a new revision', async () => {
+    const image = 'https://n3uralcreativity.top/comix-downloader/assets/notices/comix-ip-blocks.png';
+    const env = environment();
+    const save = (notices) => worker.fetch(
+      request('/v1/notices', 'PUT', { notices }, { Authorization: 'Bearer test-admin-token' }),
+      env,
+    );
+    const first = await body(await save([
+      { id: 'blocks', type: 'warning', active: true, title: 'Blocks', message: 'Read this', imageUrl: image, imageAlt: 'comix announcement' },
+      { id: 'plain-http', type: 'notification', active: true, title: 'Http', message: 'Image dropped', imageUrl: 'http://example.test/a.png' },
+      { id: 'script', type: 'warning', active: true, title: 'Script', message: 'Image dropped', imageUrl: 'javascript:alert(1)' },
+      { id: 'plus-announcement', type: 'promotion', active: false, imageUrl: image },
+    ]));
+    assert.equal(first.notices[0].imageUrl, image);
+    assert.equal(first.notices[0].imageAlt, 'comix announcement');
+    assert.equal(first.notices[1].imageUrl, undefined, 'plain http images are dropped');
+    assert.equal(first.notices[2].imageUrl, undefined, 'non-web addresses are dropped');
+    assert.equal(first.notices[3].imageUrl, undefined, 'the Plus announcement draws its own images');
+    const publicView = await body(await worker.fetch(request('/v1/notices'), env));
+    assert.equal(publicView.notices.find((n) => n.id === 'blocks').imageUrl, image, 'readers receive the image');
+    const unchanged = await body(await save([
+      { id: 'blocks', type: 'warning', active: true, title: 'Blocks', message: 'Read this', imageUrl: image, imageAlt: 'comix announcement' },
+    ]));
+    assert.equal(unchanged.notices[0].updatedAt, first.notices[0].updatedAt, 'the same image keeps the revision');
+    const changed = await body(await save([
+      { id: 'blocks', type: 'warning', active: true, title: 'Blocks', message: 'Read this', imageUrl: image + '?v=2', imageAlt: 'comix announcement' },
+    ]));
+    assert.notEqual(changed.notices[0].updatedAt, first.notices[0].updatedAt, 'a new image shows the notice again');
+  });
+
   await test('notice updates reject duplicate IDs and oversized bodies', async () => {
     const duplicate = { id: 'same', type: 'warning', active: true, title: 'Same', message: 'Message' };
     const env = environment();
