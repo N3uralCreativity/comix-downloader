@@ -1,7 +1,10 @@
 ---
 name: Bug report
 about: Something's broken
+title: ''
 labels: bug
+assignees: N3uralCreativity
+
 ---
 
 **What happened?**
@@ -22,4 +25,3 @@ labels: bug
 
 
 **Any errors in the activity log?** (click the extension icon to open it)
-
