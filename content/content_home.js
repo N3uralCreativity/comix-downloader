@@ -648,7 +648,7 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
     if (s.source === 'collections') { loadCollections(s, sec); return; }
     if (s.source === 'stats') { loadStats(s, sec); return; }
     sec._cdlLoaded = true;
-    fetch(apiUrl(s), { credentials: 'include', headers: { Accept: 'application/json' } })
+    fetch(apiUrl(s), { credentials: 'include', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }) // comix's own client headers
       .then(function (r) { return (r.ok && /json/i.test(r.headers.get('content-type') || '')) ? r.json() : null; })
       .then(function (json) {
         var sec2 = document.getElementById(secDomId(s)); if (!sec2) return;
@@ -687,7 +687,7 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
   // Logged-in identity for the greeting (comix's GET /api/v1/user, cached per apply session).
   function fetchUser() {
     if (userCache) return userCache;
-    userCache = fetch('/api/v1/user', { credentials: 'include', headers: { Accept: 'application/json' } })
+    userCache = fetch('/api/v1/user', { credentials: 'include', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }) // comix's own client headers
       .then(function (r) { return (r.ok && /json/i.test(r.headers.get('content-type') || '')) ? r.json() : null; })
       .then(function (j) { return Core.parseUser(j); })
       .catch(function () { return { loggedIn: false, name: '' }; });
@@ -747,7 +747,7 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
   }
   function loadCollections(s, sec) {
     sec._cdlLoaded = true;
-    fetch(apiUrl(s), { credentials: 'include', headers: { Accept: 'application/json' } })
+    fetch(apiUrl(s), { credentials: 'include', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }) // comix's own client headers
       .then(function (r) { return (r.ok && /json/i.test(r.headers.get('content-type') || '')) ? r.json() : null; })
       .then(function (json) {
         var sec2 = document.getElementById(secDomId(s)); if (!sec2) return;

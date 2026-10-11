@@ -149,7 +149,7 @@
     // Resolve canonical hashId + displayName (the URL segment IS the hashId on comix, but the
     // API also normalises username URLs). The dev badge is hardcoded (no network); the tenure
     // badge comes from the worker.
-    fetch('/api/v1/users/' + encodeURIComponent(hid), { credentials: 'include', headers: { Accept: 'application/json' } })
+    fetch('/api/v1/users/' + encodeURIComponent(hid), { credentials: 'include', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }) // comix's own client headers
       .then(function (r) { return (r.ok && /json/i.test(r.headers.get('content-type') || '')) ? r.json() : null; })
       .then(function (j) { var u = j && j.result; finishResolve(hid, (u && (u.hashId || u.hid)) ? String(u.hashId || u.hid) : hid, (u && (u.displayName || u.username)) || null); })
       .catch(function () { finishResolve(hid, hid, null); });
@@ -170,7 +170,7 @@
   function registerSelf() {
     if (registered) return;
     registered = true;
-    fetch('/api/v1/user', { credentials: 'include', headers: { Accept: 'application/json' } })
+    fetch('/api/v1/user', { credentials: 'include', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }) // comix's own client headers
       .then(function (r) { return (r.ok && /json/i.test(r.headers.get('content-type') || '')) ? r.json() : null; })
       .then(function (j) { var u = j && j.result; var hid = u && (u.hashId || u.hid); if (hid) bg('cdlBadgeRegister', { hashId: String(hid) }); })
       .catch(function () {});

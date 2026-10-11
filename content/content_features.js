@@ -91,7 +91,7 @@
   function getUserHashId() {
     if (_userHashId !== undefined) return Promise.resolve(_userHashId);
     if (_userHashPromise) return _userHashPromise;
-    _userHashPromise = fetch('/api/v1/user', { credentials: 'include', headers: { Accept: 'application/json' } })
+    _userHashPromise = fetch('/api/v1/user', { credentials: 'include', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }) // comix's own client headers
       .then(function (r) { return (r.ok && /json/i.test(r.headers.get('content-type') || '')) ? r.json() : null; })
       .then(function (j) { var u = j && j.result; _userHashId = (u && (u.hashId || u.hid)) ? String(u.hashId || u.hid) : null; return _userHashId; })
       .catch(function () { _userHashId = null; return null; });

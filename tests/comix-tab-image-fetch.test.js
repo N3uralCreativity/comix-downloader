@@ -263,7 +263,7 @@ async function run() {
     imageOutcome = 'error';
     const blocked = await pageContext.pageFetch(PAGE, 30000);
     check('when the image fails, one uncached request finds out why',
-      events.length === 2 && events[1].kind === 'fetch' && events[1].init.cache === 'no-store' && events[1].init.referrerPolicy === 'strict-origin-when-cross-origin');
+      events.length === 2 && events[1].kind === 'fetch' && events[1].init.cache === 'no-store' && events[1].init.referrerPolicy === 'no-referrer');
     check('an error page comes back as text with its status and headers',
       !blocked.ok && blocked.status === 403 && blocked.text === '<h1>Error 1006</h1>' && blocked.headers['retry-after'] === '5');
 

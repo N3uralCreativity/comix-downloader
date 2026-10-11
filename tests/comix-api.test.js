@@ -104,7 +104,9 @@ const pageNamespace = () => ({
 });
 const encrypt = (value) => Buffer.from(JSON.stringify(value), 'utf8').toString('base64');
 
-function makePage({ resources = [], scripts = [], files = {}, namespace = pageNamespace(), api }) {
+// `files` are comix's scripts as the browser cache holds them; `uncached` ones are missing
+// from it, and a cache-only read of those fails like the browser's does.
+function makePage({ resources = [], scripts = [], files = {}, uncached = [], namespace = pageNamespace(), api }) {
   const seen = [];
   const window = { vmd7_fixture: namespace };
   const pageContext = {
@@ -114,6 +116,7 @@ function makePage({ resources = [], scripts = [], files = {}, namespace = pageNa
     document: { querySelectorAll: () => scripts.map((src) => ({ src })) },
     fetch: async (url, init) => {
       seen.push({ url: String(url), init });
+      if (uncached.includes(url) && init && init.cache === 'only-if-cached') throw new TypeError('Failed to fetch');
       if (files[url] != null) return new Response(files[url], { status: 200 });
       return api(String(url), init);
     },
@@ -147,17 +150,24 @@ async function run() {
   const signed = (id) => `https://comix.to/api/v1/chapters/${id}?_=${encodeURIComponent('sig.' + Buffer.from(`/chapters/${id}`).toString('base64'))}`;
   {
     const page = makePage({ resources: ['https://comix.to/assets/main.js', SECURE], files: { [SECURE]: secureText }, api: encryptedAnswer });
-    const result = await page.read('11411479', 30000);
+    const result = await page.read('11411479', 30000, '/title/grrd7-the-archmages-restaurant/11411479-chapter-152');
     check('comix\'s script is read from the page, then the request is signed by its own interceptor',
       page.seen.length === 2 && page.seen[0].url === SECURE && page.seen[1].url === signed('11411479'));
     check('headers the signer adds are sent, with the page\'s cookies, like the reader',
       page.seen[1].init.credentials === 'include' && page.seen[1].init.headers['x-fixture'] === 'signed');
+    check('the request carries comix\'s own client headers (its firewall can tell requests apart)',
+      page.seen[1].init.headers.Accept === 'application/json' && page.seen[1].init.headers['X-Requested-With'] === 'XMLHttpRequest');
+    check('the request is sent from the chapter\'s own page, like the reader\'s',
+      page.seen[1].init.referrer === 'https://comix.to/title/grrd7-the-archmages-restaurant/11411479-chapter-152');
     check('the answer is decrypted by comix\'s own interceptor, accents and all', result.status === 200 && result.encrypted === false &&
       JSON.stringify(result.data) === JSON.stringify(chapterAnswer));
     check('the encryption and build headers come back for the log', result.headers['x-enc'] === '2' && result.headers['x-build-id'] === 'tmonyg');
-    const again = await page.read('11411480', 30000);
+    check('comix\'s script is only read back from the browser cache, never fetched again',
+      page.seen[0].init.cache === 'only-if-cached' && page.seen[0].init.mode === 'same-origin');
+    const again = await page.read('11411480', 30000, 'not-a-title-path');
     check('the next chapter reuses the signer kept on the page: one request',
       again.status === 200 && page.seen.length === 3 && page.seen[2].url === signed('11411480'));
+    check('an unexpected chapter address sends no made-up referrer', page.seen[2].init.referrer === undefined);
   }
   {
     // comix served another build: its script is read again.
@@ -179,6 +189,15 @@ async function run() {
     const page = makePage({ resources: ['https://comix.to/assets/main.js'], api: async () => { throw new Error('should not be called'); } });
     const result = await page.read('11411479', 30000);
     check('a page without comix\'s signing script is reported, with no request', /no signing script/.test(result.unsupported || '') && page.seen.length === 0);
+  }
+  {
+    const page = makePage({
+      resources: [SECURE], files: { [SECURE]: secureText }, uncached: [SECURE],
+      api: async () => { throw new Error('should not be called'); },
+    });
+    const result = await page.read('11411479', 30000);
+    check('a signing script missing from the cache is reported, with no API request',
+      /not in the browser cache/.test(result.unsupported || '') && page.seen.length === 1 && page.seen[0].init.cache === 'only-if-cached');
   }
   {
     const page = makePage({
@@ -236,7 +255,8 @@ async function run() {
       images[1].index === 2 && images[1].src === 'https://c150.kkplayer.wtf/hi/page-2');
     const injection = calls.injected[0];
     check('it is one request from the comix tab, in the page itself', calls.injected.length === 1 && injection.world === 'MAIN' &&
-      injection.target.tabId === 7 && injection.func.name === 'comixPageReadChapter' && injection.args[0] === '11411479');
+      injection.target.tabId === 7 && injection.func.name === 'comixPageReadChapter' && injection.args[0] === '11411479' &&
+      injection.args[2] === '/title/grrd7-the-archmages-restaurant/11411479-chapter-152');
     const hosts = api.comixPageHosts.get('https://c150.kkplayer.wtf/hi/page-2');
     check('each page keeps the alternative hosts and its position for retries', hosts && hosts.idx === 1 && hosts.altNode === '1xx' &&
       hosts.altDomains.join() === 'pureheart42.site,deepblue90.site');

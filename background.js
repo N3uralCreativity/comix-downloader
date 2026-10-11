@@ -3781,7 +3781,8 @@ async function comixPageFetchImage(src, timeoutMs, loadAsImage = true) {
     const response = await fetch(src, {
       credentials: 'omit',
       cache: loaded === 'ok' ? 'force-cache' : loaded === 'skipped' ? 'default' : 'no-store',
-      referrerPolicy: 'strict-origin-when-cross-origin',
+      // No Referer, like the reader's page loads (Firefox reads every page this way).
+      referrerPolicy: 'no-referrer',
       signal: controller.signal,
     });
     const headers = {};
@@ -3925,7 +3926,7 @@ function comixChapterIdFromUrl(url) {
 // decrypt the answer, whatever cipher the current comix build uses. Returns plain data:
 // results cross back serialized. `unsupported` means comix's code could not be borrowed
 // (the caller then reads the chapter in a background tab).
-async function comixPageReadChapter(chapterId, timeoutMs) {
+async function comixPageReadChapter(chapterId, timeoutMs, chapterPath = '') {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const pickHeaders = (all) => {
@@ -3948,14 +3949,22 @@ async function comixPageReadChapter(chapterId, timeoutMs) {
     for (const [name, value] of Object.entries(entries || {})) bag[name.toLowerCase()] = value;
     return bag;
   };
+  // comix's scripts are read back from the browser cache only, never fetched again: the
+  // page loaded them as scripts, and a script reading them would be a request the reader
+  // never makes. Not cached: comix's code cannot be borrowed here.
+  const readCachedScript = async (url) => {
+    const response = await fetch(url, { cache: 'only-if-cached', mode: 'same-origin', credentials: 'same-origin', signal: controller.signal });
+    if (!response.ok) throw new Error('not in the browser cache');
+    return (await response.text()).trim();
+  };
   try {
     let secureUrl = performance.getEntriesByType('resource').map((entry) => entry.name)
       .find((name) => /\/secure-[^/?#]+\.js(?:[?#]|$)/.test(name));
     if (!secureUrl) {
       // The resource list can be full on a page that has been open a long time: find the
-      // script through the page's entry module instead (a cached, static file).
+      // script through the page's entry module instead.
       for (const script of document.querySelectorAll('script[type="module"][src]')) {
-        const text = await (await fetch(script.src, { credentials: 'same-origin', signal: controller.signal })).text();
+        const text = await readCachedScript(script.src).catch(() => '');
         const match = /["'](\.\/secure-[^"']+\.js)["']/.exec(text);
         if (match) { secureUrl = new URL(match[1], script.src).href; break; }
       }
@@ -3970,9 +3979,13 @@ async function comixPageReadChapter(chapterId, timeoutMs) {
       // obfuscator keeps every top-level name of the module on a namespace object on the
       // page ("<namespace>.<name>=<name>"), and the module's last statement lists which
       // names it exports. (Extensions may not import() an address their code does not
-      // spell out, so the module is not imported again.) The script is a static file the
-      // page has just loaded, so reading it comes from the browser cache.
-      const text = (await (await fetch(secureUrl, { credentials: 'same-origin', signal: controller.signal })).text()).trim();
+      // spell out, so the module is not imported again.)
+      let text;
+      try {
+        text = await readCachedScript(secureUrl);
+      } catch (_) {
+        return { unsupported: "comix's signing script is not in the browser cache" };
+      }
       const exportList = /export\s*\{([^}]*)\}\s*;?$/.exec(text);
       const exported = [];
       for (const entry of exportList ? exportList[1].split(',') : []) {
@@ -4021,7 +4034,9 @@ async function comixPageReadChapter(chapterId, timeoutMs) {
     for (const [name, value] of Object.entries(config.params || {})) {
       if (value != null) query.append(name, String(value));
     }
-    const requestHeaders = { Accept: 'application/json, text/plain, */*' };
+    // The headers comix's own API client sends with every request (its axios defaults), so
+    // the request is the reader's, header for header; comix's firewall can tell them apart.
+    const requestHeaders = { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
     for (const [name, value] of Object.entries(config.headers || {})) {
       if (typeof value === 'string') requestHeaders[name] = value;
     }
@@ -4029,6 +4044,8 @@ async function comixPageReadChapter(chapterId, timeoutMs) {
     const response = await fetch(`${location.origin}${config.baseURL || '/api/v1'}${config.url}${queryText ? `?${queryText}` : ''}`, {
       credentials: 'include',
       headers: requestHeaders,
+      // The reader asks from the chapter's own page.
+      ...(String(chapterPath).startsWith('/title/') ? { referrer: location.origin + chapterPath } : {}),
       signal: controller.signal,
     });
     const all = {};
@@ -4074,7 +4091,7 @@ async function chapterImagesFromApi(chapterUrl, preferredTabId = null) {
       target: { tabId },
       world: 'MAIN',
       func: comixPageReadChapter,
-      args: [id, 30000],
+      args: [id, 30000, new URL(chapterUrl).pathname],
     });
   } catch (_) {
     comixImageTabId = null;
