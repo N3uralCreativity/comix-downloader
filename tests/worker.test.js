@@ -409,6 +409,37 @@ async function loadWorker() {
     assert.notEqual(changed.notices[0].updatedAt, first.notices[0].updatedAt, 'a new image shows the notice again');
   });
 
+  await test('confirmation warnings: readers get the active ones, older admin saves keep them', async () => {
+    const env = environment();
+    const admin = { Authorization: 'Bearer test-admin-token' };
+    const notice = { id: 'n1', type: 'notification', active: false, title: 'Note', message: 'Text' };
+    const saved = await body(await worker.fetch(request('/v1/notices', 'PUT', {
+      notices: [notice],
+      confirmations: [
+        { feature: 'download-all', active: true, title: 'Careful', message: 'Comix blocks IPs.', confirmLabel: 'Download anyway' },
+        { feature: 'plus', active: true, title: '', message: 'No title, so it cannot be on' },
+        { feature: 'download-chapter', active: false, title: 'Draft', message: 'Not yet' },
+        { feature: 'not-a-feature', active: true, title: 'X', message: 'Y' },
+        { feature: 'download-all', active: false, title: 'Duplicate', message: 'Ignored' },
+      ],
+    }, admin), env));
+    assert.deepEqual(saved.confirmations.map((c) => [c.feature, c.active]), [['download-all', true], ['plus', false], ['download-chapter', false]]);
+    const publicView = await body(await worker.fetch(request('/v1/notices'), env));
+    assert.equal(publicView.confirmations.length, 1, 'readers only get active warnings');
+    assert.deepEqual(Object.keys(publicView.confirmations[0]).sort(), ['confirmLabel', 'feature', 'message', 'title', 'updatedAt']);
+    assert.equal(publicView.confirmations[0].confirmLabel, 'Download anyway');
+    const adminView = await body(await worker.fetch(request('/v1/notices?admin=1', 'GET', undefined, admin), env));
+    assert.equal(adminView.confirmations.length, 3, 'the admin page sees drafts too');
+    // An admin page from before this feature saves notices only: the warnings stay.
+    const olderSave = await body(await worker.fetch(request('/v1/notices', 'PUT', { notices: [notice] }, admin), env));
+    assert.equal(olderSave.confirmations.length, 3);
+    assert.equal(olderSave.confirmations[0].updatedAt, saved.confirmations[0].updatedAt, 'unchanged warnings keep their revision');
+    const toggled = await body(await worker.fetch(request('/v1/notices', 'PUT', { id: 'n1', active: true }, admin), env));
+    assert.equal(toggled.confirmations.length, 3, 'turning a notice on keeps the warnings');
+    const off = await body(await worker.fetch(request('/v1/notices', 'PUT', { notices: [notice], confirmations: [] }, admin), env));
+    assert.equal(off.confirmations.length, 0, 'an empty list removes them');
+  });
+
   await test('notice updates reject duplicate IDs and oversized bodies', async () => {
     const duplicate = { id: 'same', type: 'warning', active: true, title: 'Same', message: 'Message' };
     const env = environment();

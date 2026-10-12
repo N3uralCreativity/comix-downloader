@@ -7,6 +7,14 @@
   'use strict';
 
   var STYLE_ID = 'cdl-plus-ui-style';
+  // Confirmation warnings the developer can switch on per feature (core/cdl-confirm.js).
+  function askConfirmation(feature) {
+    try {
+      return global.CDLConfirm ? global.CDLConfirm.ask(feature) : Promise.resolve(true);
+    } catch (_) {
+      return Promise.resolve(true);
+    }
+  }
   var DATA_PERMISSIONS = ['personallyIdentifyingInfo', 'authenticationInfo', 'browsingActivity', 'websiteContent', 'technicalAndInteraction'];
   // Same rule as core/plus-core.js, which the popup does not load: three-part versions are public releases.
   var PUBLIC_RELEASE = (function () {
@@ -430,7 +438,7 @@
       signout.addEventListener('click', async function () { try { await call({ action: 'plusSignOut' }, signout); await reload(false); } catch (error) { showCallError(error); } });
       var nodes = [refresh, signout];
       var library = el('button', { type: 'button', class: 'cdl-plus-btn', text: 'Cloud Library' });
-      library.addEventListener('click', async function () { try { await call({ action: 'plusOpenLibrary' }, library); } catch (error) { showCallError(error); } });
+      library.addEventListener('click', async function () { if (!(await askConfirmation('plus-cloud-library'))) return; try { await call({ action: 'plusOpenLibrary' }, library); } catch (error) { showCallError(error); } });
       nodes.unshift(library);
       if (account.state !== 'pending_checkout') {
         var billing = el('button', { type: 'button', class: 'cdl-plus-btn', text: 'Manage billing' });
@@ -717,7 +725,7 @@
         clear(pane);
         var selected = new Set(view.state.selectedCategories || []);
         var sync = el('button', { type: 'button', class: 'cdl-plus-btn primary', text: 'Sync now', disabled: !selected.size || account.state === 'expired' });
-        sync.addEventListener('click', async function () { try { await call({ action: 'plusSyncNow' }, sync); await reload(true); } catch (error) { showCallError(error, pane); } });
+        sync.addEventListener('click', async function () { if (!(await askConfirmation('plus-sync'))) return; try { await call({ action: 'plusSyncNow' }, sync); await reload(true); } catch (error) { showCallError(error, pane); } });
 
         pane.appendChild(el('div', { class: 'cdl-plus-oview' }, [
           el('div', {}, [

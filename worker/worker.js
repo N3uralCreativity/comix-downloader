@@ -31,6 +31,11 @@ const MAX_AUTH_TOKEN_LENGTH = 512;
 const NOTICE_KV_KEY = 'notices:v1';
 const NOTICE_ID_RE = /^[a-z0-9][a-z0-9_.:-]{0,80}$/i;
 const NOTICE_TYPES = new Set(['warning', 'notification', 'promotion']);
+// Features the extension can ask a reader to confirm before using (core/cdl-confirm.js).
+const CONFIRM_FEATURES = [
+  'download-all', 'download-selected', 'download-chapter',
+  'plus', 'plus-cloud-save', 'plus-cloud-library', 'plus-agenda', 'plus-sync',
+];
 // A promotion is the Plus announcement drawn by the extension itself. Its layout and
 // text ship with the extension; the phase picks the "coming soon" or "launch" copy.
 const PROMOTION_PHASES = new Set(['soon', 'launch']);
@@ -184,6 +189,55 @@ function sanitizeNotice(raw) {
   return notice;
 }
 
+// One confirmation warning per feature. An active one needs a title and a message.
+function sanitizeConfirmation(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const feature = stringValue(raw.feature, 40);
+  if (!CONFIRM_FEATURES.includes(feature)) return null;
+  const confirmation = {
+    feature,
+    active: raw.active === true,
+    title: stringValue(raw.title, 120),
+    message: stringValue(raw.message, 1200),
+    confirmLabel: stringValue(raw.confirmLabel, 40),
+  };
+  if (confirmation.active && (!confirmation.title || !confirmation.message)) confirmation.active = false;
+  const updatedAt = isoValue(raw.updatedAt);
+  if (updatedAt) confirmation.updatedAt = updatedAt;
+  return confirmation;
+}
+
+function sanitizeConfirmations(value) {
+  const list = value && Array.isArray(value.confirmations) ? value.confirmations : Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of list.slice(0, CONFIRM_FEATURES.length * 2)) {
+    const confirmation = sanitizeConfirmation(item);
+    if (!confirmation || seen.has(confirmation.feature)) continue;
+    seen.add(confirmation.feature);
+    out.push(confirmation);
+  }
+  return out;
+}
+
+function confirmationRevisionFields(confirmation) {
+  return JSON.stringify({
+    active: confirmation.active === true,
+    title: confirmation.title,
+    message: confirmation.message,
+    confirmLabel: confirmation.confirmLabel || '',
+  });
+}
+
+function mergeConfirmationRevisions(next, previous, now) {
+  const previousByFeature = new Map((previous || []).map((item) => [item.feature, item]));
+  return next.map((item) => {
+    const before = previousByFeature.get(item.feature);
+    const changed = !before || confirmationRevisionFields(item) !== confirmationRevisionFields(before);
+    return Object.assign({}, item, { updatedAt: changed ? now : (before.updatedAt || now) });
+  });
+}
+
 function noticeArray(value) {
   if (Array.isArray(value)) return value;
   return value && Array.isArray(value.notices) ? value.notices : [];
@@ -254,6 +308,7 @@ async function readNoticeState(env) {
   const notices = sanitizeNotices(state);
   return {
     notices: notices.length ? notices : defaultNotices(),
+    confirmations: sanitizeConfirmations(state),
     updatedAt: state ? (isoValue(state.updatedAt) || null) : null,
   };
 }
@@ -374,6 +429,9 @@ async function handleNotices(request, env, url) {
     if (url.searchParams.get('admin') === '1') return json(state);
     return json({
       notices: state.notices.filter((notice) => notice.active),
+      confirmations: state.confirmations
+        .filter((item) => item.active)
+        .map(({ feature, title, message, confirmLabel, updatedAt }) => ({ feature, title, message, confirmLabel, updatedAt })),
       updatedAt: state.updatedAt,
     });
   }
@@ -403,7 +461,11 @@ async function handleNotices(request, env, url) {
       throw new ApiError(400, 'bad request');
     }
 
-    const state = { updatedAt: now, notices };
+    // A save without a confirmations list (an older admin page) keeps the current ones.
+    const confirmations = body && !Array.isArray(body) && Array.isArray(body.confirmations)
+      ? mergeConfirmationRevisions(sanitizeConfirmations(body.confirmations), previousState.confirmations, now)
+      : previousState.confirmations;
+    const state = { updatedAt: now, notices, confirmations };
     await env.BADGES.put(NOTICE_KV_KEY, JSON.stringify(state));
     return json(state);
   }

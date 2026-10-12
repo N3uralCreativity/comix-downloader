@@ -186,8 +186,27 @@
     }
   }
 
+  // A confirmation warning the developer can switch on (core/cdl-confirm.js) is asked
+  // each time the Agenda is opened; cancelling goes back to where the reader came from.
+  var agendaConfirmed = false;
+  var confirmingAgenda = false;
   function enterAgenda() {
-    if (active) return;
+    if (active || confirmingAgenda) return;
+    if (!agendaConfirmed && globalThis.CDLConfirm) {
+      confirmingAgenda = true;
+      globalThis.CDLConfirm.ask('plus-agenda').then(function (confirmed) {
+        confirmingAgenda = false;
+        if (!View.isAgendaPath(location.pathname)) return;
+        if (!confirmed) {
+          if (history.length > 1) history.back();
+          else location.assign('/');
+          return;
+        }
+        agendaConfirmed = true;
+        enterAgenda();
+      }, function () { confirmingAgenda = false; });
+      return;
+    }
     active = true;
     injectStyle();
     document.documentElement.classList.add(ROUTE_CLASS);
@@ -196,6 +215,7 @@
   }
 
   function leaveAgenda() {
+    agendaConfirmed = false;
     if (!active) return;
     active = false;
     requestSerial++;

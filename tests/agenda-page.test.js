@@ -22,7 +22,7 @@ function test(name, fn) {
 test('the Agenda script and its view helpers load on every comix page', () => {
   const entry = manifest.content_scripts.find((item) => Array.isArray(item.js) && item.js.includes('content/content_agenda.js'));
   assert.ok(entry);
-  assert.deepStrictEqual(entry.js, ['core/cdl-agenda-view.js', 'content/content_agenda.js']);
+  assert.deepStrictEqual(entry.js, ['core/cdl-confirm.js', 'core/cdl-agenda-view.js', 'content/content_agenda.js']);
   assert.deepStrictEqual(entry.matches, ['*://comix.to/*', '*://comix.ws/*']);
   assert.strictEqual(entry.run_at, 'document_idle');
   assert.strictEqual(entry.world, undefined, 'the Agenda runs in the isolated world');

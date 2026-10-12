@@ -62,6 +62,7 @@ function Copy-ReleaseFiles([string]$Destination) {
     "core/cdl-agenda-view.js",
     "core/plus-tokens.js",
     "core/plus-ui.js",
+    "core/cdl-confirm.js",
     "_locales",
     "manifest.json",
     "popup/popup.html",

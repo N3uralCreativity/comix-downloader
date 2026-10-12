@@ -189,6 +189,10 @@
     });
     if (!res.ok) return [];
     const data = await res.json();
+    // Confirmation warnings come in the same document (core/cdl-confirm.js).
+    try {
+      if (globalThis.CDLConfirm && !Array.isArray(data)) globalThis.CDLConfirm.remember(data && data.confirmations);
+    } catch (_) {}
     const raw = Array.isArray(data) ? data : data && data.notices;
     if (!Array.isArray(raw)) return [];
     const fallbackUpdatedAt = Array.isArray(data) ? '' : asText(data && data.updatedAt, 64);

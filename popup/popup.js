@@ -616,6 +616,8 @@ async function verifyPlusCode(codeValue, button, error) {
 }
 
 async function openPlusShortcut(action, button) {
+  // The Release Agenda asks on its own page; the Cloud Library asks here.
+  if (action === 'plusOpenLibrary' && globalThis.CDLConfirm && !(await globalThis.CDLConfirm.ask('plus-cloud-library'))) return;
   button.disabled = true;
   const tab = await queryActiveTab();
   const result = await sendRuntimeMessage({ action, pageUrl: tab && tab.url || '' });

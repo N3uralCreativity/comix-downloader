@@ -1002,14 +1002,28 @@ function injectButtonForRow(bookmarkBtn) {
   _setHTML(btn, getIdleContent());
   applyBtnTextClass(btn);
 
-  btn.addEventListener('click', (e) => {
+  btn.addEventListener('click', async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (btn.getAttribute('data-state') === 'loading') return;
+    if (btn.getAttribute('data-state') === 'loading' || btn._cdlConfirming) return;
+    btn._cdlConfirming = true;
+    let confirmed = false;
+    try { confirmed = await _cdlAskConfirmation('download-chapter'); } finally { btn._cdlConfirming = false; }
+    if (!confirmed) return;
     startDownload(btn, chapterUrl, buildSingleZipName(getMangaName(), chapterLabel, sourceMeta), sourceMeta);
   });
 
   bookmarkBtn.insertAdjacentElement('afterend', btn);
+}
+
+// Confirmation warnings the developer can switch on per feature (core/cdl-confirm.js).
+// Resolves true when nothing is switched on or the reader chose to continue.
+function _cdlAskConfirmation(feature) {
+  try {
+    return globalThis.CDLConfirm ? globalThis.CDLConfirm.ask(feature) : Promise.resolve(true);
+  } catch (_) {
+    return Promise.resolve(true);
+  }
 }
 
 // ── Lancement du téléchargement ───────────────────────────────────────────────
@@ -2873,6 +2887,12 @@ function injectDownloadAllButton() {
     e.stopPropagation();
     if (!chrome?.runtime?.id) { alert('Extension reloaded — please refresh the page.'); return; }
     if (document.getElementById('cdl-all-popup') || document.getElementById('cdl-opts-panel')) return; // already running / panel open
+    if (btn._cdlConfirming) return;
+    // Asked before the chapter list is read, so cancelling sends nothing to comix.
+    btn._cdlConfirming = true;
+    let confirmed = false;
+    try { confirmed = await _cdlAskConfirmation('download-all'); } finally { btn._cdlConfirming = false; }
+    if (!confirmed) return;
 
     const mangaName = getMangaName();
     btn.disabled = true;
@@ -3579,10 +3599,22 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
     totalCount: chapters.length,
   });
 
-  q('#cdl-op-start').addEventListener('click', () => {
+  let startConfirming = false;
+  q('#cdl-op-start').addEventListener('click', async () => {
     const subset = selectedChapters();
-    if (!subset.length) return;
+    if (!subset.length || startConfirming) return;
     const options = buildOptions();
+    // Chosen chapters (a range or specific ones) and Cloud Library saves have their own warnings.
+    startConfirming = true;
+    let confirmed = true;
+    try {
+      const scope = currentScope();
+      if (scope === 'range' || scope === 'specific') confirmed = await _cdlAskConfirmation('download-selected');
+      if (confirmed && options.destination !== 'local') confirmed = await _cdlAskConfirmation('plus-cloud-save');
+    } finally {
+      startConfirming = false;
+    }
+    if (!confirmed) return;
     if (q('#cdl-op-remember').checked) {
       saveSeriesPrefs({ format: options.format, directCbz: options.directCbz,
         includeComicInfo: options.includeComicInfo,

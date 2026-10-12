@@ -237,7 +237,7 @@ check('manifest metadata uses WebExtension localization',
   mf.name === '__MSG_extensionName__' &&
   mf.description === '__MSG_extensionDescription__');
 const mainCs = mf.content_scripts.find((c) => Array.isArray(c.js) && c.js.includes('content/content_title.js'));
-check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['core/settings.js', 'content/content_notices.js', 'content/content_plus_announce.js', 'core/cdl-features-core.js', 'core/cdl-home-core.js', 'core/cdl-badge-core.js', 'content/content_title.js', 'content/content_features.js', 'content/content_home.js', 'content/content_profile.js']));
+check('content_scripts load in dependency order', mainCs && JSON.stringify(mainCs.js) === JSON.stringify(['core/settings.js', 'core/cdl-confirm.js', 'content/content_notices.js', 'content/content_plus_announce.js', 'core/cdl-features-core.js', 'core/cdl-home-core.js', 'core/cdl-badge-core.js', 'content/content_title.js', 'content/content_features.js', 'content/content_home.js', 'content/content_profile.js']));
 // The title/features bundle must match ALL of both Comix domains (not just
 // /title/*) so it
 // is present when a Next.js soft-navigation lands on a title page — otherwise the

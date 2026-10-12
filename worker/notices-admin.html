@@ -131,6 +131,9 @@
     .notice.warning { border-left-color: var(--warn); }
     .notice.notification { border-left-color: var(--accent); }
     .notice.promotion { border-left-color: var(--plus); }
+    .notice.confirm { border-left-color: var(--danger); }
+    .confirm-intro { display: grid; gap: 6px; }
+    .confirm-intro h2 { margin: 0; font-size: 19px; }
     .promotion-only { display: none !important; }
     .notice.promotion .promotion-only { display: grid !important; }
     .notice.promotion .standard-only { display: none !important; }
@@ -255,7 +258,43 @@
     </section>
 
     <section id="noticeList" class="notice-list" aria-live="polite"></section>
+
+    <section class="panel confirm-intro">
+      <h2>Confirmation warnings</h2>
+      <p>When one is active, the extension shows its title and message before that feature starts, with Cancel and your button. Readers who cancel don't use the feature. "Plus (every Plus feature)" is shown before each Plus feature, after that feature's own warning. Turn one off to stop asking. Click Save All to apply; readers get changes within ten minutes.</p>
+    </section>
+    <section id="confirmList" class="notice-list" aria-live="polite"></section>
   </main>
+
+  <template id="confirmTemplate">
+    <article class="notice confirm">
+      <div class="notice-head">
+        <div>
+          <h2 class="notice-title confirm-name"></h2>
+          <p class="hint confirm-when"></p>
+          <div class="meta"><span class="pill confirm-state"></span></div>
+        </div>
+        <label class="switch">
+          <input class="confirm-active" type="checkbox">
+          Active
+        </label>
+      </div>
+      <div class="fields">
+        <label class="wide">
+          Title
+          <input class="confirm-title" type="text" maxlength="120">
+        </label>
+        <label class="wide">
+          Message
+          <textarea class="confirm-message" maxlength="1200"></textarea>
+        </label>
+        <label>
+          Continue button label (optional)
+          <input class="confirm-label" type="text" maxlength="40" placeholder="Continue anyway">
+        </label>
+      </div>
+    </article>
+  </template>
 
   <template id="noticeTemplate">
     <article class="notice">
@@ -344,6 +383,56 @@
       const rememberTokenEl = document.getElementById('rememberToken');
       const template = document.getElementById('noticeTemplate');
       let notices = [];
+      let confirmations = [];
+      // The features the extension can ask about, in the order shown here.
+      const CONFIRM_FEATURES = [
+        { feature: 'download-all', name: 'Download All', when: 'When someone clicks Download All, before the chapter list is read.' },
+        { feature: 'download-selected', name: 'Download chosen chapters', when: 'When someone starts a range or specific chapters from the Download All panel.' },
+        { feature: 'download-chapter', name: 'Chapter download buttons', when: "When someone clicks a chapter's own download button." },
+        { feature: 'plus', name: 'Plus (every Plus feature)', when: 'Before each Plus feature below, after its own warning.' },
+        { feature: 'plus-cloud-save', name: 'Save to Cloud Library', when: 'When a Download All is set to save to the Cloud Library (or Both).' },
+        { feature: 'plus-cloud-library', name: 'Open the Cloud Library', when: 'From the popup or Plus settings.' },
+        { feature: 'plus-agenda', name: 'Release Agenda', when: 'Each time the Agenda page opens on comix.to. Cancelling goes back.' },
+        { feature: 'plus-sync', name: 'Sync now', when: 'When someone clicks Sync now in Plus settings. Automatic syncing is not asked.' },
+      ];
+      const confirmList = document.getElementById('confirmList');
+      const confirmTemplate = document.getElementById('confirmTemplate');
+
+      function renderConfirmations() {
+        confirmList.textContent = '';
+        CONFIRM_FEATURES.forEach((info) => {
+          const saved = confirmations.find((item) => item.feature === info.feature) || {};
+          const node = confirmTemplate.content.firstElementChild.cloneNode(true);
+          node.dataset.feature = info.feature;
+          node.querySelector('.confirm-name').textContent = info.name;
+          node.querySelector('.confirm-when').textContent = info.when;
+          const state = node.querySelector('.confirm-state');
+          state.textContent = saved.active ? 'active' : 'inactive';
+          state.classList.add(saved.active ? 'on' : 'off');
+          node.querySelector('.confirm-active').checked = !!saved.active;
+          node.querySelector('.confirm-title').value = saved.title || '';
+          node.querySelector('.confirm-message').value = saved.message || '';
+          node.querySelector('.confirm-label').value = saved.confirmLabel || '';
+          confirmList.appendChild(node);
+        });
+      }
+
+      function collectConfirmations() {
+        return Array.from(confirmList.querySelectorAll('.confirm')).map((node) => {
+          const item = {
+            feature: node.dataset.feature,
+            active: node.querySelector('.confirm-active').checked,
+            title: node.querySelector('.confirm-title').value.trim(),
+            message: node.querySelector('.confirm-message').value.trim(),
+            confirmLabel: node.querySelector('.confirm-label').value.trim(),
+          };
+          if (item.active && (!item.title || !item.message)) {
+            const info = CONFIRM_FEATURES.find((entry) => entry.feature === item.feature);
+            throw new Error('Give the "' + (info ? info.name : item.feature) + '" warning a title and a message before turning it on.');
+          }
+          return item;
+        });
+      }
 
       function setStatus(text, kind) {
         statusEl.textContent = text || '';
@@ -408,13 +497,17 @@
           cache: 'no-store',
         });
         notices = Array.isArray(data.notices) ? data.notices : [];
+        confirmations = Array.isArray(data.confirmations) ? data.confirmations : [];
         render();
-        setStatus('Loaded ' + notices.length + ' notice' + (notices.length === 1 ? '' : 's') + '.', 'ok');
+        renderConfirmations();
+        const activeWarnings = confirmations.filter((item) => item.active).length;
+        setStatus('Loaded ' + notices.length + ' notice' + (notices.length === 1 ? '' : 's') + ' and ' + activeWarnings + ' active confirmation warning' + (activeWarnings === 1 ? '' : 's') + '.', 'ok');
       }
 
       async function saveAll() {
         const collected = collectNotices();
         if (!collected.length) throw new Error('There must be at least one valid notice.');
+        const warnings = collectConfirmations();
         setStatus('Saving notices...');
         const data = await requestJson(endpoint(false), {
           method: 'PUT',
@@ -423,11 +516,13 @@
             'Content-Type': 'application/json',
             Accept: 'application/json',
           },
-          body: JSON.stringify({ notices: collected }),
+          body: JSON.stringify({ notices: collected, confirmations: warnings }),
         });
         notices = Array.isArray(data.notices) ? data.notices : collected;
+        confirmations = Array.isArray(data.confirmations) ? data.confirmations : warnings;
         render();
-        setStatus('Saved all notices. Refresh comix.to to see active changes.', 'ok');
+        renderConfirmations();
+        setStatus('Saved all notices and confirmation warnings. Refresh comix.to to see active changes.', 'ok');
       }
 
       async function toggleNotice(id, active) {
@@ -571,6 +666,7 @@
       rememberTokenEl.addEventListener('change', saveSettings);
 
       readSettings();
+      renderConfirmations();
       setStatus('Paste your admin token, then click Reload.');
     })();
   </script>
