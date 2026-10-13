@@ -130,10 +130,17 @@ function harness(overrides = {}) {
     ${source.slice(source.indexOf('let downloadAllSession = null'), source.indexOf('const FEATURES_NOTICE_VERSION'))}
     ${source.slice(source.indexOf('function startDownloadAllSession('), source.indexOf('// ── Réception des messages depuis content_title.js'))}
     ${extractFunction('cancelDownloadAllForTab')}
-    // Page pacing has its own tests (tests/comix-tab-image-fetch.test.js).
-    function withComixPageSlot(src, cfg, signal, task) { return task(); }
+    // Page pacing has its own tests (tests/comix-tab-image-fetch.test.js); a page still waits out a pause.
+    function withComixPageSlot(src, cfg, signal, request, access, context) {
+      return access ? access.run(request, context) : request();
+    }
+    function slowComixPagesAfterWarning() {}
+    function holdComixRequests() {}
+    function noteImageHostFailure() {}
+    function noteImageHostSuccess() {}
     ${source.slice(source.indexOf('const COMIX_PAGE_HOSTS_KEPT'), source.indexOf('function rememberComixPageHosts'))}
-    ${['createCloudflarePauseControl', 'isCloudflareAccessError', 'makeCloudflareAccessError',
+    ${['imageRequestStatus', 'isRetryableImageRequestError',
+      'createCloudflarePauseControl', 'isCloudflareAccessError', 'makeCloudflareAccessError',
       'showCloudflareBlockedNotification', 'fetchImageWithRetry', 'fetchImageToFile', 'forEachPageInPool',
       'detectCloudflareChallengeDocument', 'checkCloudflareResponse'].map((name) => extractFunction(name)).join('\n')}
     ${['resolveOutputOptions', 'chapterConcurrencyLimit', 'isArchiveDeliveryAccepted', 'isDownloadCancelledError',

@@ -50,7 +50,9 @@ function extractConst(name) {
   return match[0];
 }
 
-function makeContext({ tabs = [], inject }) {
+// `storage` stands in for chrome.storage.local (an object of saved values), to check what the
+// pacer keeps across a restart of the background worker.
+function makeContext({ tabs = [], inject, storage = null }) {
   const calls = { injected: [] };
   const context = {
     console, URL, Uint8Array, atob, Response, DOMException, AbortController, setTimeout, clearTimeout, TextDecoder,
@@ -58,7 +60,12 @@ function makeContext({ tabs = [], inject }) {
     _IS_FIREFOX: false,
     preferredComixOrigin: () => 'https://comix.to',
     cdlLog: () => {},
+    withExtensionKeepAlive: (task) => task(),
     chrome: {
+      ...(storage ? { storage: { local: {
+        get: async (key) => (key in storage ? { [key]: JSON.parse(JSON.stringify(storage[key])) } : {}),
+        set: async (values) => { Object.assign(storage, JSON.parse(JSON.stringify(values))); },
+      } } } : {}),
       tabs: {
         get: async (id) => { const tab = tabs.find((t) => t.id === id); if (!tab) throw new Error('No tab with id: ' + id); return tab; },
         query: async () => tabs.slice(),
@@ -76,14 +83,18 @@ function makeContext({ tabs = [], inject }) {
     extractConst('COMIX_PAGES_IN_FLIGHT'),
     extractConst('COMIX_PAGE_SLOWDOWN_MS'),
     extractConst('comixPagePacer'),
+    extractConst('COMIX_PACER_STORAGE_KEY'),
+    extractConst('IMAGE_RETRY_AFTER_MAX_MS'),
+    'let comixPacerRestored = null;',
     'let comixImageTabId = null;',
     ...['canFetchImageDirectly', 'isComixTabUrl', 'comixTabForImages', 'makeComixTabRequiredError', 'raceAbort',
       'base64ToBytes', 'comixPageFetchImage', 'fetchImageThroughComixTab', 'parseRetryAfterMs',
       'imageRequestStatus', 'isRetryableImageRequestError', 'fetchImageForZip', 'withComixPageSlot',
       'acquireComixPageSlot', 'releaseComixPageSlot', 'slowComixPagesAfterWarning', 'checkCloudflareResponse',
+      'restoreComixPacer', 'saveComixPacer', 'holdComixRequests', 'createCloudflarePauseControl', 'makeDownloadAllStoppedError',
       'detectCloudflareChallengeDocument', 'makeCloudflareAccessError', 'isCloudflareAccessError',
       'getImageExtension', 'getScrambleInfo'].map(extractFunction),
-    'globalThis.api = { canFetchImageDirectly, fetchImageThroughComixTab, fetchImageForZip, isRetryableImageRequestError, isCloudflareAccessError, comixTabForImages, acquireComixPageSlot, releaseComixPageSlot, withComixPageSlot, slowComixPagesAfterWarning, pacer: comixPagePacer };',
+    'globalThis.api = { canFetchImageDirectly, fetchImageThroughComixTab, fetchImageForZip, isRetryableImageRequestError, isCloudflareAccessError, comixTabForImages, acquireComixPageSlot, releaseComixPageSlot, withComixPageSlot, slowComixPagesAfterWarning, holdComixRequests, restoreComixPacer, createCloudflarePauseControl, makeCloudflareAccessError, pacer: comixPagePacer };',
   ].join('\n'), context);
   return { api: context.api, calls, context };
 }
@@ -327,7 +338,7 @@ async function run() {
     api.pacer.inFlight = 0;
   }
 
-  // A page from a comix image host takes its turn before the pause check; comix's own images do not
+  // Every page waits for its turn, whichever host it comes from
   {
     const { api } = makeContext({ inject: () => [] });
     const order = [];
@@ -335,11 +346,79 @@ async function run() {
     const t0 = Date.now();
     await api.withComixPageSlot(PAGE, { 'perf.pagePace': 'fast' }, null, async () => { order.push(Date.now() - t0); });
     check('a page from a comix image host waits for its turn before anything else runs', order[0] >= 350 && api.pacer.inFlight === 0);
-    api.pacer.nextStartAt = Date.now() + 10000;
+    api.pacer.nextStartAt = Date.now() + 400;
+    const t1 = Date.now();
     const direct = [];
-    await api.withComixPageSlot('https://comix.to/images/a.webp', {}, null, async () => { direct.push(true); });
-    check('comix.to images do not wait for a turn', direct.length === 1 && api.pacer.inFlight === 0);
+    await api.withComixPageSlot('https://comix.to/images/a.webp', {}, null, async () => { direct.push(Date.now() - t1); });
+    check("comix's own images wait for their turn too", direct[0] >= 350 && api.pacer.inFlight === 0);
     api.pacer.nextStartAt = 0;
+  }
+
+  // When comix says when to come back, every page waits until then
+  {
+    const { api } = makeContext({ inject: () => [] });
+    api.holdComixRequests(600);
+    const t0 = Date.now();
+    await api.acquireComixPageSlot('fast');
+    api.releaseComixPageSlot();
+    check('no page starts before the time comix asked for', Date.now() - t0 >= 550);
+    api.holdComixRequests(10 * 60 * 60 * 1000);
+    check('a wait comix asks for is honored up to half an hour', api.pacer.holdUntil - Date.now() <= 30 * 60 * 1000 &&
+      api.pacer.holdUntil - Date.now() > 29 * 60 * 1000);
+    const shorter = api.pacer.holdUntil;
+    api.holdComixRequests(1000);
+    check('a shorter wait never cuts a longer one', api.pacer.holdUntil === shorter);
+    const controller = new AbortController();
+    const waiting = api.acquireComixPageSlot('fast', controller.signal).catch((e) => e);
+    controller.abort();
+    check('stopping a download ends that wait', (await waiting).name === 'AbortError');
+    api.pacer.holdUntil = 0;
+  }
+
+  // The slowdown and a wait comix asked for survive a restart of the background worker
+  {
+    const storage = {};
+    const before = makeContext({ inject: () => [], storage });
+    before.api.slowComixPagesAfterWarning();
+    before.api.holdComixRequests(5 * 60 * 1000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const after = makeContext({ inject: () => [], storage });
+    await after.api.restoreComixPacer();
+    check('after a restart pages still load at a quarter of the pace',
+      after.api.pacer.slowFactor === 4 && after.api.pacer.slowUntil === before.api.pacer.slowUntil);
+    check('after a restart the wait comix asked for still holds', after.api.pacer.holdUntil === before.api.pacer.holdUntil);
+    storage.cdlComixPacer = { slowFactor: 8, slowUntil: Date.now() - 1, holdUntil: Date.now() - 1 };
+    const later = makeContext({ inject: () => [], storage });
+    await later.api.restoreComixPacer();
+    check('a slowdown that already ended is not restored', later.api.pacer.slowFactor === 1 && later.api.pacer.holdUntil === 0);
+  }
+
+  // A Cloudflare pause: pages wait it out without holding a turn, and restart one at a time
+  {
+    const { api } = makeContext({ inject: () => [] });
+    const access = api.createCloudflarePauseControl({ onPause() {}, onResume() {} });
+    const blocked = () => api.makeCloudflareAccessError({ blocked: true, blockKind: 'ip_ban' });
+    let blocking = true;
+    const starts = [];
+    const page = (n) => api.withComixPageSlot(PAGE + n, { 'perf.pagePace': 'fast' }, null, async () => {
+      starts.push({ n, at: Date.now() });
+      if (blocking && n === 0) throw blocked();
+      return n;
+    }, access, { chapterUrl: 'https://comix.to/title/x/1-chapter-1' });
+    const first = page(0);
+    for (let i = 0; i < 50 && !access.paused; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    const others = [1, 2, 3, 4, 5].map(page);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    check('a blocked page gives its turn back, and no page takes one while paused',
+      access.paused && api.pacer.inFlight === 0 && starts.length === 1);
+    blocking = false;
+    access.resume();
+    const results = await Promise.all([first, ...others]);
+    const restarted = starts.slice(1).map((s) => s.at);
+    const gaps = restarted.slice(1).map((t, i) => t - restarted[i]);
+    check('after Resume the waiting pages start one at a time at the pace, not all together',
+      results.join() === '0,1,2,3,4,5' && restarted.length === 6 && gaps.every((gap) => gap >= 40));
+    check('every turn is given back after the pause', api.pacer.inFlight === 0);
   }
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);

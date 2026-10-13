@@ -38,10 +38,12 @@ function extractStatement(prefix) {
 const CHAPTER = 'https://comix.to/title/grrd7-the-archmages-restaurant/11411479-chapter-152';
 const comixTab = { id: 7, url: 'https://comix.to/title/grrd7-the-archmages-restaurant', status: 'complete', discarded: false };
 
-function makeContext({ tabs = [comixTab], answer } = {}) {
+// `chapterGapMs` replaces the time between two chapters (COMIX_CHAPTER_GAP_MS), which is 0
+// here unless a check is about that time.
+function makeContext({ tabs = [comixTab], answer, chapterGapMs = 0 } = {}) {
   const calls = { injected: [], logs: [], slowed: 0 };
   const context = {
-    console, URL, Response, TextEncoder, TextDecoder, Uint8Array, DOMException, Date, JSON, Map,
+    console, URL, Response, TextEncoder, TextDecoder, Uint8Array, DOMException, Date, JSON, Map, setTimeout, clearTimeout,
     downloadAllSession: null,
     cdlLog: (level, message) => calls.logs.push({ level, message }),
     slowComixPagesAfterWarning: () => { calls.slowed++; },
@@ -63,10 +65,17 @@ function makeContext({ tabs = [comixTab], answer } = {}) {
     'const comixPageHosts = new Map();',
     'let comixApiUnusableUntil = 0;',
     'let comixImageTabId = null;',
+    extractStatement('const IMAGE_RETRY_AFTER_MAX_MS ='),
+    extractStatement('const comixPagePacer ='),
+    extractStatement('const COMIX_PACER_STORAGE_KEY ='),
+    'let comixPacerRestored = null;',
+    `const COMIX_CHAPTER_GAP_MS = ${Number(chapterGapMs)};`,
+    extractStatement('const comixChapterPacer ='),
     ...['isComixTabUrl', 'comixTabForImages', 'comixChapterIdFromUrl', 'comixPageReadChapter', 'chapterImagesFromApi',
       'checkCloudflareResponse', 'detectCloudflareChallengeDocument', 'makeCloudflareAccessError', 'isCloudflareAccessError',
-      'parseRetryAfterMs', 'rememberComixPageHosts'].map(extractFunction),
-    'globalThis.api = { comixChapterIdFromUrl, chapterImagesFromApi, isCloudflareAccessError, comixPageHosts, unusableUntil: () => comixApiUnusableUntil };',
+      'parseRetryAfterMs', 'rememberComixPageHosts', 'waitForComixChapterTurn', 'restoreComixPacer', 'saveComixPacer',
+      'holdComixRequests', 'waitForAbortableDelay', 'makeDownloadAllStoppedError'].map(extractFunction),
+    'globalThis.api = { comixChapterIdFromUrl, chapterImagesFromApi, isCloudflareAccessError, comixPageHosts, pacer: comixPagePacer, unusableUntil: () => comixApiUnusableUntil };',
   ].join('\n'), context);
   return { api: context.api, calls };
 }
@@ -311,6 +320,26 @@ async function run() {
     const { api } = makeContext({ answer: () => ({ status: 503, headers: { 'content-type': 'text/html', 'retry-after': '3' }, text: 'busy' }) });
     const error = await api.chapterImagesFromApi(CHAPTER, 7).catch((e) => e);
     check('a server error is retried with its status and Retry-After', error.status === 503 && error.retryAfterMs === 3000);
+    const left = api.pacer.holdUntil - Date.now();
+    check('and every chapter and page waits the time comix asked for', left > 2500 && left <= 3000);
+  }
+
+  // Chapters are opened one at a time across every download, with a gap between them
+  {
+    const answer = () => ({ status: 200, headers: { 'content-type': 'application/json' }, data: chapterAnswer, encrypted: false });
+    const { api, calls } = makeContext({ answer, chapterGapMs: 300 });
+    const t0 = Date.now();
+    await Promise.all([1, 2, 3].map(() => api.chapterImagesFromApi(CHAPTER, 7)));
+    const elapsed = Date.now() - t0;
+    check('three chapters asked for at once are read one after another, 240-360 ms apart here',
+      calls.injected.length === 3 && elapsed >= 480 && elapsed < 1500);
+  }
+  {
+    const { api, calls } = makeContext({ answer: () => { throw new Error('should not be called'); } });
+    api.pacer.holdUntil = Date.now() + 400;
+    const t0 = Date.now();
+    await api.chapterImagesFromApi('https://example.com/title/a/1-chapter-1', 7);
+    check('an address that is not a comix chapter does not wait for a turn', Date.now() - t0 < 100 && calls.injected.length === 0);
   }
   {
     const { api } = makeContext({ answer: () => ({ status: 0, message: 'Failed to fetch' }) });

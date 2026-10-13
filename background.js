@@ -3414,7 +3414,8 @@ const IMAGE_TRANSIENT_MIN_RETRIES = 3;
 const IMAGE_SERVER_ERROR_MIN_RETRIES = 5;
 const IMAGE_RETRY_BASE_MS = 650;
 const IMAGE_RETRY_MAX_MS = 5000;
-const IMAGE_RETRY_AFTER_MAX_MS = 15000;
+// How long comix may ask downloads to wait (Retry-After): honored in full, up to half an hour.
+const IMAGE_RETRY_AFTER_MAX_MS = 30 * 60 * 1000;
 const CHAPTER_RECOVERY_BASE_MS = 2500;
 const CHAPTER_RECOVERY_MAX_MS = 10000;
 const imageHostCooldownUntil = new Map();
@@ -3460,6 +3461,39 @@ function imageRetryDelayMs(error, retryNumber) {
     Math.max(0, Number(error?.retryAfterMs) || 0)
   );
   return Math.max(retryAfter, exponential + Math.floor(Math.random() * 250));
+}
+
+// A host that fails on page after page is probably down: after IMAGE_HOST_TRIP_FAILURES
+// failures in a row, whichever pages they were, nothing more is sent to it for a while
+// (30 s, doubling up to 5 minutes) instead of every page spending its retries on it.
+// Retries meanwhile go to the reader's alternative hosts when comix listed some.
+const IMAGE_HOST_TRIP_FAILURES = 6;
+const IMAGE_HOST_TRIP_BASE_MS = 30000;
+const IMAGE_HOST_TRIP_MAX_MS = 5 * 60 * 1000;
+const imageHostHealth = new Map();
+
+function noteImageHostFailure(src) {
+  const host = imageHostKey(src);
+  if (!host) return 0;
+  const health = imageHostHealth.get(host) || { failures: 0, trips: 0 };
+  health.failures++;
+  let tripMs = 0;
+  if (health.failures >= IMAGE_HOST_TRIP_FAILURES) {
+    tripMs = Math.min(IMAGE_HOST_TRIP_MAX_MS, IMAGE_HOST_TRIP_BASE_MS * (2 ** health.trips));
+    health.trips++;
+    health.failures = 0;
+    deferImageHost(src, tripMs);
+    if (typeof cdlLog === 'function') {
+      cdlLog('warn', `${host} failed on ${IMAGE_HOST_TRIP_FAILURES} pages in a row; nothing is sent to it for ${Math.round(tripMs / 1000)} s`);
+    }
+  }
+  imageHostHealth.set(host, health);
+  return tripMs;
+}
+
+function noteImageHostSuccess(src) {
+  const host = imageHostKey(src);
+  if (host) imageHostHealth.delete(host);
 }
 
 function imageHostKey(src) {
@@ -3583,13 +3617,19 @@ async function fetchImageWithRetry(src, cfg, configuredRetries, onRetry, signal,
     if (signal && signal.aborted) throw makeDownloadAllStoppedError();
     try {
       const request = () => fetchImageForZip(requestSrc, cfg, signal, sourceUrl);
-      return await withComixPageSlot(requestSrc, cfg, signal,
-        () => (access ? access.run(request, { chapterUrl: sourceUrl }) : request()));
+      const image = await withComixPageSlot(requestSrc, cfg, signal, request, access, { chapterUrl: sourceUrl });
+      noteImageHostSuccess(requestSrc);
+      return image;
     } catch (error) {
       if (signal && signal.aborted) throw makeDownloadAllStoppedError();
-      const warned = isCloudflareAccessError(error) || imageRequestStatus(error) === 429;
-      if (warned && !canFetchImageDirectly(src)) slowComixPagesAfterWarning();
+      const status = imageRequestStatus(error);
+      const warned = isCloudflareAccessError(error) || status === 429;
+      if (warned) slowComixPagesAfterWarning();
       if (isCloudflareAccessError(error)) throw error;
+      // comix said when to come back: every download waits that long, not just this page.
+      if ((status === 429 || status >= 500) && Number(error && error.retryAfterMs) > 0) holdComixRequests(error.retryAfterMs);
+      // A missing page says nothing about the host; network errors and server errors do.
+      if (status !== 429 && isRetryableImageRequestError(error)) noteImageHostFailure(requestSrc);
       lastError = error;
       if (imageRequestStatus(error) >= 500) edgeHoldsError = true;
       retryLimit = Math.max(retryLimit, imageRetryLimit(configuredRetries, error));
@@ -3845,7 +3885,7 @@ async function fetchImageThroughComixTab(src, timeoutMs, signal) {
 }
 
 // comix blocks addresses that pull pages much faster than a person reads them. Pages
-// from its image hosts therefore share one schedule across every download: a steady
+// from its image hosts, and from comix itself, therefore share one schedule across every download: a steady
 // number of new pages a second, chosen in Settings > Performance > Download pace (Fast,
 // about 12 a second, held for 1,800 pages across 15 chapters on live comix), and at
 // most twelve loading at once so a slow image server does not drag the pace below that.
@@ -3855,22 +3895,73 @@ async function fetchImageThroughComixTab(src, timeoutMs, signal) {
 const COMIX_PAGE_PACE_MS = { gentle: 250, balanced: 140, fast: 70 };
 const COMIX_PAGES_IN_FLIGHT = 12;
 const COMIX_PAGE_SLOWDOWN_MS = 30 * 60 * 1000;
-const comixPagePacer = { inFlight: 0, nextStartAt: 0, slowFactor: 1, slowUntil: 0 };
+const comixPagePacer = { inFlight: 0, nextStartAt: 0, slowFactor: 1, slowUntil: 0, holdUntil: 0 };
+// The slowdown and any wait comix asked for are kept in storage, so a restart of the
+// background worker in the middle of a download does not go back to full speed.
+const COMIX_PACER_STORAGE_KEY = 'cdlComixPacer';
+let comixPacerRestored = null;
+
+function restoreComixPacer() {
+  if (!comixPacerRestored) {
+    comixPacerRestored = (async () => {
+      try {
+        if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) return;
+        const saved = (await chrome.storage.local.get(COMIX_PACER_STORAGE_KEY))[COMIX_PACER_STORAGE_KEY];
+        const now = Date.now();
+        if (saved && Number(saved.slowUntil) > now) {
+          comixPagePacer.slowFactor = Math.min(8, Math.max(1, Number(saved.slowFactor) || 1));
+          comixPagePacer.slowUntil = Math.max(comixPagePacer.slowUntil, Number(saved.slowUntil));
+        }
+        if (saved && Number(saved.holdUntil) > now) {
+          comixPagePacer.holdUntil = Math.max(comixPagePacer.holdUntil, Number(saved.holdUntil));
+        }
+      } catch (_) {}
+    })();
+  }
+  return comixPacerRestored;
+}
+
+function saveComixPacer() {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) return;
+    Promise.resolve(chrome.storage.local.set({ [COMIX_PACER_STORAGE_KEY]: {
+      slowFactor: comixPagePacer.slowFactor, slowUntil: comixPagePacer.slowUntil, holdUntil: comixPagePacer.holdUntil,
+    } })).catch(() => {});
+  } catch (_) {}
+}
 
 function slowComixPagesAfterWarning() {
   const now = Date.now();
   const current = now < comixPagePacer.slowUntil ? comixPagePacer.slowFactor : 1;
   comixPagePacer.slowFactor = Math.min(8, current * 4);
   comixPagePacer.slowUntil = now + COMIX_PAGE_SLOWDOWN_MS;
+  saveComixPacer();
   cdlLog('warn', `comix asked for a slower pace; pages now load ${comixPagePacer.slowFactor} times slower for 30 minutes`);
 }
 
+// comix said when to come back (Retry-After on a 429 or 503): every page and chapter
+// request from every download waits until then.
+function holdComixRequests(delayMs) {
+  const ms = Math.min(IMAGE_RETRY_AFTER_MAX_MS, Math.max(0, Number(delayMs) || 0));
+  if (!ms) return;
+  const until = Date.now() + ms;
+  if (until <= comixPagePacer.holdUntil) return;
+  comixPagePacer.holdUntil = until;
+  saveComixPacer();
+  if (typeof cdlLog === 'function') cdlLog('warn', `comix asked to wait ${Math.ceil(ms / 1000)} s; downloads continue after that`);
+}
+
 async function acquireComixPageSlot(pace, signal) {
+  await restoreComixPacer();
   for (;;) {
     const slowed = Date.now() < comixPagePacer.slowUntil ? comixPagePacer.slowFactor : 1;
     const interval = (COMIX_PAGE_PACE_MS[pace] || COMIX_PAGE_PACE_MS.fast) * slowed;
     if (signal && signal.aborted) throw new DOMException('The image request was aborted.', 'AbortError');
     const now = Date.now();
+    if (now < comixPagePacer.holdUntil) {
+      await new Promise((resolve) => setTimeout(resolve, Math.max(20, Math.min(comixPagePacer.holdUntil - now, 250))));
+      continue;
+    }
     if (comixPagePacer.inFlight < COMIX_PAGES_IN_FLIGHT && now >= comixPagePacer.nextStartAt) {
       comixPagePacer.inFlight++;
       // Uneven gaps, like a reader turning pages: 70-130% of the average.
@@ -3886,15 +3977,33 @@ function releaseComixPageSlot() {
   comixPagePacer.inFlight = Math.max(0, comixPagePacer.inFlight - 1);
 }
 
-// A page takes its turn before the Cloudflare pause check, so one that waited for its
-// turn never goes out while downloads are paused.
-async function withComixPageSlot(src, cfg, signal, task) {
-  if (canFetchImageDirectly(src)) return task();
-  await acquireComixPageSlot(cfg && cfg['perf.pagePace'], signal);
-  try {
-    return await task();
-  } finally {
-    releaseComixPageSlot();
+// Every page, from any host, takes its turn on the shared pace. With a Cloudflare pause
+// control (`access`), a page first waits out a pause, takes its turn, and gives the turn
+// back if a pause started meanwhile; a page that runs into a block gives its turn back
+// before waiting. On Resume the waiting pages therefore start again one at a time at the
+// pace, not all together.
+async function withComixPageSlot(src, cfg, signal, request, access = null, context = {}) {
+  for (;;) {
+    if (access) {
+      await access.wait();
+      if (access.cancelled) throw makeDownloadAllStoppedError();
+    }
+    await acquireComixPageSlot(cfg && cfg['perf.pagePace'], signal);
+    if (access && access.paused) {
+      releaseComixPageSlot();
+      continue;
+    }
+    const generation = access ? access.generation : 0;
+    let blocked = null;
+    try {
+      return await request();
+    } catch (error) {
+      if (!access || !isCloudflareAccessError(error)) throw error;
+      blocked = error;
+    } finally {
+      releaseComixPageSlot();
+    }
+    await access.pause(blocked, context, generation);
   }
 }
 
@@ -3907,6 +4016,27 @@ async function withComixPageSlot(src, cfg, signal, task) {
 // the comix tab, instead of loading the whole chapter in a background tab.
 const COMIX_API_RETRY_AFTER_MS = 30 * 60 * 1000;
 let comixApiUnusableUntil = 0;
+
+// Chapters are opened one at a time across every download, like a reader moving to the
+// next chapter: at most one page list (or background tab) every COMIX_CHAPTER_GAP_MS
+// (uneven), slower after a warning from comix, and never while comix asked to wait.
+const COMIX_CHAPTER_GAP_MS = 2500;
+const comixChapterPacer = { nextAt: 0 };
+
+async function waitForComixChapterTurn(signal = null) {
+  await restoreComixPacer();
+  for (;;) {
+    if (signal && signal.aborted) throw makeDownloadAllStoppedError();
+    const now = Date.now();
+    const left = Math.max(comixChapterPacer.nextAt - now, comixPagePacer.holdUntil - now);
+    if (left <= 0) {
+      const slowed = now < comixPagePacer.slowUntil ? comixPagePacer.slowFactor : 1;
+      comixChapterPacer.nextAt = now + Math.round(COMIX_CHAPTER_GAP_MS * slowed * (0.8 + Math.random() * 0.4));
+      return;
+    }
+    await waitForAbortableDelay(Math.min(left, 1000), signal);
+  }
+}
 
 function comixChapterIdFromUrl(url) {
   try {
@@ -4082,7 +4212,10 @@ async function comixPageReadChapter(chapterId, timeoutMs, chapterPath = '') {
 // Throws for Cloudflare blocks (downloads pause) and for server or network errors (retried).
 async function chapterImagesFromApi(chapterUrl, preferredTabId = null) {
   const id = comixChapterIdFromUrl(chapterUrl);
-  if (!id || Date.now() < comixApiUnusableUntil) return null;
+  if (!id) return null;
+  // Taken before either way of reading the chapter (this API or a background tab).
+  await waitForComixChapterTurn();
+  if (Date.now() < comixApiUnusableUntil) return null;
   const tabId = await comixTabForImages(preferredTabId);
   if (tabId == null) return null;
   let injection;
@@ -4121,6 +4254,7 @@ async function chapterImagesFromApi(chapterUrl, preferredTabId = null) {
     const error = new Error(`HTTP ${result.status}`);
     error.status = result.status;
     error.retryAfterMs = parseRetryAfterMs(headers['retry-after']);
+    if (error.retryAfterMs > 0) holdComixRequests(error.retryAfterMs);
     throw error;
   }
   if (result.status !== 200) return unusable(`answered HTTP ${result.status}`);
@@ -5662,6 +5796,8 @@ function createCloudflarePauseControl({ onPause, onResume, cancelPromise, cancel
     wait, pause,
     report() { if (gate && !cancelled()) onPause(gate.error, gate.context); },
     get paused() { return !!gate; },
+    get generation() { return generation; },
+    get cancelled() { return cancelled(); },
     resume() {
       if (!gate || cancelled()) return false;
       const current = gate;

@@ -26,9 +26,14 @@ const context = {
   preferredComixOrigin: () => 'https://comix.to',
   // These checks cover the extension's own image requests; tests/comix-tab-image-fetch.test.js covers the comix-tab path.
   canFetchImageDirectly: () => true,
+  // The pace itself is tested in tests/comix-tab-image-fetch.test.js; here only who holds a turn.
+  slots: { held: 0, taken: 0 },
+  async acquireComixPageSlot() { context.slots.held++; context.slots.taken++; },
+  releaseComixPageSlot() { context.slots.held--; },
+  slowComixPagesAfterWarning() {}, holdComixRequests() {}, noteImageHostSuccess() {}, noteImageHostFailure() {},
 };
 vm.createContext(context);
-const names = ['detectCloudflareChallengeDocument', 'makeCloudflareAccessError', 'isCloudflareAccessError',
+const names = ['imageRequestStatus', 'detectCloudflareChallengeDocument', 'makeCloudflareAccessError', 'isCloudflareAccessError',
   'checkCloudflareResponse', 'createCloudflarePauseControl', 'makeDownloadAllStoppedError', 'isDownloadAllStoppedError',
   'probeImageUrl', 'fetchImageForZip', 'withComixPageSlot', 'parseRetryAfterMs', 'getImageExtension',
   'createChapterAccessTask', 'downloadImagesAsZip', 'forEachPageInPool', 'fetchImageToFile', 'fetchImageWithRetry',
@@ -187,9 +192,14 @@ async function testSingleChapterResume() {
   for (let i = 0; i < 100 && !task.access.paused; i++) await tick();
   assert.equal(task.access.paused, true);
   assert.equal(requests.length, 2);
+  for (let i = 0; i < 20; i++) await tick();
+  assert.equal(context.slots.held, 0, 'A blocked page gives its turn back before waiting, and none is taken while paused');
+  assert.equal(requests.length, 2, 'Nothing is requested while paused');
   blocked = false;
   task.access.resume();
   await download;
+  assert.equal(context.slots.held, 0, 'Every turn is given back');
+  assert.equal(context.slots.taken, 4, 'The retried page takes a new turn after Resume');
   assert.deepEqual(requests.map((url) => url.slice(-1)), ['1', '2', '2', '3']);
   assert.deepEqual(Object.keys(savedZip.files), ['001.jpg', '002.jpg', '003.jpg']);
   assert.equal((await savedZip.file('001.jpg').async('uint8array'))[0], 1);

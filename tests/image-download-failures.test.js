@@ -69,6 +69,8 @@ const retryContext = {
   cooldowns: [],
   sleeps: [],
   requested: [],
+  holds: [],
+  hostNotes: [],
   // Waits between reader-style retries are recorded instead of slept.
   setTimeout: (fn, ms) => { retryContext.sleeps.push(ms); fn(); return 0; },
   fetchImageForZip: async () => ({ buffer: new ArrayBuffer(1), ext: 'webp' }),
@@ -90,9 +92,11 @@ vm.runInContext(`
   ${extractFunction('rememberComixPageHosts')}
   ${extractFunction('comixReaderRetryUrl')}
   // Page pacing has its own tests (tests/comix-tab-image-fetch.test.js).
-  function withComixPageSlot(src, cfg, signal, task) { return task(); }
-  function canFetchImageDirectly() { return true; }
+  function withComixPageSlot(src, cfg, signal, request) { return request(); }
   function slowComixPagesAfterWarning() {}
+  function holdComixRequests(ms) { globalThis.holds.push(ms); }
+  function noteImageHostFailure(src) { globalThis.hostNotes.push('fail ' + src); }
+  function noteImageHostSuccess(src) { globalThis.hostNotes.push('ok ' + src); }
   ${extractFunction('fetchImageWithRetry')}
   globalThis.retryApi = {
     isRetryableImageRequestError,
@@ -544,6 +548,38 @@ async function run() {
   await retryContext.retryApi.fetchImageWithRetry('https://wowpic.example/i5/page', {}, 1);
   check('rate-limit retries keep requesting the original URL',
     requested.length === 3 && requested.every((src) => src === 'https://wowpic.example/i5/page'));
+
+  // When comix says when to come back, every download waits that long, not only this page.
+  retryContext.holds.length = 0;
+  requested.length = 0;
+  retryContext.fetchImageForZip = async (src) => {
+    requested.push(src);
+    if (requested.length === 1) throw Object.assign(new Error('HTTP 503'), { status: 503, retryAfterMs: 120000 });
+    if (requested.length === 2) throw Object.assign(new Error('HTTP 429'), { status: 429, retryAfterMs: 45000 });
+    if (requested.length === 3) throw Object.assign(new Error('HTTP 503'), { status: 503 });
+    return { buffer: new ArrayBuffer(1), ext: 'webp' };
+  };
+  await retryContext.retryApi.fetchImageWithRetry('https://wowpic.example/i5/held', {}, 1);
+  check('Retry-After on a 503 or a 429 makes every download wait the full time',
+    retryContext.holds.join() === '120000,45000');
+
+  // Only failures that say something about the host count toward its cool-down.
+  retryContext.hostNotes.length = 0;
+  requested.length = 0;
+  retryContext.fetchImageForZip = async (src) => {
+    requested.push(src);
+    if (requested.length === 1) throw new TypeError('Failed to fetch');
+    if (requested.length === 2) throw Object.assign(new Error('HTTP 502'), { status: 502 });
+    if (requested.length === 3) throw Object.assign(new Error('HTTP 429'), { status: 429 });
+    return { buffer: new ArrayBuffer(1), ext: 'webp' };
+  };
+  await retryContext.retryApi.fetchImageWithRetry('https://wowpic.example/i5/host', {}, 1);
+  check('network and server errors count against the host, a 429 does not, and a success clears it',
+    retryContext.hostNotes.map((note) => note.split(' ')[0]).join() === 'fail,fail,ok');
+  retryContext.hostNotes.length = 0;
+  retryContext.fetchImageForZip = async () => { throw Object.assign(new Error('HTTP 404'), { status: 404 }); };
+  await retryContext.retryApi.fetchImageWithRetry('https://wowpic.example/i5/missing', {}, 0).catch(() => {});
+  check('a missing page does not count against its host', retryContext.hostNotes.length === 0);
 
   resetAllEvents();
   fetchMode = 'fail';

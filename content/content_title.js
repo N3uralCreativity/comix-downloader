@@ -1594,6 +1594,24 @@ const CHAPTERS_PER_PAGE = 20;
 const CHAPTER_LIST_FETCH_CONCURRENCY = 4;
 const CHAPTER_LIST_WAIT_MS = 7000;
 const CHAPTER_LIST_NAV_RETRIES = 3;
+// comix blocks addresses that send many requests in a short time. Each move through the
+// chapter list (a pager or sort click, or a list page read) is one request to comix, so
+// the list is read one page at a time, no faster than about one page a second (uneven),
+// like a person paging through it.
+const CHAPTER_LIST_PAGE_GAP_MS = 1000;
+let chapterListNextTurnAt = 0;
+
+async function waitForChapterListTurn(collection) {
+  for (;;) {
+    collection?.checkpoint?.();
+    const left = chapterListNextTurnAt - Date.now();
+    if (left <= 0) {
+      chapterListNextTurnAt = Date.now() + Math.round(CHAPTER_LIST_PAGE_GAP_MS * (0.8 + Math.random() * 0.4));
+      return;
+    }
+    await wait(Math.min(left, 250));
+  }
+}
 
 function createChapterListCollectionControl(onProgress) {
   const abortController = new AbortController();
@@ -1703,7 +1721,7 @@ function getChapterListPageCount(total, pageSize = CHAPTERS_PER_PAGE) {
 
 async function fetchChapterListPage(buildId, slug, page, collection) {
   try {
-    collection?.checkpoint?.();
+    await waitForChapterListTurn(collection);
     const r = await fetch(`/_next/data/${buildId}/title/${slug}.json?page=${page}`, {
       headers: { 'Accept': 'application/json' },
       signal: collection?.signal,
@@ -1852,6 +1870,7 @@ async function recoverChapterListView(collection) {
 
   for (const alternative of alternatives) {
     collection?.checkpoint?.();
+    await waitForChapterListTurn(collection);
     const before = getChapterListSignature();
     alternative.click();
     if (!await waitForChapterListChange(before, collection)) continue;
@@ -1862,6 +1881,7 @@ async function recoverChapterListView(collection) {
     if (!original || original.getAttribute('aria-pressed') === 'true' || original.classList.contains('is-on')) {
       return extractChapterUrlsFromDom().length > 0;
     }
+    await waitForChapterListTurn(collection);
     const changed = getChapterListSignature();
     original.click();
     if (await waitForChapterListChange(changed, collection)) return true;
@@ -1932,6 +1952,7 @@ async function goToChapterPage(target, collection) {
       }
     }
     if (!btn) return false;
+    await waitForChapterListTurn(collection);
     btn.click();
     if (await waitForChapterListChange(before, collection)) {
       failedMoves = 0;
