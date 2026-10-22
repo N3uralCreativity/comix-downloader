@@ -288,9 +288,8 @@ async function openStandaloneSettingsPage() {
 // ── Comix-Downloader "tenure badge" service (v3.0.0) ─────────────────────────
 // Records when the badge service first saw a user, and looks up other users'
 // first-seen dates, so content_profile.js can show "Comix-Downloader user · N months"
-// on comix profiles. The badge (and the community chapter flags that share this
-// Worker) is a built-in, always-on feature; only an OPAQUE salted hash of the comix
-// user id + a coarse date / coarse flag counts ever leave the device.
+// on comix profiles. Remote badges and chapter flags require explicit opt-in.
+// Stable salted account/chapter hashes are pseudonymous identifiers, not anonymous.
 //
 // CDL_BADGE_API points at the deployed free Cloudflare Worker (see worker/). A
 // `cdlBadgeApi` storage key overrides it (used by the E2E harness; could also let
@@ -301,6 +300,38 @@ const _BADGE_LOOKUP_TTL = 7 * 24 * 60 * 60 * 1000; // cache a found date ~7 days
 const _BADGE_NEG_TTL = 30 * 60 * 1000;             // cache "no record" only ~30 min (they may register soon)
 const _BADGE_REGISTER_EVERY = 20 * 60 * 60 * 1000;  // re-register at most ~once/day
 let _badgeMem = Object.create(null); // hashId -> { first, at } in-memory lookup cache
+const _communityRequests = new Set();
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.cdlCommunitySharing) return;
+  if (changes.cdlCommunitySharing.newValue === true) return;
+  for (const controller of _communityRequests) controller.abort();
+});
+
+async function communityFetch(url, options = {}) {
+  const controller = new AbortController();
+  _communityRequests.add(controller);
+  try {
+    const cfg = await loadCfg();
+    if (cfg['privacy.communitySharing'] !== true || controller.signal.aborted) {
+      throw new Error('Community sharing is disabled.');
+    }
+    const required = typeof CDLSettings !== 'undefined' && CDLSettings.communityDataPermissions
+      ? CDLSettings.communityDataPermissions() : [];
+    if (required.length) {
+      const granted = await new Promise((resolve) => {
+        try {
+          const result = chrome.permissions.contains({ data_collection: required }, (value) => resolve(!chrome.runtime.lastError && !!value));
+          if (result && result.then) result.then((value) => resolve(!!value), () => resolve(false));
+        } catch (_) { resolve(false); }
+      });
+      if (!granted || controller.signal.aborted) throw new Error('Community data sharing permission is missing.');
+    }
+    return await fetch(url, {
+      ...options, credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal,
+    });
+  } finally { _communityRequests.delete(controller); }
+}
 
 async function badgeApiBase() {
   try {
@@ -318,6 +349,7 @@ async function badgeHash(hashId) {
 
 // Register the current user (server timestamps first-seen). Throttled ~once/day.
 async function badgeRegister(hashId) {
+  if ((await loadCfg())['privacy.communitySharing'] !== true) return { ok: false, disabled: true };
   const base = await badgeApiBase();
   if (!base || !hashId) return { ok: false };
   try {
@@ -327,7 +359,7 @@ async function badgeRegister(hashId) {
       return { ok: true, first: reg.first, cached: true };
     }
     const id = await badgeHash(hashId);
-    const resp = await fetch(base + '/v1/seen', {
+    const resp = await communityFetch(base + '/v1/seen', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
     });
     if (!resp.ok) return { ok: false };
@@ -339,6 +371,7 @@ async function badgeRegister(hashId) {
 
 // Look up another user's first-seen date (cached in memory + storage, ~7-day TTL).
 async function badgeLookup(hashId) {
+  if ((await loadCfg())['privacy.communitySharing'] !== true) return { ok: false, disabled: true };
   const base = await badgeApiBase();
   if (!base || !hashId) return { ok: false };
   // A found date is cached long; a "no record" only briefly, so a freshly-registered user shows up soon.
@@ -351,7 +384,7 @@ async function badgeLookup(hashId) {
     const hit = cache[hashId];
     if (hit && (Date.now() - hit.at) < ttl(hit)) { _badgeMem[hashId] = hit; return { ok: true, first: hit.first }; }
     const id = await badgeHash(hashId);
-    const resp = await fetch(base + '/v1/seen?ids=' + encodeURIComponent(id));
+    const resp = await communityFetch(base + '/v1/seen?ids=' + encodeURIComponent(id));
     if (!resp.ok) return { ok: false };
     const j = await resp.json();
     const first = (j && j[id]) || null;
@@ -371,12 +404,13 @@ function flagChapterHash(chapterId) { return badgeHash('chap:' + chapterId); }
 
 // Submit one flag for a chapter (server dedups per user+chapter). Refreshes the local cache.
 async function flagSubmit(chapterId, userHashId, type) {
+  if ((await loadCfg())['privacy.communitySharing'] !== true) return { ok: false, disabled: true };
   const base = await badgeApiBase();
   if (!base || !chapterId || !userHashId || !type) return { ok: false };
   try {
     const chapter = await flagChapterHash(chapterId);
     const user = await badgeHash(userHashId);
-    const resp = await fetch(base + '/v1/flag', {
+    const resp = await communityFetch(base + '/v1/flag', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chapter, user, type }),
     });
     if (!resp.ok) return { ok: false };
@@ -388,6 +422,7 @@ async function flagSubmit(chapterId, userHashId, type) {
 
 // Batch-look up flag counts for chapter ids; returns { chapterId: {broken,missing,wrong,total}|null }.
 async function flagLookup(chapterIds) {
+  if ((await loadCfg())['privacy.communitySharing'] !== true) return { ok: false, disabled: true, counts: {} };
   const base = await badgeApiBase();
   const ids = (chapterIds || []).map(String).filter(Boolean);
   if (!base || !ids.length) return { ok: false, counts: {} };
@@ -399,7 +434,7 @@ async function flagLookup(chapterIds) {
       const hashOf = {};
       await Promise.all(chunk.map(async (id) => { hashOf[await flagChapterHash(id)] = id; }));
       const hashes = Object.keys(hashOf);
-      const resp = await fetch(base + '/v1/flags?ids=' + encodeURIComponent(hashes.join(',')));
+      const resp = await communityFetch(base + '/v1/flags?ids=' + encodeURIComponent(hashes.join(',')));
       const j = resp.ok ? await resp.json() : {};
       hashes.forEach((h) => { const id = hashOf[h]; const c = (j && j[h]) || null; _flagMem[id] = { counts: c, at: now }; out[id] = c; });
     }
@@ -881,10 +916,11 @@ function setupContextMenus() {
           targetUrlPatterns: ['*://comix.to/title/*', '*://comix.ws/title/*']
         }, swallow);
         chrome.contextMenus.create({
-          id: 'cdl-dl-series', title: 'Download whole series (open options)',
+          id: 'cdl-dl-series', title: 'Download whole series (deprecated)', visible: false,
           contexts: ['page'],
           documentUrlPatterns: ['*://comix.to/title/*', '*://comix.ws/title/*']
         }, swallow);
+        updateDownloadAllContextMenu();
       } catch (_) {}
     });
   } catch (_) {}
@@ -912,6 +948,13 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
 }
 
 chrome.runtime.onInstalled.addListener(setupContextMenus);
+function updateDownloadAllContextMenu() {
+  if (!chrome.contextMenus) return;
+  loadCfg().then((cfg) => {
+    chrome.contextMenus.update('cdl-dl-series', { visible: cfg['download.enableAll'] === true }, () => { void chrome.runtime.lastError; });
+  }).catch(() => {});
+}
+if (typeof CDLSettings !== 'undefined') CDLSettings.onChange(updateDownloadAllContextMenu);
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(setupContextMenus);
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(restoreIdleBadge);
 chrome.runtime.onInstalled.addListener(setupUpdateCheckAlarm);
@@ -1776,6 +1819,7 @@ function notifyChapterDownloadError(originTabId, chapterUrl, error, options = {}
   } catch (_) {}
   notifyTab(originTabId, {
     action: 'downloadError',
+    taskId: options.taskId,
     chapterUrl,
     error: presentation.message,
     errorTitle: String(options.errorTitle || 'Chapter download failed.'),
@@ -1943,6 +1987,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'getChapterDownloads') {
+    sendResponse({ ok: true, downloads: [..._chapterAccessTasks.values()]
+      .filter((task) => task.originTabId === sender.tab?.id && !task.signal.aborted &&
+        !['downloadDone', 'downloadError', 'downloadCancelled'].includes(task.progress?.action))
+      .map((task) => task.progress).filter(Boolean) });
+    return false;
+  }
+  if (message.action === 'cancelChapterDownload') {
+    const task = _chapterAccessTasks.get(message.taskId);
+    if (!task || task.originTabId !== sender.tab?.id || task.progress?.action === 'downloadSaving') {
+      sendResponse({ ok: false, error: 'This chapter is no longer cancellable. If a save dialog is open, cancel it there.' });
+    } else {
+      task.cancel();
+      notifyTab(task.originTabId, { action: 'downloadCancelled', chapterUrl: task.chapterUrl, taskId: task.id });
+      sendResponse({ ok: true });
+    }
+    return false;
+  }
   if (message.action === 'getChapterAccessPauses') {
     sendResponse({ pauses: [..._chapterAccessTasks.values()]
       .filter((task) => task.originTabId === sender.tab?.id && task.access.paused)
@@ -2042,6 +2104,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'downloadAllChapters') {
     const originTabId = sender.tab?.id ?? null;
     withDownloadAllSessionLock(async () => {
+        const cfg = await loadCfg();
+        if (cfg['download.enableAll'] !== true) {
+          sendResponse({ ok: false, error: 'Download All is deprecated and disabled. Enable it in Download & ZIP settings only if you accept the risk of IP bans and Comix blocking walls.' });
+          return;
+        }
         const existing = await loadDownloadAllSessionForTab(originTabId, sender.tab?.url || '');
         if (existing && (
           existing.active || existing.status === 'awaiting_save' || existing.canResumeDownload
@@ -2469,12 +2536,11 @@ function normalizeSingleChapterDownloadRequest(chapterUrl, cfg, rawOptions) {
 
 // Extraction tabs are opened in the background (active:false). comix.to's reader
 // throttles its own loading while it thinks the tab is hidden, so a background
-// extraction crawls and times out. We add a #cdlx marker to the tab URL; the
-// document_start MAIN-world content script (scripts/visibility-shim.js) sees it and
-// makes the page report itself visible, so loading runs at full speed without the
-// user needing to focus the tab. The marker is a URL hash — it never reaches the
-// server, and it only ever appears on these throwaway tabs, never on a page the user
-// is reading. The original (marker-free) URL is kept everywhere else for naming/fetch.
+// extraction crawls and times out. The legacy fallback uses #cdlx to bootstrap the
+// document_start MAIN-world extraction bridge, which immediately removes the hash
+// and captures the reader's page list without scrolling. This transient marker is
+// not a secrecy boundary: page-world code can observe extraction behavior. The
+// normal chapter API path requires neither a marker nor an extraction tab.
 function withExtractMarker(url) {
   try { const u = new URL(url); u.hash = 'cdlx'; return u.href; }
   catch (_) { return String(url).split('#')[0] + '#cdlx'; }
@@ -2485,12 +2551,13 @@ async function handleDownloadRequest(chapterUrl, zipName, originTabId, options) 
   const normalized = normalizeSingleChapterDownloadRequest(chapterUrl, cfg, options);
   zipName = normalized.zipName;
   options = normalized.options;
-  const existing = [..._chapterAccessTasks.values()].find((task) => task.originTabId === originTabId && task.chapterUrl === chapterUrl);
+  const existing = [..._chapterAccessTasks.values()].find((task) => !task.signal.aborted && task.originTabId === originTabId && task.chapterUrl === chapterUrl);
   if (existing) {
-    if (existing.access.paused) notifyTab(originTabId, existing.message);
+    if (existing.progress) notifyTab(originTabId, existing.progress);
     return;
   }
   const task = createChapterAccessTask(chapterUrl, originTabId);
+  notifyTab(originTabId, { action: 'downloadPreparing', chapterUrl, taskId: task.id, zipName, format: options.format });
   cdlLog('info', `Download started: ${zipName}`);
   // comix's chapter API lists the pages without loading the chapter in a background tab.
   let apiImages = null;
@@ -2498,10 +2565,16 @@ async function handleDownloadRequest(chapterUrl, zipName, originTabId, options) 
     apiImages = await task.access.run(() => chapterImagesFromApi(chapterUrl, originTabId), { chapterUrl });
   } catch (err) {
     if (task.signal.aborted || isDownloadAllStoppedError(err)) {
+      notifyTab(originTabId, { action: 'downloadCancelled', chapterUrl, taskId: task.id });
       _chapterAccessTasks.delete(task.id);
       return;
     }
     cdlLog('warn', `Chapter page list unavailable (${err.message}); opening the chapter instead`);
+  }
+  if (task.signal.aborted) {
+    notifyTab(originTabId, { action: 'downloadCancelled', chapterUrl, taskId: task.id });
+    _chapterAccessTasks.delete(task.id);
+    return;
   }
   if (apiImages) {
     cdlLog('info', `Listed ${apiImages.length} pages for ${zipName}`);
@@ -2517,6 +2590,11 @@ async function handleDownloadRequest(chapterUrl, zipName, originTabId, options) 
     });
 
     task.tabId = tab.id;
+    if (task.signal.aborted) {
+      chrome.tabs.remove(tab.id).catch(() => {});
+      _chapterAccessTasks.delete(task.id);
+      return;
+    }
     pendingDownloads.set(tab.id, { chapterUrl, zipName, originTabId, cfg, options, task });
   } catch (err) {
     _chapterAccessTasks.delete(task.id);
@@ -2526,6 +2604,7 @@ async function handleDownloadRequest(chapterUrl, zipName, originTabId, options) 
       publicMessage: 'The background chapter page could not be opened.',
       errorKind: 'tab_open',
       failurePhase: 'tab_open',
+      taskId: task.id,
       zipName,
       format: options && options.format,
     });
@@ -2560,7 +2639,7 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
       expectedSeriesSlug: (String(chapterUrl).match(/\/title\/([^/]+)/) || [])[1] || '',
       expectedChapterUrl: chapterUrl,
       onChallenge: ({ state }) => notifyTab(originTabId, {
-        action: 'downloadChallenge', chapterUrl, state,
+        action: 'downloadChallenge', chapterUrl, state, taskId: task.id,
       }),
     });
     if (challenge.challenged) pending.challengeEncountered = true;
@@ -2594,7 +2673,7 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
       if (pending.challengeEncountered && !pending.challengeExtractionRetried) {
         pending.challengeExtractionRetried = true;
         pending.handling = false;
-        notifyTab(originTabId, { action: 'downloadChallenge', chapterUrl, state: 'retrying' });
+        notifyTab(originTabId, { action: 'downloadChallenge', chapterUrl, state: 'retrying', taskId: task.id });
         await chrome.tabs.update(tabId, { url: withExtractMarker(chapterUrl) });
         return;
       }
@@ -2621,7 +2700,7 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
     pendingDownloads.delete(tabId);
     chrome.tabs.remove(tabId).catch(() => {});
     if (isDownloadAllStoppedError(err)) {
-      notifyTab(originTabId, { action: 'downloadCancelled', chapterUrl });
+      notifyTab(originTabId, { action: 'downloadCancelled', chapterUrl, taskId: task.id });
       return;
     }
     console.error('[ComixDL] Extraction échouée:', err);
@@ -2629,6 +2708,7 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
     notifyChapterDownloadError(originTabId, chapterUrl, err, {
       errorKind: 'chapter_extraction',
       failurePhase: 'extracting',
+      taskId: task.id,
       zipName,
       format: options && options.format,
     });
@@ -2636,6 +2716,14 @@ async function handlePendingDownloadTabUpdated(tabId, changeInfo) {
 }
 
 chrome.tabs.onUpdated.addListener(handlePendingDownloadTabUpdated);
+
+// Forward browser-observed navigation internally instead of patching page history.
+function handleComixRouteUpdated(tabId, changeInfo, tab) {
+  if (!changeInfo || (!changeInfo.url && changeInfo.status !== 'complete')) return;
+  if (!supportedComixOrigin(changeInfo.url || (tab && tab.url))) return;
+  notifyTab(tabId, { action: 'cdlRouteChanged' });
+}
+chrome.tabs.onUpdated.addListener(handleComixRouteUpdated);
 
 // ── Nettoyage des onglets fermés avant extraction ─────────────────────────────
 
@@ -2675,13 +2763,15 @@ async function extractChapterImagesFromPage(opts) {
 
   // ── STRATEGY 0: page list captured by content/extract-bridge.js ──────────────
   // The bridge (document_start, MAIN world) grabs the reader's decrypted chapters
-  // API and exposes window.__cdlPages = [{src,index}]. It arrives within ~1s of load
+  // API and retains the pages in its own closure. They arrive within ~1s of load
   // regardless of tab focus, so it both fixes background extraction and skips the
   // slow scroll entirely. Poll briefly in case extraction is injected before it lands.
   {
     const deadline = Date.now() + (aggressive ? 6000 : 12000);
     while (Date.now() < deadline) {
-      const pages = window.__cdlPages;
+      const request = { pages: null };
+      window.dispatchEvent(new CustomEvent('cdl:extract-pages', { detail: request }));
+      const pages = request.pages;
       if (Array.isArray(pages) && pages.length) {
         return pages
           .filter((p) => p && /^https?:/i.test(p.src))
@@ -3214,7 +3304,20 @@ function createChapterAccessTask(chapterUrl, originTabId) {
   const cancelPromise = new Promise((resolve) => { release = resolve; });
   const task = {
     id: crypto.randomUUID(), chapterUrl, originTabId, signal: controller.signal, cancelPromise,
-    cancel() { controller.abort(); release(); },
+    cancel() {
+      controller.abort(); release();
+      if (task.tabId != null) {
+        const pending = pendingDownloads.get(task.tabId);
+        pendingDownloads.delete(task.tabId);
+        chrome.tabs.remove(task.tabId).catch(() => {});
+        if (!pending?.handling) _chapterAccessTasks.delete(task.id);
+      }
+      const queued = downloadQueue.findIndex((payload) => payload.task === task);
+      if (queued >= 0) {
+        downloadQueue.splice(queued, 1);
+        _chapterAccessTasks.delete(task.id);
+      }
+    },
   };
   task.access = createCloudflarePauseControl({
     cancelPromise, cancelled: () => controller.signal.aborted,
@@ -3237,12 +3340,18 @@ function createChapterAccessTask(chapterUrl, originTabId) {
 }
 
 function scheduleDownload(payload) {
+  if (payload.task?.signal.aborted) {
+    _chapterAccessTasks.delete(payload.task.id);
+    return;
+  }
   downloadQueue.push(payload);
   notifyTab(payload.originTabId, {
     action: 'downloadProgress',
     chapterUrl: payload.chapterUrl,
+    taskId: payload.task?.id,
     current: 0,
     total: payload.images.length,
+    queued: true,
   });
   processDownloadQueue();
 }
@@ -3261,12 +3370,14 @@ function processDownloadQueue() {
           notifyTab(payload.originTabId, {
             action: 'downloadCancelled',
             chapterUrl: payload.chapterUrl,
+            taskId: payload.task?.id,
           });
           return;
         }
         console.error('[ComixDL] ZIP error:', err);
         cdlLog('error', `ZIP error (${payload.zipName}): ${err.message}`);
         notifyChapterDownloadError(payload.originTabId, payload.chapterUrl, err, {
+          taskId: payload.task?.id,
           zipName: payload.zipName,
           format: payload.options && payload.options.format,
         });
@@ -3297,6 +3408,7 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   let done = 0;
   let firstImageError = null;
   const files = [];
+  notifyTab(originTabId, { action: 'downloadProgress', chapterUrl, taskId: task?.id, current: 0, total, queued: false });
 
   await forEachPageInPool(ordered, batchSize, () => !!(task && task.signal.aborted), async (img, index) => {
     const page = index + 1;
@@ -3311,11 +3423,11 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
       firstImageError = fetched.error;
     }
     done++;
-    notifyTab(originTabId, { action: 'downloadProgress', chapterUrl, current: done, total });
+    notifyTab(originTabId, { action: 'downloadProgress', chapterUrl, taskId: task?.id, current: done, total });
   });
   files.sort((a, b) => a.page - b.page);
   if (task && task.signal.aborted) {
-    notifyTab(originTabId, { action: 'downloadCancelled', chapterUrl });
+    notifyTab(originTabId, { action: 'downloadCancelled', chapterUrl, taskId: task?.id });
     return;
   }
   if (total === 0 || files.length !== total) {
@@ -3349,17 +3461,27 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
 
   let generated;
   try {
+    notifyTab(originTabId, { action: 'downloadPackaging', chapterUrl, taskId: task?.id, format: opts.format, percent: 0 });
     if (isPdf) {
       const pdfBytes = await buildChapterPdfOutput(files, opts, chapterLabel, chapterUrl, mangaName, (progress = {}) => {
         notifyTab(originTabId, {
-          action: 'downloadPackaging', chapterUrl, format: 'pdf',
+          action: 'downloadPackaging', chapterUrl, taskId: task?.id, format: 'pdf',
           current: progress.current, total: progress.total,
+          percent: progress.total > 0 ? progress.current / progress.total * 100 : null,
           finalizing: progress.finalizing === true,
         });
       });
       generated = await _bytesToDownloadUrl(pdfBytes, 'application/pdf');
     } else {
-      generated = await _zipToDownloadUrl(zip);
+      let lastPercent = -1;
+      generated = await _zipToDownloadUrl(zip, (progress) => {
+        const percent = Math.floor(Number(progress.percent) || 0);
+        if (percent === lastPercent) return;
+        lastPercent = percent;
+        if (!task?.signal.aborted) notifyTab(originTabId, {
+          action: 'downloadPackaging', chapterUrl, taskId: task?.id, format: opts.format, percent,
+        });
+      });
     }
   } catch (error) {
     throw tagDiagnosticError(
@@ -3369,8 +3491,14 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
     );
   }
   const { url, revoke, base64: urlBase64 } = generated;
+  if (task?.signal.aborted) {
+    if (typeof revoke === 'function') revoke();
+    notifyTab(originTabId, { action: 'downloadCancelled', chapterUrl, taskId: task?.id });
+    return;
+  }
   let delivery;
   try {
+    notifyTab(originTabId, { action: 'downloadSaving', chapterUrl, taskId: task?.id, filename: targetName });
     delivery = await saveGeneratedArchive({
       url, revoke, base64: urlBase64, zip, filename: targetName, originTabId,
     });
@@ -3390,6 +3518,9 @@ async function downloadImagesAsZip({ images, chapterUrl, zipName, originTabId, c
   notifyTab(originTabId, {
     action: 'downloadDone',
     chapterUrl,
+    taskId: task?.id,
+    filename: savedName,
+    confirmed: delivery.confirmed,
     warning: destinationWarning.trim(),
   });
 
@@ -5521,6 +5652,21 @@ function recordChapterDownloaded(slug, chapterLabel, mangaName) {
 
 function notifyTab(tabId, message) {
   if (tabId == null) return;
+  // Keep the existing single-chapter pipeline authoritative after page reloads.
+  if (/^download(?:Preparing|Progress|Packaging|Saving|Blocked|Resumed|Challenge|Done|Error|Cancelled)$/.test(message.action)) {
+    const task = message.taskId ? _chapterAccessTasks.get(message.taskId) : [..._chapterAccessTasks.values()].find((item) =>
+      item.originTabId === tabId && item.chapterUrl === message.chapterUrl);
+    if (task) {
+      if (task.signal.aborted && message.action !== 'downloadCancelled') return;
+      const previous = task.progress || {};
+      message = { ...previous, ...message, taskId: task.id, revision: (previous.revision || 0) + 1 };
+      if (message.action === 'downloadProgress') {
+        message.imagesDone = message.current;
+        message.imagesTotal = message.total;
+      }
+      task.progress = message;
+    }
+  }
   chrome.tabs.sendMessage(tabId, message).catch(() => {});
 }
 

@@ -160,9 +160,9 @@ const fixture = `<!doctype html><html data-theme="dark"><head><title>Cloudflare 
       self.singlePause = self.singleTask.access.pause(makeCloudflareAccessError({ blocked: true, blockKind: 'access_denied', cloudflareCode: '1020' }))
         .catch(error => error.code);
     });
-    await page.locator('#cdl-single-error[data-task-id]').waitFor();
+    await page.locator('#cdl-chapter-popup[data-session-status="blocked"]').waitFor();
     await page.bringToFront();
-    const singleBox = await page.locator('#cdl-single-error').boundingBox();
+    const singleBox = await page.locator('#cdl-chapter-popup').boundingBox();
     assert.ok(singleBox.x >= 0 && singleBox.x + singleBox.width <= 321 && singleBox.height > 100);
     await page.screenshot({ path: path.join(screenshots, 'cloudflare-single-pause-320.png'), animations: 'disabled' });
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();

@@ -135,7 +135,7 @@ class ZipStub {
 
 const singleChapterFunction = extractFunction('downloadImagesAsZip');
 const incompleteGuard = singleChapterFunction.indexOf('if (total === 0 || files.length !== total)');
-const zipGeneration = singleChapterFunction.indexOf('await _zipToDownloadUrl(zip)');
+const zipGeneration = singleChapterFunction.indexOf('await _zipToDownloadUrl(zip,');
 check('single-chapter download rejects incomplete image sets before ZIP generation',
   incompleteGuard !== -1 && zipGeneration !== -1 && incompleteGuard < zipGeneration);
 

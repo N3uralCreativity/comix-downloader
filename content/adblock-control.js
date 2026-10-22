@@ -7,23 +7,14 @@
 
   var STORAGE_KEY = 'cdlSettings';
   var SETTING_KEY = 'features.blockAds';
-  var STATE_ATTR = 'data-cdl-adblock';
   var STATE_EVENT = 'cdl:adblock-state';
   var lastValue = null;
 
   function publish(enabled) {
     enabled = enabled !== false;
-    if (lastValue === enabled && document.documentElement &&
-        document.documentElement.getAttribute(STATE_ATTR) === (enabled ? 'on' : 'off')) return;
+    if (lastValue === enabled) return;
     lastValue = enabled;
-
-    var html = document.documentElement;
-    if (!html) {
-      document.addEventListener('readystatechange', function retry() { publish(enabled); }, { once: true });
-      return;
-    }
-    html.setAttribute(STATE_ATTR, enabled ? 'on' : 'off');
-    try { window.dispatchEvent(new Event(STATE_EVENT)); } catch (_) {}
+    try { window.dispatchEvent(new CustomEvent(STATE_EVENT, { detail: enabled })); } catch (_) {}
   }
 
   function valueFromSettings(settings) {

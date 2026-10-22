@@ -9,7 +9,6 @@
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const DOWNLOAD_BTN_CLASS  = 'cdl-btn';
-const PROGRESS_SPAN_CLASS = 'cdl-progress';
 const EXTENSION_ID        = chrome.runtime.id;
 
 // Dernier lancement Download All — permet de relancer après une erreur ZIP
@@ -85,7 +84,7 @@ function _clampInt(v, min, max, d) { v = parseInt(v, 10); return isFinite(v) ? M
 function getAllLabel() { const l = CFG['appearance.allLabel']; return (l && String(l).trim()) ? String(l).trim() : 'Download All'; }
 function isIconText() { return CFG['appearance.btnStyle'] === 'icon+text'; }
 function getIdleContent() {
-  return ICON_DOWNLOAD + (isIconText() ? '<span class="cdl-btn-text">Download</span>' : '') + `<span class="${PROGRESS_SPAN_CLASS}"></span>`;
+  return ICON_DOWNLOAD + (isIconText() ? '<span class="cdl-btn-text">Download</span>' : '');
 }
 function applyBtnTextClass(btn) { btn.classList.toggle('cdl-has-text', isIconText()); }
 
@@ -146,26 +145,26 @@ function applyDynamicStyles() {
   const pos = CFG['frame.position'] || 'bottom-right';
   const vy = pos.indexOf('top') === 0 ? 'top:24px;bottom:auto;' : 'bottom:24px;top:auto;';
   const vx = /left$/.test(pos) ? 'left:24px;right:auto;' : 'right:24px;left:auto;';
-  const btnW = Math.round(36 * scale), svgS = Math.round(16 * scale), loadW = Math.round(68 * scale);
+  const btnW = Math.round(36 * scale), svgS = Math.round(16 * scale);
   const fontS = Math.max(10, Math.round(12 * scale));
   const style = document.createElement('style');
   style.id = 'cdl-dyn-styles';
   style.textContent = `
     .${DOWNLOAD_BTN_CLASS} { width:${btnW}px; min-width:${btnW}px; }
     .${DOWNLOAD_BTN_CLASS} svg { width:${svgS}px; height:${svgS}px; }
-    .${DOWNLOAD_BTN_CLASS}[data-state="loading"] { width:${loadW}px; min-width:${loadW}px; color:${accent}; }
-    .${PROGRESS_SPAN_CLASS} { color:${accent}; }
-    #cdl-all-popup, #cdl-single-error { --cdl-accent:${accent}; }
+    .${DOWNLOAD_BTN_CLASS}[data-state="loading"] { width:${btnW}px; min-width:${btnW}px; color:${accent}; }
+    :is(#cdl-all-popup, #cdl-chapter-popup), #cdl-single-error { --cdl-accent:${accent}; }
     .${DOWNLOAD_BTN_CLASS}.cdl-has-text { width:auto; min-width:0; gap:6px; padding:0 9px; }
     .${DOWNLOAD_BTN_CLASS}.cdl-has-text[data-state="loading"] { width:auto; min-width:0; }
     .cdl-btn-text { font-size:${fontS}px; font-weight:600; }
-    #cdl-all-popup { width:${W}px; ${vy} ${vx} }
+    :is(#cdl-all-popup, #cdl-chapter-popup) { width:${W}px; ${vy} ${vx} }
+    body:has(#cdl-all-popup) #cdl-chapter-popup { ${CFG['frame.position']?.startsWith('top') ? 'top:auto;bottom:12px;' : 'bottom:auto;top:12px;'} }
     ${isCustom ? `
     .${DOWNLOAD_BTN_CLASS}[data-state="idle"] { color:${accent}; }
     .${DOWNLOAD_BTN_CLASS}[data-state="idle"]:hover { color:${accent}; filter:brightness(1.25); }
     .cdl-dl-all-btn, .cdl-dl-all-btn svg { color:${accent}!important; }
     ` : ''}
-    ${noAnim ? `.${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg{animation:none!important;} #cdl-all-popup{animation:none!important;} .${DOWNLOAD_BTN_CLASS},.cdl-ap-bar,.cdl-ap-zip-fill,.cdl-ap-close{transition:none!important;} .cdl-ap-activity-indicator,.cdl-ap-bar,.cdl-ap-bar::after,.cdl-ap-zip-fill::after,.cdl-ap-stage.is-active .cdl-ap-stage-dot,.cdl-ap-log-item.active::before{animation:none!important;}` : ''}
+    ${noAnim ? `.${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg{animation:none!important;} :is(#cdl-all-popup,#cdl-chapter-popup){animation:none!important;} .${DOWNLOAD_BTN_CLASS},.cdl-ap-bar,.cdl-ap-zip-fill,.cdl-ap-close{transition:none!important;} .cdl-ap-activity-indicator,.cdl-ap-bar,.cdl-ap-bar::after,.cdl-ap-zip-fill::after,.cdl-ap-stage.is-active .cdl-ap-stage-dot,.cdl-ap-log-item.active::before{animation:none!important;}` : ''}
   `;
   document.head.appendChild(style);
 }
@@ -177,6 +176,8 @@ function onSettingsChanged() {
   // the settings page would restyle / overwrite those buttons.
   if (!isTitleOverviewPage()) return;
   applyDynamicStyles();
+  injectDownloadAllButton();
+  injectSubscribeButton();
   const all = document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)');
   if (all && !all.disabled) _setHTML(all, `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`);
   document.querySelectorAll(`.${DOWNLOAD_BTN_CLASS}`).forEach((b) => {
@@ -190,8 +191,9 @@ function maybeAutoHideFrame(popup) {
   const sec = _clampInt(CFG['frame.autoHideSec'], 0, 60, 0);
   clearTimeout(popup._cdlAutoHideTimer);
   if (sec > 0) popup._cdlAutoHideTimer = setTimeout(() => {
-    if (document.getElementById('cdl-all-popup') !== popup) return;
-    dismissDownloadAllSession();
+    if (document.getElementById(popup.id) !== popup) return;
+    if (popup.id === 'cdl-chapter-popup') _chapterProgressItems.clear();
+    else dismissDownloadAllSession();
     popup.remove();
   }, sec * 1000);
 }
@@ -233,8 +235,8 @@ function injectStyles() {
       color: var(--accent, #60a5fa);
       pointer-events: none;
       gap: 3px;
-      width: 68px;
-      min-width: 68px;
+      width: 36px;
+      min-width: 36px;
       justify-content: center;
     }
     .${DOWNLOAD_BTN_CLASS}[data-state="loading"] svg {
@@ -254,19 +256,6 @@ function injectStyles() {
       from { transform: rotate(0deg); }
       to   { transform: rotate(360deg); }
     }
-    .${PROGRESS_SPAN_CLASS} {
-      position: static;
-      transform: none;
-      font-size: 10px;
-      line-height: 1;
-      font-weight: 600;
-      color: var(--accent, #60a5fa);
-      white-space: nowrap;
-      pointer-events: none;
-      letter-spacing: 0;
-    }
-    .${DOWNLOAD_BTN_CLASS}[data-state="loading"] .${PROGRESS_SPAN_CLASS} { display: inline; }
-    .${DOWNLOAD_BTN_CLASS}:not([data-state="loading"]) .${PROGRESS_SPAN_CLASS} { display: none; }
     /* ── Bouton Download All ──────────────────────────────────────────────── */
     .cdl-title-actions {
       display: inline-flex;
@@ -302,7 +291,7 @@ function injectStyles() {
       margin-top: 0 !important;
     }
     /* ── Popup progression Download All ──────────────────────────────────── */
-    #cdl-all-popup {
+    :is(#cdl-all-popup, #cdl-chapter-popup) {
       /* Inherits comix.to's own theme tokens so it matches whatever palette the
          user has active — "Main" (cyan) or "Dark" (purple). [data-cdl-theme="light"]
          below covers comix's light theme; fallbacks are comix's "Main" values. */
@@ -341,7 +330,7 @@ function injectStyles() {
       flex-direction: column;
       animation: cdl-ap-in .22s cubic-bezier(.16,.84,.44,1) both;
     }
-    #cdl-all-popup[data-cdl-theme="light"] {
+    :is(#cdl-all-popup, #cdl-chapter-popup)[data-cdl-theme="light"] {
       --cdl-bg: #ffffff;
       --cdl-header-bg: #f7f8fb;
       --cdl-text: #2b3146;
@@ -520,7 +509,7 @@ function injectStyles() {
       position: relative;
       overflow: hidden;
     }
-    #cdl-all-popup[data-progress-mode="indeterminate"] .cdl-ap-bar {
+    :is(#cdl-all-popup, #cdl-chapter-popup)[data-progress-mode="indeterminate"] .cdl-ap-bar {
       width: 34% !important;
       animation: cdl-ap-indeterminate 1.25s ease-in-out infinite;
     }
@@ -531,7 +520,7 @@ function injectStyles() {
       transform: translateX(-100%);
       background: linear-gradient(90deg, transparent, rgba(255,255,255,.38), transparent);
     }
-    #cdl-all-popup[data-progress-mode="active"] .cdl-ap-bar::after,
+    :is(#cdl-all-popup, #cdl-chapter-popup)[data-progress-mode="active"] .cdl-ap-bar::after,
     .cdl-ap-archive.is-active .cdl-ap-zip-fill::after {
       animation: cdl-ap-shimmer 1.45s ease-in-out infinite;
     }
@@ -778,7 +767,13 @@ function injectStyles() {
     .cdl-se-retry { border: 1px solid var(--cdl-err-border); background: var(--cdl-err-bg); color: var(--cdl-err); }
     .cdl-se-dismiss { border: 1px solid var(--cdl-border); background: transparent; color: var(--cdl-text); }
     #cdl-single-error[data-task-id] .cdl-se-actions,
-    #cdl-all-popup[data-session-status="blocked"] .cdl-ap-footer { flex-wrap: wrap; }
+    :is(#cdl-all-popup, #cdl-chapter-popup)[data-session-status="blocked"] .cdl-ap-footer { flex-wrap: wrap; }
+    .cdl-cp-row { padding:8px 0; border-bottom:1px solid var(--cdl-border); }
+    .cdl-cp-row strong, .cdl-cp-row span { display:block; overflow-wrap:anywhere; }
+    .cdl-cp-row span { color:var(--cdl-muted); font-size:12px; }
+    .cdl-cp-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+    .cdl-cp-actions button, .cdl-cp-actions a { font-size:12px; padding:4px 8px; }
+    .cdl-cp-actions a { color:var(--cdl-accent); }
     #cdl-single-error[data-task-id] .cdl-se-actions a {
       border: 1px solid var(--cdl-border); border-radius: 6px;
       padding: 6px 12px; color: var(--cdl-text); font-size: 11px;
@@ -855,12 +850,12 @@ function injectStyles() {
       100% { transform: translateX(295%); }
     }
     @media (prefers-reduced-motion: reduce) {
-      #cdl-all-popup, .cdl-ap-activity-indicator, .cdl-ap-bar::after,
+      #cdl-all-popup, #cdl-chapter-popup, .cdl-ap-activity-indicator, .cdl-ap-bar::after,
       .cdl-ap-bar, .cdl-ap-zip-fill, .cdl-ap-zip-fill::after, .cdl-ap-stage-dot,
       .cdl-ap-log-item.active::before { animation: none !important; transition: none !important; }
     }
     @media (max-width: 640px) {
-      #cdl-all-popup {
+      :is(#cdl-all-popup, #cdl-chapter-popup) {
         left: 12px !important;
         right: 12px !important;
         width: auto !important;
@@ -1043,6 +1038,7 @@ function startDownload(btn, chapterUrl, zipName, sourceMeta) {
     return;
   }
   setButtonState(btn, 'loading', null);
+  updateChapterProgressPanel({ action: 'downloadPreparing', chapterUrl, zipName });
   try {
     chrome.runtime.sendMessage(
       {
@@ -1061,6 +1057,7 @@ function startDownload(btn, chapterUrl, zipName, sourceMeta) {
             context: { operation: 'single_chapter', chapterUrl },
           });
           setButtonState(btn, 'error', message);
+          updateChapterProgressPanel({ action: 'downloadError', chapterUrl, error: message, diagnostic });
           showChapterDownloadError(message, diagnostic, btn);
         }
       }
@@ -1072,6 +1069,7 @@ function startDownload(btn, chapterUrl, zipName, sourceMeta) {
       context: { operation: 'single_chapter', chapterUrl },
     });
     setButtonState(btn, 'error', message);
+    updateChapterProgressPanel({ action: 'downloadError', chapterUrl, error: message, diagnostic });
     showChapterDownloadError(message, diagnostic, btn);
   }
 }
@@ -1079,6 +1077,199 @@ function startDownload(btn, chapterUrl, zipName, sourceMeta) {
 // Output options for a single-chapter download — inherits the saved settings
 // defaults (format/ComicInfo). A single chapter is itself the .cbz, so series
 // cover/series.json aren't bundled, but ComicInfo still uses the scraped fields.
+const _chapterProgressItems = new Map();
+const _chapterTerminalActions = new Set(['downloadDone', 'downloadError', 'downloadCancelled']);
+
+function minimizeOtherProgressPanel(popup) {
+  const otherId = popup.id === 'cdl-chapter-popup' ? 'cdl-all-popup' : 'cdl-chapter-popup';
+  const body = document.getElementById(otherId)?.querySelector('.cdl-ap-body');
+  if (body) body.style.display = 'none';
+}
+
+function chapterProgressText(item) {
+  switch (item.action) {
+    case 'downloadProgress': return item.queued ? 'Queued' : `Downloading images: ${item.imagesDone || 0} / ${item.imagesTotal || 0}`;
+    case 'downloadPackaging': return item.finalizing ? 'Finalizing PDF' : `Building ${(item.format || 'ZIP').toUpperCase()}${Number.isFinite(item.percent) ? `: ${Math.round(item.percent)}%` : ''}`;
+    case 'downloadSaving': return 'Saving file - confirm or cancel in the browser save dialog';
+    case 'downloadBlocked': return `${item.error} Wait until access works, then resume.`;
+    case 'downloadChallenge': return item.state === 'required' ? 'Complete Cloudflare verification in the opened tab' : 'Waiting for chapter verification';
+    case 'downloadResumed': return 'Resuming download';
+    case 'downloadDone': return item.warning || (item.confirmed === false ? 'Sent to browser downloads' : 'Download saved');
+    case 'downloadCancelled': return 'Download cancelled';
+    case 'downloadError': return item.error || 'Chapter download failed';
+    default: return 'Reading chapter image list';
+  }
+}
+
+function updateChapterProgressPanel(message) {
+  if (!_cdlSlug() || !String(message.chapterUrl || '').includes(`/title/${_cdlSlug()}/`)) return false;
+  const previous = _chapterProgressItems.get(message.chapterUrl) || {};
+  if (message.taskId && previous.taskId === message.taskId && message.revision && message.revision <= previous.revision) return false;
+  // A late completion from an aborted task must not overwrite a newer retry.
+  if (message.taskId && previous.taskId && message.taskId !== previous.taskId && message.action !== 'downloadPreparing') return false;
+  const item = message.action === 'downloadPreparing' ? { ...message } : { ...previous, ...message };
+  if (message.action === 'downloadPreparing' && !message.taskId) {
+    delete item.taskId;
+    item.revision = 0;
+    item.imagesDone = item.imagesTotal = 0;
+  }
+  if (message.action === 'downloadProgress') {
+    item.imagesDone = message.current;
+    item.imagesTotal = message.total;
+  }
+  _chapterProgressItems.set(message.chapterUrl, item);
+  if (!document.getElementById('cdl-chapter-popup')) {
+    injectStyles();
+    applyDynamicStyles();
+  }
+  renderChapterProgressPanel();
+  return true;
+}
+
+function chapterProgressCommand(chapterUrl, action, button) {
+  const item = _chapterProgressItems.get(chapterUrl);
+  if (!item?.taskId) return;
+  button.disabled = true;
+  try {
+    chrome.runtime.sendMessage({ action, taskId: item.taskId }, (response) => {
+      const error = chrome.runtime.lastError;
+      if (error || !response?.ok) {
+        button.disabled = false;
+        cdlToast(response?.error || 'The extension connection was lost. Refresh this page.');
+      }
+    });
+  } catch (_) {
+    button.disabled = false;
+    cdlToast('The extension connection was lost. Refresh this page.');
+  }
+}
+
+function renderChapterProgressPanel() {
+  const items = [..._chapterProgressItems.values()];
+  if (!items.length) return;
+  let popup = document.getElementById('cdl-chapter-popup');
+  if (!popup) popup = showDownloadAllPopup(getMangaName(), items.length, { single: true });
+  const node = (id) => popup.querySelector(`#cdl-cp-${id}`);
+  const active = items.filter((item) => !_chapterTerminalActions.has(item.action));
+  const current = active.find((item) => item.action === 'downloadBlocked') || active[0] || items[items.length - 1];
+  const stage = current.action === 'downloadSaving' || current.action === 'downloadDone' ? 'save' : current.action === 'downloadPackaging' ? 'zip' : 'download';
+  const terminal = active.length ? (current.action === 'downloadBlocked' ? 'paused' : '') : items.some((item) => item.action === 'downloadError') ? 'error' : items.every((item) => item.action === 'downloadDone') ? 'done' : 'cancelled';
+  _dlAllSetStage(popup, stage, terminal);
+  popup.dataset.sessionStatus = current.action === 'downloadBlocked' ? 'blocked' : active.length ? 'running' : terminal;
+  popup.dataset.progressMode = active.length && !current.imagesTotal ? 'indeterminate' : active.length ? 'active' : 'idle';
+  node('chapter-status').textContent = items.length === 1 ? extractChapterLabel(current.chapterUrl) : `${active.length} active / ${items.length} chapters`;
+  node('img-status').textContent = chapterProgressText(current);
+  const total = items.reduce((sum, item) => sum + (Number(item.imagesTotal) || 0), 0);
+  const done = items.reduce((sum, item) => sum + (Number(item.imagesDone) || 0), 0);
+  node('bar').style.width = `${total ? Math.min(100, Math.round(done / total * 100)) : 0}%`;
+  node('counter').textContent = `${done} / ${total} images`;
+  node('main-progress').setAttribute('aria-label', 'Chapter images downloaded');
+  node('main-progress').setAttribute('aria-valuemax', String(total));
+  node('main-progress').setAttribute('aria-valuenow', String(done));
+  const archive = node('archive');
+  const packaging = current.action === 'downloadPackaging' || current.action === 'downloadSaving';
+  archive.style.display = packaging ? 'block' : 'none';
+  archive.setAttribute('aria-hidden', String(!packaging));
+  if (packaging) {
+    const percent = Number.isFinite(current.percent) ? Math.max(0, Math.min(100, Math.round(current.percent))) : null;
+    node('archive-label').textContent = stage === 'save' ? 'Saving file' : `Building ${(current.format || 'ZIP').toUpperCase()}`;
+    node('archive-percent').textContent = stage === 'save' || percent == null ? '' : `${percent}%`;
+    node('zip-fill').style.width = `${stage === 'save' ? 100 : percent || 0}%`;
+    node('zip-progress').setAttribute('aria-label', stage === 'save' ? 'Saving chapter' : 'Chapter archive progress');
+    if (percent == null || stage === 'save') node('zip-progress').removeAttribute('aria-valuenow');
+    else node('zip-progress').setAttribute('aria-valuenow', String(percent));
+  }
+  if (!popup._cdlChapterRows) popup._cdlChapterRows = new Map();
+  if (!items.some((item) => item.action === 'downloadError')) {
+    node('error-details').hidden = true;
+    node('error-details')._cdlDiagnostics = [];
+  }
+  for (const item of items) {
+    let row = popup._cdlChapterRows.get(item.chapterUrl);
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'cdl-cp-row';
+      const title = document.createElement('strong');
+      title.textContent = extractChapterLabel(item.chapterUrl);
+      row.append(title, document.createElement('span'), document.createElement('div'));
+      row.lastElementChild.className = 'cdl-cp-actions';
+      popup._cdlChapterRows.set(item.chapterUrl, row);
+      node('log').appendChild(row);
+    }
+    row.querySelector('span').textContent = chapterProgressText(item);
+    const signature = `${item.taskId}:${item.action}:${item.state || ''}`;
+    if (row.dataset.actions !== signature) {
+      row.dataset.actions = signature;
+      const actions = row.lastElementChild;
+      actions.replaceChildren();
+      const add = (label, action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'cdl-ap-secondary-btn';
+        button.textContent = label;
+        button.addEventListener('click', () => chapterProgressCommand(item.chapterUrl, action, button));
+        actions.appendChild(button);
+      };
+      if (item.action === 'downloadBlocked') {
+        add('Resume download', 'resumeBlockedChapter');
+        const check = document.createElement('a');
+        check.textContent = 'Check access';
+        check.href = /^https?:\/\//i.test(item.blockedUrl || '') ? item.blockedUrl : item.chapterUrl;
+        check.target = '_blank';
+        check.rel = 'noopener noreferrer';
+        actions.appendChild(check);
+      }
+      if (item.taskId && !_chapterTerminalActions.has(item.action) && item.action !== 'downloadSaving') add('Cancel', 'cancelChapterDownload');
+      if (item.action === 'downloadError') {
+        const retry = document.createElement('button');
+        retry.className = 'cdl-ap-retry-btn';
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', () => {
+          const button = findButtonByChapterUrl(item.chapterUrl);
+          if (button) button.click();
+          else cdlToast('Open the chapter list to retry this download.');
+        });
+        actions.appendChild(retry);
+      }
+    }
+    if (item.action === 'downloadError' && item.diagnostic) _cdlAddDiagnostic(node('error-details'), item.diagnostic, item.error);
+  }
+  const footer = popup.querySelector('.cdl-ap-footer');
+  footer.style.display = active.length ? 'none' : '';
+  if (!active.length) {
+    if (!footer.querySelector('.cdl-ap-done-btn')) {
+      footer.replaceChildren();
+      const close = document.createElement('button');
+      close.className = 'cdl-ap-done-btn';
+      close.textContent = 'Close';
+      close.addEventListener('click', () => { popup.remove(); _chapterProgressItems.clear(); });
+      footer.appendChild(close);
+    }
+  } else footer.replaceChildren();
+  if (active.length) {
+    clearTimeout(popup._cdlAutoHideTimer);
+    popup._cdlSingleTerminal = false;
+  } else if (!popup._cdlSingleTerminal) {
+    popup._cdlSingleTerminal = true;
+    maybeAutoHideFrame(popup);
+  }
+}
+
+function restoreChapterProgressPanel() {
+  if (!chrome?.runtime?.id || !_cdlSlug()) return;
+  const route = location.pathname;
+  try {
+    chrome.runtime.sendMessage({ action: 'getChapterDownloads' }, (response) => {
+      if (chrome.runtime.lastError || location.pathname !== route) return;
+      for (const item of response?.downloads || []) {
+        if (!updateChapterProgressPanel(item)) continue;
+        const button = findButtonByChapterUrl(item.chapterUrl);
+        if (button) setButtonState(button, 'loading', chapterProgressText(item));
+      }
+    });
+  } catch (_) {}
+}
+
 function buildSingleChapterOptions(chapterUrl, sourceMeta = {}) {
   const scanlator = String(sourceMeta.scanlator || sourceMeta.group || '').trim();
   return {
@@ -1098,10 +1289,9 @@ function buildSingleChapterOptions(chapterUrl, sourceMeta = {}) {
 function setButtonState(btn, state, extra) {
   btn.setAttribute('data-state', state);
   if (state !== 'error') delete btn._cdlDiagnostic;
-  const progressSpan = btn.querySelector(`.${PROGRESS_SPAN_CLASS}`);
-
   if (state === 'loading') {
-    _setHTML(btn, getSpinnerSVG() + `<span class="${PROGRESS_SPAN_CLASS}">${escapeHtml(extra || '')}</span>`);
+    _setHTML(btn, getSpinnerSVG());
+    btn.title = extra || 'Downloading chapter';
   } else if (state === 'done') {
     _setHTML(btn, ICON_DONE);
     btn.title = extra ? `Downloaded. ${extra}` : 'Downloaded!';
@@ -1439,7 +1629,7 @@ function restoreChapterAccessPause() {
     chrome.runtime.sendMessage({ action: 'getChapterAccessPauses' }, (response) => {
       if (chrome.runtime.lastError || !isTitleOverviewPage()) return;
       const message = response?.pauses?.find((item) => String(item.chapterUrl || '').includes(`/title/${_cdlSlug()}/`));
-      if (message) showChapterDownloadBlocked(message);
+      if (message) updateChapterProgressPanel(message);
     });
   } catch (_) {}
 }
@@ -1454,47 +1644,19 @@ function getSpinnerSVG() {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (String(message.action || '').startsWith('downloadAll') && !acceptDownloadAllUpdate(message)) return;
+  if (/^download(?:Preparing|Progress|Packaging|Saving|Blocked|Resumed|Challenge|Done|Error|Cancelled)$/.test(message.action)) {
+    if (!updateChapterProgressPanel(message)) return;
+    const button = findButtonByChapterUrl(message.chapterUrl);
+    if (button && !_chapterTerminalActions.has(message.action) && button.getAttribute('data-state') !== 'loading') {
+      setButtonState(button, 'loading', chapterProgressText(message));
+    }
+    if (button && !_chapterTerminalActions.has(message.action)) button.title = chapterProgressText(message);
+  }
   if (message.action === 'downloadBlocked') {
-    showChapterDownloadBlocked(message);
+    if (!document.getElementById('cdl-chapter-popup')) showChapterDownloadBlocked(message);
   } else if (message.action === 'downloadResumed') {
     const panel = document.getElementById('cdl-single-error');
     if (panel?.dataset.taskId === message.taskId) panel.remove();
-  } else if (message.action === 'downloadProgress') {
-    const btn = findButtonByChapterUrl(message.chapterUrl);
-    if (btn && btn.getAttribute('data-state') === 'loading') {
-      const progressSpan = btn.querySelector(`.${PROGRESS_SPAN_CLASS}`);
-      if (progressSpan) {
-        progressSpan.textContent = `${message.current}/${message.total}`;
-      }
-    }
-  } else if (message.action === 'downloadPackaging') {
-    const btn = findButtonByChapterUrl(message.chapterUrl);
-    if (btn && btn.getAttribute('data-state') === 'loading') {
-      const progressSpan = btn.querySelector(`.${PROGRESS_SPAN_CLASS}`);
-      if (progressSpan) {
-        progressSpan.textContent = message.finalizing
-          ? 'PDF save'
-          : `PDF ${message.current}/${message.total}`;
-      }
-      btn.title = message.finalizing ? 'Finalizing chapter PDF' : 'Building ordered chapter PDF';
-    }
-  } else if (message.action === 'downloadChallenge') {
-    const btn = findButtonByChapterUrl(message.chapterUrl);
-    if (btn && btn.getAttribute('data-state') === 'loading') {
-      const progressSpan = btn.querySelector(`.${PROGRESS_SPAN_CLASS}`);
-      if (progressSpan) {
-        progressSpan.textContent = message.state === 'required'
-          ? 'Verify'
-          : message.state === 'retrying'
-            ? 'Retrying'
-            : 'Waiting';
-      }
-      btn.title = message.state === 'required'
-        ? 'Complete Cloudflare verification in the opened tab'
-        : message.state === 'retrying'
-          ? 'Verification complete - retrying this chapter'
-          : 'Waiting for Cloudflare verification';
-    }
   } else if (message.action === 'downloadDone') {
     const btn = findButtonByChapterUrl(message.chapterUrl);
     if (btn) setButtonState(btn, 'done', message.warning || null);
@@ -1508,7 +1670,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (btn) {
       setButtonState(btn, 'error', errorMessage);
     }
-    showChapterDownloadError(errorMessage, message.diagnostic, btn, message.errorTitle);
+    if (!document.getElementById('cdl-chapter-popup')) showChapterDownloadError(errorMessage, message.diagnostic, btn, message.errorTitle);
 
   // ── Download All ──────────────────────────────────────────────────────────
   } else if (message.action === 'startDownloadAll') {
@@ -2856,7 +3018,9 @@ function placeDownloadAllButton(btn, { anchor, mode }) {
     group.setAttribute('aria-label', 'Comix Downloader');
   }
   if (btn.parentElement !== group) group.appendChild(btn);
-  if (subscription && subscription.parentElement !== group) group.appendChild(subscription);
+  if (subscription && subscription !== btn && btn.nextElementSibling !== subscription) {
+    btn.insertAdjacentElement('afterend', subscription);
+  }
   if (mode === 'append') {
     if (group.parentElement !== anchor || group.nextElementSibling) anchor.appendChild(group);
   } else if (mode === 'beforebegin') {
@@ -2869,12 +3033,24 @@ function placeDownloadAllButton(btn, { anchor, mode }) {
 /** Inject Download All beside the native title actions, never inside a dropdown. */
 function injectDownloadAllButton() {
   const existing = document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)');
+  if (CFG['download.enableAll'] !== true) {
+    existing?.remove();
+    clearTimeout(_dlAllInjRetryTimer);
+    _dlAllInjRetryTimer = null;
+    _chapterListCollectionControl?.cancel?.();
+    document.querySelector('#cdl-all-popup[data-view="chapter-list"]')?.remove();
+    closeSpecificChapterPicker(false);
+    document.getElementById('cdl-opts-backdrop')?.remove();
+    document.getElementById('cdl-opts-panel')?.remove();
+    return;
+  }
   const found = findDownloadAllAnchor();
   if (!found) {
     // Follow button not yet in DOM (React renders it late on mobile) — retry
     if (!_dlAllInjRetryTimer) {
       let attempts = 0;
       const retry = () => {
+        if (CFG['download.enableAll'] !== true) { _dlAllInjRetryTimer = null; return; }
         if (document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)')) { _dlAllInjRetryTimer = null; return; }
         injectDownloadAllButton();
         injectSubscribeButton();
@@ -2900,12 +3076,13 @@ function injectDownloadAllButton() {
   const btn = document.createElement('button');
   btn.className = 'btn btn--soft cdl-dl-all-btn';
   btn.type = 'button';
-  btn.title = 'Download all chapters as a ZIP';
+  btn.title = 'Download All (deprecated): risk of IP bans and Comix blocking walls';
   _setHTML(btn, `${ICON_DOWNLOAD} ${escapeHtml(getAllLabel())}`);
 
   btn.addEventListener('click', async (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (CFG['download.enableAll'] !== true) return;
     if (!chrome?.runtime?.id) { alert('Extension reloaded — please refresh the page.'); return; }
     if (document.getElementById('cdl-all-popup') || document.getElementById('cdl-opts-panel')) return; // already running / panel open
     if (btn._cdlConfirming) return;
@@ -2913,7 +3090,7 @@ function injectDownloadAllButton() {
     btn._cdlConfirming = true;
     let confirmed = false;
     try { confirmed = await _cdlAskConfirmation('download-all'); } finally { btn._cdlConfirming = false; }
-    if (!confirmed) return;
+    if (!confirmed || CFG['download.enableAll'] !== true) return;
 
     const mangaName = getMangaName();
     btn.disabled = true;
@@ -3025,8 +3202,9 @@ function _cdlDetectSiteTheme() {
 }
 
 function _cdlApplyPopupTheme() {
-  const popup = document.getElementById('cdl-all-popup');
-  if (popup) popup.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
+  document.querySelectorAll('#cdl-all-popup, #cdl-chapter-popup').forEach((popup) => {
+    popup.setAttribute('data-cdl-theme', _cdlDetectSiteTheme());
+  });
 }
 
 // Re-sync on site theme toggles (class/attr/style swaps on <html>/<body>) and on
@@ -3226,9 +3404,12 @@ function destinationTile(value, title, description, icon, plus) {
 }
 
 async function showDownloadAllOptionsPanel(mangaName, rows) {
+  if (CFG['download.enableAll'] !== true) return;
+  const route = location.pathname;
   injectOptsStyles();
   const meta = scrapeSeriesMeta();
   const [prefs, downloaded, plusAccess] = await Promise.all([getSeriesPrefs(), getDownloadedKeySet(), readPlusCloudAccess()]);
+  if (CFG['download.enableAll'] !== true || location.pathname !== route) return;
 
   // Defaults: settings, overlaid with this series' remembered choices.
   const def = {
@@ -3278,6 +3459,7 @@ async function showDownloadAllOptionsPanel(mangaName, rows) {
       <button class="cdl-op-close" id="cdl-op-close" title="Cancel">×</button>
     </div>
     <div class="cdl-op-body">
+      <p class="cdl-op-deprecated" role="note" style="margin:0;color:var(--cdl-muted);font-size:12px;line-height:1.5;">Download All is deprecated. Bulk downloading can trigger IP bans and Comix blocking or Cloudflare verification walls. Individual chapter downloads are recommended.</p>
       <div class="cdl-ap-manga-name" style="color:var(--cdl-muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(mangaName)}</div>
       <div>
         <div class="cdl-op-sec-label" id="cdl-op-dest-label">Save to</div>
@@ -3860,11 +4042,13 @@ function showChapterListLoadingError(popup, error, onRetry) {
 }
 
 function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
-  resetDownloadAllView();
-  document.getElementById('cdl-all-popup')?.remove();
+  const single = options.single === true;
+  if (!single) resetDownloadAllView();
+  const popupId = single ? 'cdl-chapter-popup' : 'cdl-all-popup';
+  document.getElementById(popupId)?.remove();
 
   const popup = document.createElement('div');
-  popup.id = 'cdl-all-popup';
+  popup.id = popupId;
   popup.dataset.seriesSlug = _cdlSlug();
   popup.dataset.sessionId = options.sessionId || crypto.randomUUID();
   popup.dataset.startPending = options.sessionRestore ? 'false' : 'true';
@@ -3874,7 +4058,7 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
   popup.dataset.sessionUpdatedAt = '0';
   _setHTML(popup, `
     <div class="cdl-ap-header">
-      <div class="cdl-ap-title">${ICON_DOWNLOAD}&nbsp;Download All</div>
+      <div class="cdl-ap-title">${ICON_DOWNLOAD}&nbsp;${single ? 'Chapter downloads' : 'Download All'}</div>
       <button class="cdl-ap-close" title="Minimize">−</button>
     </div>
     <div class="cdl-ap-body">
@@ -3888,7 +4072,7 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
       </div>
       <div class="cdl-ap-stages" aria-label="Download progress stages">
         <div class="cdl-ap-stage is-active" data-stage="download"><span class="cdl-ap-stage-dot"></span><span>Download</span></div>
-        <div class="cdl-ap-stage" data-stage="zip"><span class="cdl-ap-stage-dot"></span><span>ZIP</span></div>
+        <div class="cdl-ap-stage" data-stage="zip"><span class="cdl-ap-stage-dot"></span><span>${single ? 'Archive' : 'ZIP'}</span></div>
         <div class="cdl-ap-stage" data-stage="save"><span class="cdl-ap-stage-dot"></span><span>Save</span></div>
       </div>
       <div class="cdl-ap-bar-wrap" id="cdl-ap-main-progress" role="progressbar" aria-label="Chapters downloaded" aria-valuemin="0" aria-valuemax="${totalChapters}" aria-valuenow="0"><div class="cdl-ap-bar" id="cdl-ap-bar" style="width:0%"></div></div>
@@ -3908,7 +4092,7 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
     </div>
     <div class="cdl-ap-footer">
       <button class="cdl-ap-cancel-btn" id="cdl-ap-cancel-btn">Cancel</button>
-    </div>`);
+    </div>`.replace(/id="cdl-ap-/g, single ? 'id="cdl-cp-' : 'id="cdl-ap-'));
   document.body.appendChild(popup);
   _cdlEnsureThemeWatcher();
   requestAnimationFrame(_cdlApplyPopupTheme);
@@ -3917,8 +4101,14 @@ function showDownloadAllPopup(mangaName, totalChapters, options = {}) {
   popup.querySelector('.cdl-ap-close').addEventListener('click', () => {
     const body = popup.querySelector('.cdl-ap-body');
     body.style.display = body.style.display === 'none' ? '' : 'none';
+    if (body.style.display !== 'none') minimizeOtherProgressPanel(popup);
   });
 
+  if (single) {
+    minimizeOtherProgressPanel(popup);
+    return popup;
+  }
+  minimizeOtherProgressPanel(popup);
   _dlAllSetFooterCancel(popup);
   _cdlPrepareDiagnosticDetails(popup.querySelector('#cdl-ap-error-details'));
   // Retry is offered only after a real error. Starting a second run while the
@@ -4166,7 +4356,7 @@ function _dlAllSetStage(popup, stage, terminal = '') {
     node.classList.toggle('is-done', terminal === 'done' || (terminal !== 'done' && index < activeIndex));
   });
 
-  const indicator = document.getElementById('cdl-ap-activity-indicator');
+  const indicator = popup.querySelector('.cdl-ap-activity-indicator');
   if (!indicator) return;
   indicator.className = 'cdl-ap-activity-indicator';
   indicator.textContent = '';
@@ -5056,12 +5246,17 @@ function cdlToast(msg) {
 }
 
 function injectSubscribeButton() {
-  if (document.querySelector('.cdl-sub-btn')) return;
   const allBtn = document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)');
-  if (!allBtn) return; // appears next to Download All; the observer re-runs the scan
+  const found = findDownloadAllAnchor();
+  const existing = document.querySelector('.cdl-sub-btn');
+  if (!found || found.mode === 'floating') { existing?.remove(); return; }
+  if (existing) {
+    if (!allBtn) placeDownloadAllButton(existing, found);
+    return;
+  }
   // The floating FAB (mobile fallback) sits alone at body level — a second
   // unpositioned button there would render broken. Skip it in that mode.
-  if (allBtn.classList.contains('cdl-floating')) return;
+  if (allBtn?.classList.contains('cdl-floating')) return;
   const slug = _cdlSlug();
   if (!slug) return;
 
@@ -5113,7 +5308,8 @@ function injectSubscribeButton() {
     } catch (_) { render(subscribed); }
   });
 
-  allBtn.insertAdjacentElement('afterend', btn);
+  if (allBtn) allBtn.insertAdjacentElement('afterend', btn);
+  else placeDownloadAllButton(btn, found);
 }
 
 function scanAndInject() {
@@ -5218,6 +5414,8 @@ function cdlSyncRoute() {
     resetDownloadAllView();
     disconnectDOM();
     document.getElementById('cdl-all-popup')?.remove();
+    document.getElementById('cdl-chapter-popup')?.remove();
+    _chapterProgressItems.clear();
     _lastDlAllParams = null;
   }
   if (isTitleOverviewPage()) {
@@ -5226,7 +5424,7 @@ function cdlSyncRoute() {
     scanAndInject();
     observeDOM();
     restoreDownloadAllPopupFromBackground();
-    restoreChapterAccessPause();
+    restoreChapterProgressPanel();
   } else {
     // Left the overview (reader/home/settings/search/…). The injected nodes vanish
     // with the old DOM that Next.js replaces, so just stop observing — but DO remove
@@ -5234,6 +5432,11 @@ function cdlSyncRoute() {
     // embedded settings page's Export/Import/Reset buttons (same class).
     disconnectDOM();
     ['cdl-styles', 'cdl-dyn-styles'].forEach((id) => document.getElementById(id)?.remove());
+    if (_cdlSlug()) {
+      injectStyles();
+      applyDynamicStyles();
+      restoreChapterProgressPanel();
+    }
   }
 }
 
@@ -5255,8 +5458,8 @@ function cdlSyncRoute() {
     }
   } catch (_) {}
 
-  // SPA-aware lifecycle. comix's MAIN-world bridge (content/extract-bridge.js) emits
-  // `cdl:locationchange` on every pushState/replaceState — Next fires those often with
+  // SPA-aware lifecycle. The isolated route helper receives browser URL notifications.
+  // Next fires updates often with
   // the SAME path (shallow updates), so only re-sync when the path actually changes.
   // (In-page DOM swaps that keep the path are still caught by the MutationObserver.)
   let _cdlLastPath = location.pathname;
@@ -5265,7 +5468,7 @@ function cdlSyncRoute() {
     _cdlLastPath = location.pathname;
     cdlSyncRoute();
   };
-  window.addEventListener('cdl:locationchange', onRouteChange);
+  if (window.CDLRoute) window.CDLRoute.subscribe(onRouteChange);
   window.addEventListener('popstate', onRouteChange);
   window.addEventListener('hashchange', onRouteChange);
   window.addEventListener('pageshow', (e) => { if (e.persisted) cdlSyncRoute(); });

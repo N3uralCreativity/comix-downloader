@@ -431,7 +431,7 @@
 
   var observer = new MutationObserver(scheduleEnsure);
   observer.observe(document.documentElement, { childList: true, subtree: true });
-  window.addEventListener('cdl:locationchange', scheduleEnsure);
+  if (window.CDLRoute) window.CDLRoute.subscribe(scheduleEnsure);
   window.addEventListener('popstate', scheduleEnsure);
   window.addEventListener('pageshow', scheduleEnsure);
   scheduleEnsure();

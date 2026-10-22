@@ -84,6 +84,7 @@
       var res = await fetch(API_URL, {
         method: 'GET',
         credentials: 'omit',
+        referrerPolicy: 'no-referrer',
         cache: 'no-store',
         headers: { Accept: 'application/json' },
         signal: controller ? controller.signal : undefined,

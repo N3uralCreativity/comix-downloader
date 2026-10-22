@@ -8,13 +8,14 @@
  *   - Content script: listed before content_title.js in manifest content_scripts
  *   - legacy/options.html: <script src="../core/settings.js"></script>
  *
- * No DOM / window assumptions. Defaults equal the v1.1.2 hardcoded behavior, so
- * an untouched config reproduces the previous version exactly.
+ * No DOM / window assumptions. Local download defaults retain prior behavior;
+ * remote community sharing requires a separate, device-local consent record.
  */
 (function (global) {
   'use strict';
 
   var STORAGE_KEY = 'cdlSettings';
+  var COMMUNITY_CONSENT_KEY = 'cdlCommunitySharing';
   // PDF output remains implemented and packaged, but is not ready for users yet.
   // Flip this one flag when the feature is ready to return to the UI.
   var PDF_OUTPUT_VISIBLE = false;
@@ -42,6 +43,7 @@
   // ── DEFAULTS (each value == current v1.1.2 literal) ──────────────────────────
   var DEFAULTS = {
     // Download & ZIP
+    'download.enableAll': false,          // deprecated bulk download; explicit opt-in only
     'download.splitMode': 'multipart',     // 'multipart' | 'single'
     'download.chaptersPerPart': 5,         // ZIP chapters per outer part
     'download.cbzChaptersPerPart': 10,     // CBZ chapters per outer part
@@ -127,8 +129,7 @@
     'features.readingStats': false,        // track reading time/chapters locally + show a Home stats section
     'features.catchupEstimate': false,     // on a series page, estimate time to catch up at your pace
     'features.plusAnnouncements': !IS_FIREFOX, // Plus announcement on comix.to (opt-in on Firefox)
-    // Community chapter flags (v3.0.0) are a built-in, always-on feature — intentionally NOT a
-    // setting (like the profile tenure badge). See content_features.js.
+    'privacy.communitySharing': false,    // explicit opt-in for remote profile badges and chapter flags
 
     // Home (v3.0.0 custom Home redesign — OFF by default)
     'home.customLayout': false,            // replace comix's Home with the focused custom layout
@@ -156,8 +157,6 @@
     'home.openInNewTab': false,            // open comics in a new tab
     'home.greeting': true,                 // show a welcome header at the top
     'home.hoverPreview': true              // cursor-following detail popup on card hover
-    // Note: the profile "Comix-Downloader user" tenure badge (v3.0.0) is a built-in,
-    // always-on feature — intentionally NOT a setting (see content_profile.js).
   };
 
   // Section ids/labels for the home.sections picker (kept in sync with CDLHomeCore.HOME_SECTIONS;
@@ -177,6 +176,13 @@
   // ── SCHEMA (type, bounds, risk, label, help) ─────────────────────────────────
   // risk: 'none' | 'glitchy' | 'risky'. `warn` shows in the confirm dialog.
   var SCHEMA = {
+    'download.enableAll': { type: 'bool', risk: 'risky',
+      label: 'Enable Download All (deprecated)',
+      help: 'Off by default. Shows the Download All button and whole-series context menu. Individual chapter downloads remain available without this setting.',
+      warn: 'Download All is deprecated. Bulk downloading can trigger IP bans and Comix blocking or Cloudflare verification walls. Use at your own risk; downloading individual chapters is recommended.' },
+    'privacy.communitySharing': { type: 'bool', risk: 'none',
+      label: 'Community badges and chapter reports',
+      help: 'Share profile badges and chapter problem reports through the Comix Downloader community service. Sends stable hashes of Comix account and chapter IDs; these are pseudonymous, not anonymous. Off by default. Turning this off stops new requests, but does not delete earlier server records.' },
     'download.splitMode': { type: 'enum', enum: ['multipart', 'single'], risk: 'risky',
       label: 'ZIP splitting', help: 'How a full-series "Download All" is packaged.',
       options: { multipart: 'Multiple parts (recommended)', single: 'One single ZIP' },
@@ -380,7 +386,7 @@
   // ── Tab grouping for the options UI ──────────────────────────────────────────
   var TABS = [
     { id: 'download', label: 'Download & ZIP', icon: 'box',
-      keys: ['download.concurrentChapters', 'download.splitMode', 'download.chaptersPerPart', 'download.cbzChaptersPerPart']
+      keys: ['download.enableAll', 'download.concurrentChapters', 'download.splitMode', 'download.chaptersPerPart', 'download.cbzChaptersPerPart']
         .concat(PDF_OUTPUT_VISIBLE ? ['download.pdfChaptersPerPart'] : [], ['download.mbPerPart']) },
     { id: 'output', label: 'Output & Library', icon: 'box',
       keys: ['output.format', 'output.directCbz', 'output.downloadSubfolder', 'output.includeComicInfo', 'output.includeSeriesMeta', 'output.folderLayout', 'download.skipDownloaded'] },
@@ -395,7 +401,7 @@
     { id: 'advanced', label: 'Advanced', icon: 'warn',
       keys: ['advanced.disableScramble', 'advanced.imageFormat', 'advanced.jpgQuality', 'advanced.aggressiveRetrieval'] },
     { id: 'features', label: 'Additional Features', icon: 'sparkles',
-      keys: ['features.blockAds', 'features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'features.prefetchNext', 'features.resumeScroll', 'features.recapOnReturn', 'features.readingStats', 'features.catchupEstimate', 'reader.keyboardShortcuts', 'features.plusAnnouncements'] },
+      keys: ['features.blockAds', 'features.dedupeChapters', 'features.enforceChapterOrder', 'features.fixReaderNav', 'features.flagBrokenPages', 'features.prefetchNext', 'features.resumeScroll', 'features.recapOnReturn', 'features.readingStats', 'features.catchupEstimate', 'reader.keyboardShortcuts', 'privacy.communitySharing', 'features.plusAnnouncements'] },
     { id: 'home', label: 'Home', icon: 'sparkles',
       keys: ['home.customLayout', 'home.sections', 'home.hero', 'home.heroSource', 'home.heroSkipRead',
         'home.cardStyle', 'home.rows', 'home.density', 'home.showProgress', 'home.itemsPerSection',
@@ -558,8 +564,10 @@
 
   // ── Public API ───────────────────────────────────────────────────────────────
   function getSettings() {
-    return storageGet(STORAGE_KEY).then(function (res) {
-      return validate(res ? res[STORAGE_KEY] : null);
+    return storageGet([STORAGE_KEY, COMMUNITY_CONSENT_KEY]).then(function (res) {
+      var clean = validate(res ? res[STORAGE_KEY] : null);
+      clean['privacy.communitySharing'] = !!(res && res[COMMUNITY_CONSENT_KEY] === true);
+      return clean;
     }).catch(function () { return validate({}); });
   }
 
@@ -574,15 +582,20 @@
     return run;
   }
 
-  function writeValidatedSettings(clean) {
+  function writeValidatedSettings(clean, writeConsent) {
     var payload = {};
     payload[STORAGE_KEY] = clean;
+    if (writeConsent) payload[COMMUNITY_CONSENT_KEY] = clean['privacy.communitySharing'] === true;
     return storageSet(payload).then(function () { return clean; });
   }
 
   function saveSettings(obj) {
     var clean = validate(obj);
-    return enqueueSettingsWrite(function () { return writeValidatedSettings(clean); });
+    var permission = requestCommunityPermission(clean['privacy.communitySharing']);
+    permission.catch(function () {});
+    return enqueueSettingsWrite(function () {
+      return permission.then(function () { return writeValidatedSettings(clean, true); });
+    });
   }
 
   function patchSettings(partial) {
@@ -592,13 +605,44 @@
         if (Object.prototype.hasOwnProperty.call(partial, key)) patch[key] = partial[key];
       }
     }
+    var permission = requestCommunityPermission(patch['privacy.communitySharing']);
+    permission.catch(function () {});
     return enqueueSettingsWrite(function () {
-      return getSettings().then(function (cur) {
+      return permission.then(getSettings).then(function (cur) {
         var next = {};
         for (var k in cur) { if (Object.prototype.hasOwnProperty.call(cur, k)) next[k] = cur[k]; }
         for (var p in patch) { if (Object.prototype.hasOwnProperty.call(patch, p)) next[p] = patch[p]; }
-        return writeValidatedSettings(validate(next));
+        return writeValidatedSettings(validate(next), Object.prototype.hasOwnProperty.call(patch, 'privacy.communitySharing'));
       });
+    });
+  }
+
+  function communityDataPermissions() {
+    try {
+      var manifest = chrome.runtime.getManifest();
+      var gecko = manifest.browser_specific_settings && manifest.browser_specific_settings.gecko;
+      var optional = gecko && gecko.data_collection_permissions && gecko.data_collection_permissions.optional;
+      if (!Array.isArray(optional)) return [];
+      return ['personallyIdentifyingInfo', 'browsingActivity', 'technicalAndInteraction'].filter(function (name) {
+        return optional.indexOf(name) !== -1;
+      });
+    } catch (_) { return []; }
+  }
+
+  // Called before queuing storage work, so Firefox retains the settings click gesture.
+  function requestCommunityPermission(enabled) {
+    var permissions = enabled === true ? communityDataPermissions() : [];
+    if (!permissions.length) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      try {
+        var result = chrome.permissions.request({ data_collection: permissions }, function (granted) {
+          if (!chrome.runtime.lastError && granted) resolve();
+          else reject(new Error('Community data sharing permission was not granted.'));
+        });
+        if (result && result.then) result.then(function (granted) {
+          if (granted) resolve(); else reject(new Error('Community data sharing permission was not granted.'));
+        }, reject);
+      } catch (error) { reject(error); }
     });
   }
 
@@ -611,14 +655,17 @@
     if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.onChanged) {
       return function () {};
     }
+    var revision = 0;
     var listener = function (changes, area) {
       if (area && area !== 'local') return;
-      if (changes && changes[STORAGE_KEY]) {
-        cb(validate(changes[STORAGE_KEY].newValue));
+      if (changes && (changes[STORAGE_KEY] || changes[COMMUNITY_CONSENT_KEY])) {
+        var current = ++revision;
+        getSettings().then(function (settings) { if (current === revision) cb(settings); }).catch(function () {});
       }
     };
     chrome.storage.onChanged.addListener(listener);
     return function () {
+      revision++;
       try { chrome.storage.onChanged.removeListener(listener); } catch (e) {}
     };
   }
@@ -679,6 +726,7 @@
   // ── Export / import ───────────────────────────────────────────────────────────
   function exportJSON() {
     return getSettings().then(function (cur) {
+      delete cur['privacy.communitySharing'];
       return JSON.stringify({ __comix: 'settings', version: 2, settings: cur }, null, 2);
     });
   }
@@ -697,11 +745,18 @@
     if (Object.keys(incoming).length > 200) {
       return Promise.reject(new Error('That settings file is too large.'));
     }
-    return saveSettings(incoming); // validate() clamps values and drops unknown keys
+    return enqueueSettingsWrite(function () {
+      return getSettings().then(function (current) {
+        var clean = validate(incoming);
+        clean['privacy.communitySharing'] = current['privacy.communitySharing'];
+        return writeValidatedSettings(clean, false);
+      });
+    });
   }
 
   var CDLSettings = {
     STORAGE_KEY: STORAGE_KEY,
+    COMMUNITY_CONSENT_KEY: COMMUNITY_CONSENT_KEY,
     PDF_OUTPUT_VISIBLE: PDF_OUTPUT_VISIBLE,
     DEFAULTS: DEFAULTS,
     SCHEMA: SCHEMA,
@@ -709,6 +764,7 @@
     getSettings: getSettings,
     saveSettings: saveSettings,
     patchSettings: patchSettings,
+    communityDataPermissions: communityDataPermissions,
     resetDefaults: resetDefaults,
     onChange: onChange,
     validate: validate,

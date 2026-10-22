@@ -371,6 +371,11 @@
   }
   function flattenStore(storeKey, value) {
     var source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    if (storeKey === 'cdlSettings') {
+      var settings = clone(source);
+      delete settings['privacy.communitySharing'];
+      return settings;
+    }
     if (storeKey === 'cdlSeriesPrefs') {
       var presetRecords = {};
       Object.keys(source).forEach(function (slug) {
@@ -438,6 +443,10 @@
         storeMeta.shadow = storeMeta.shadow || {}; storeMeta.clocks = storeMeta.clocks || {};
         var records = {};
         new Set(Object.keys(current).concat(Object.keys(storeMeta.shadow), Object.keys(storeMeta.clocks))).forEach(function (recordKey) {
+          if (storeKey === 'cdlSettings' && recordKey === 'privacy.communitySharing') {
+            delete storeMeta.clocks[recordKey];
+            return;
+          }
           var exists = Object.prototype.hasOwnProperty.call(current, recordKey);
           var existed = Object.prototype.hasOwnProperty.call(storeMeta.shadow, recordKey);
           var changed = exists !== existed || (exists && stableStringify(current[recordKey]) !== stableStringify(storeMeta.shadow[recordKey]));
@@ -478,6 +487,7 @@
     var nextMeta = meta && typeof meta === 'object' ? clone(meta) : { version: 1, stores: {}, stats: {} };
     nextMeta.stores = nextMeta.stores || {}; nextMeta.stats = nextMeta.stats || {};
     var patch = {};
+    var localSettings = selected.indexOf('settings') !== -1 ? await storageGet(chromeApi, 'cdlSettings') : {};
     selected.forEach(function (category) {
       if (category === 'stats') return;
       var categoryPayload = payload.categories && payload.categories[category];
@@ -487,11 +497,17 @@
         var records = categoryPayload.stores[storeKey].records || {};
         var flatValue = {}, clocks = {};
         Object.keys(records).forEach(function (recordKey) {
+          if (storeKey === 'cdlSettings' && recordKey === 'privacy.communitySharing') return;
           var record = records[recordKey];
           clocks[recordKey] = { updatedAt: record.updatedAt, deviceId: record.deviceId, deleted: !!record.deleted };
           if (!record.deleted) flatValue[recordKey] = clone(record.value);
         });
         patch[storeKey] = inflateStore(storeKey, flatValue);
+        if (storeKey === 'cdlSettings' && localSettings.cdlSettings &&
+            Object.prototype.hasOwnProperty.call(localSettings.cdlSettings, 'privacy.communitySharing')) {
+          // Data-sharing consent belongs to this device, never to a cloud snapshot.
+          patch[storeKey]['privacy.communitySharing'] = localSettings.cdlSettings['privacy.communitySharing'] === true;
+        }
         nextMeta.stores[storeKey] = { shadow: clone(flatValue), clocks: clocks };
       });
     });

@@ -57,7 +57,7 @@
     },
     {
       "matches": ["*://comix.to/*", "*://comix.ws/*"],
-      "js": ["content/adblock-control.js"],
+      "js": ["core/cdl-route.js", "content/adblock-control.js"],
       "run_at": "document_start"
     },
     {
@@ -97,6 +97,7 @@
         "assets/settings-outro/dance-flamingo.gif",
         "assets/settings-outro/outro.mp3"
       ],
+      "use_dynamic_url": true,
       "matches": ["*://comix.to/*", "*://comix.ws/*"]
     },
     {
@@ -104,6 +105,7 @@
         "assets/plus-announce/cloud-library.jpg",
         "assets/plus-announce/cloud-phone.jpg"
       ],
+      "use_dynamic_url": true,
       "matches": ["*://comix.to/*", "*://comix.ws/*"]
     }
   ],

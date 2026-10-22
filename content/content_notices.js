@@ -184,6 +184,7 @@
     const res = await fetch(noticeUrl(), {
       method: 'GET',
       credentials: 'omit',
+      referrerPolicy: 'no-referrer',
       cache: 'no-store',
       headers: { Accept: 'application/json' },
     });

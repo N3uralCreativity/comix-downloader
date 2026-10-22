@@ -44,6 +44,7 @@ function Copy-ReleaseFiles([string]$Destination) {
     "content/cdl-embed-settings.js",
     "content/adblock-main.js",
     "content/adblock-control.js",
+    "core/cdl-route.js",
     "content/extract-bridge.js",
     "content/plus-bridge.js",
     "core/settings.js",
@@ -158,6 +159,9 @@ foreach ($target in $chromiumTargets) {
 }
 
 $firefoxManifest = $manifest | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+foreach ($resource in $firefoxManifest.web_accessible_resources) {
+  $resource.PSObject.Properties.Remove('use_dynamic_url')
+}
 $firefoxManifest.permissions = @($firefoxManifest.permissions | Where-Object { $_ -ne 'offscreen' })
 $firefoxManifest.background = [ordered]@{
   scripts = @(

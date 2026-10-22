@@ -65,6 +65,9 @@ const fixture = `<!doctype html><html><head><style>
       };
     });
     await page.addScriptTag({ content: await fs.readFile(path.join(__dirname, '../../content/content_title.js'), 'utf8') });
+    assert.equal(await page.locator(downloadSelector).count(), 0, 'Deprecated Download All is hidden by default');
+    assert.equal(await page.locator('.cdl-sub-btn').count(), 1, 'Subscriptions do not depend on Download All');
+    await page.evaluate(() => { CFG['download.enableAll'] = true; onSettingsChanged(); });
     await page.locator(downloadSelector).waitFor();
     await page.evaluate(() => {
       window.originalDownload = document.querySelector('.cdl-dl-all-btn:not(.cdl-sub-btn)');

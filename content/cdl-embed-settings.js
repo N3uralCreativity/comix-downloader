@@ -1060,7 +1060,18 @@
         var r = S.patchSettings(p);
         if (r && r.then) {
           r.then(function () { flashSaved(); })
-            .catch(function () { flashSaved('Could not save'); });
+            .catch(function () {
+              if (key === 'privacy.communitySharing') {
+                draft[key] = false;
+                var row = rowEls[key];
+                if (row) {
+                  row.classList.remove('is-on');
+                  var input = row.querySelector('input[type="checkbox"]');
+                  if (input) input.checked = false;
+                }
+              }
+              flashSaved('Could not save');
+            });
         } else {
           flashSaved();
         }
@@ -1372,13 +1383,9 @@
     if (observer) { observer.disconnect(); observer = null; }
   }
 
-  ['pushState', 'replaceState'].forEach(function (m) {
-    var orig = history[m];
-    history[m] = function () { var r = orig.apply(this, arguments); try { window.dispatchEvent(new Event('cdl:locationchange')); } catch (_) {} return r; };
-  });
   window.addEventListener('popstate', sync);
   window.addEventListener('hashchange', sync);
-  window.addEventListener('cdl:locationchange', sync);
+  if (window.CDLRoute) window.CDLRoute.subscribe(sync);
   sync();
   installQuickDialogWatcher();
   installThemeWatcher();

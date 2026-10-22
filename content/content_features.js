@@ -14,8 +14,8 @@
  *   - features.recapOnReturn       : "welcome back" banner + jump-to-next on a series page (list)
  *   - features.readingStats        : local reading tracker feeding the Home "Your Reading" panel
  *   - features.catchupEstimate     : "N chapters left · ~time at your pace" chip (list)
- * Always-on (not settings): community chapter flags — reader flag button + "⚠ N" list markers,
- * shared through the same tiny Worker as the profile tenure badge (opaque salted hashes only).
+ * Community chapter flags require the Community badges and chapter reports opt-in.
+ * Their stable salted hashes are pseudonymous, not anonymous.
  *
  * Design rules:
  *   - Pure correctness lives in CDLFeaturesCore (DOM-free, unit-tested).
@@ -204,7 +204,7 @@
       if (cfg['features.enforceChapterOrder']) applyOrder(rows);
       else clearOrder(rows);
 
-      // ── crowd quality flags (⚠ N on flagged rows) — always on ──
+      // ── crowd quality flags (requires sharing consent) ──
       applyCrowdFlagsToList(rows);
 
       // ── recap-on-return banner + catch-up chip (re-ensured here so they heal after React re-renders) ──
@@ -339,8 +339,7 @@
   async function startReaderNav() {
     if (readerState) return;
     readerState = { entries: null, entriesSlug: null, patched: [], navObserver: null, navDebounce: null, nextUrl: null, prevUrl: null };
-    patchHistoryOnce();
-    window.addEventListener('cdl:locationchange', onReaderRouteChange);
+    if (window.CDLRoute) window.CDLRoute.subscribe(onReaderRouteChange);
     window.addEventListener('popstate', onReaderRouteChange);
     await refreshReaderNav();
   }
@@ -398,7 +397,7 @@
   }
 
   function patchOne(elm, url) {
-    if (!elm || elm.getAttribute('data-cdl-nav') === '1') return;
+    if (!elm || readerState.patched.some(function (entry) { return entry.elm === elm; })) return;
     var isAnchor = elm.tagName === 'A';
     var origHref = isAnchor ? elm.getAttribute('href') : null;
     var handler = function (e) {
@@ -408,7 +407,6 @@
     };
     elm.addEventListener('click', handler, true); // capture beats the site's React handler
     if (isAnchor) elm.setAttribute('href', url);
-    elm.setAttribute('data-cdl-nav', '1');
     readerState.patched.push({ elm: elm, handler: handler, isAnchor: isAnchor, origHref: origHref });
   }
 
@@ -424,7 +422,6 @@
     (readerState.patched || []).forEach(function (p) {
       try {
         p.elm.removeEventListener('click', p.handler, true);
-        p.elm.removeAttribute('data-cdl-nav');
         if (p.isAnchor) {
           if (p.origHref == null) p.elm.removeAttribute('href');
           else p.elm.setAttribute('href', p.origHref);
@@ -460,33 +457,13 @@
     routeDebounce = setTimeout(function () { routeDebounce = null; refreshReaderNav(); }, 150);
   }
 
-  function patchHistoryOnce() {
-    try {
-      if (history.pushState && history.pushState.__cdlPatched) return;
-      ['pushState', 'replaceState'].forEach(function (m) {
-        var orig = history[m];
-        if (typeof orig !== 'function' || orig.__cdlPatched) return;
-        var wrapped = function () {
-          var ret = orig.apply(this, arguments);
-          try { window.dispatchEvent(new Event('cdl:locationchange')); } catch (e) {}
-          return ret;
-        };
-        wrapped.__cdlPatched = true;
-        wrapped.__cdlOrig = orig;
-        history[m] = wrapped;
-      });
-    } catch (e) {}
-  }
   function stopReaderNav() {
     if (!readerState) return;
     unpatchNavControls();
     stopNavObserver();
-    window.removeEventListener('cdl:locationchange', onReaderRouteChange);
+    if (window.CDLRoute) window.CDLRoute.unsubscribe(onReaderRouteChange);
     window.removeEventListener('popstate', onReaderRouteChange);
     if (routeDebounce) { clearTimeout(routeDebounce); routeDebounce = null; }
-    // NOTE: the history pushState/replaceState patch is intentionally NOT removed
-    // here. It is now a session-wide concern: content_title.js and applyForPage()
-    // rely on cdl:locationchange for the whole SPA session, not just reader nav.
     readerState = null;
   }
 
@@ -1291,8 +1268,9 @@
     setTimeout(function () { document.addEventListener('mousedown', closer, true); }, 0);
   }
   function submitFlag(chapterId, type) {
+    if (cfg['privacy.communitySharing'] !== true) return;
     getUserHashId().then(function (uid) {
-      if (!uid) return;
+      if (!uid || cfg['privacy.communitySharing'] !== true) return;
       bg('cdlFlagSubmit', { chapterId: chapterId, userHashId: uid, type: type }).then(function (r) {
         if (!r || !r.ok) return;
         markFlaggedLocal(chapterId);
@@ -1335,17 +1313,18 @@
     readerFlagsState = null;
   }
   function syncReaderFlags() {
-    // Community chapter flags are always on (not a setting).
+    if (cfg['privacy.communitySharing'] !== true) { stopReaderFlags(); return; }
     if (readerFlagsState && readerFlagsState.url === location.href) { ensureFlagButton(); return; }
     stopReaderFlags(); startReaderFlags(location.href);
   }
 
   // List: append a "⚠ N" marker to chapter rows other users flagged (batch lookup, cached in bg).
   function applyCrowdFlagsToList(rows) {
+    if (cfg['privacy.communitySharing'] !== true) { clearListFlagBadges(); return; }
     var ids = []; rows.forEach(function (r) { if (r.chapterId) ids.push(r.chapterId); });
     if (!ids.length) return;
     bg('cdlFlagLookup', { chapterIds: ids }).then(function (res) {
-      if (!res || !res.counts) return;
+      if (cfg['privacy.communitySharing'] !== true || !res || !res.counts) return;
       rows.forEach(function (r) {
         if (!r.chapterId || !r.row.isConnected) return;
         var counts = res.counts[r.chapterId];
@@ -1398,8 +1377,7 @@
         stopReaderFlags();
         stopPrefetch();
         stopResume();
-        // Community chapter flags always run on a list, so this branch is always active
-        // (dedupe/order still gate themselves inside applyListFeatures).
+        // Each list enhancement, including optional community sharing, gates itself.
         stopReadTrack(); // flush the reading sample from the chapter we just left
         ensureStyle();
         applyListFeatures();
@@ -1433,9 +1411,7 @@
     CDLSettings.onChange(function (next) { cfg = next; applyForPage(); });
 
     // SPA-aware: the page type can change without a content-script re-run, so
-    // re-apply on every soft navigation + bfcache restore. The `cdl:locationchange`
-    // event is emitted by the MAIN-world bridge in content/extract-bridge.js — an
-    // isolated-world history patch can't observe the page's own pushState calls.
+    // Re-apply on private browser navigation notifications and bfcache restores.
     // Next fires pushState/replaceState often with the SAME path; only re-apply on a
     // real path change (in-page list changes are handled by the list MutationObserver).
     var lastPath = location.pathname;
@@ -1444,7 +1420,7 @@
       lastPath = location.pathname;
       applyForPage();
     };
-    window.addEventListener('cdl:locationchange', onRoute);
+    if (window.CDLRoute) window.CDLRoute.subscribe(onRoute);
     window.addEventListener('popstate', onRoute);
     window.addEventListener('hashchange', onRoute);
     window.addEventListener('pageshow', function (e) { if (e.persisted) applyForPage(); });

@@ -13,6 +13,7 @@ global.chrome = {
       get(key) {
         if (key == null) return Promise.resolve(Object.assign({}, store));
         if (typeof key === 'string') return Promise.resolve(key in store ? { [key]: store[key] } : {});
+        if (Array.isArray(key)) return Promise.resolve(Object.fromEntries(key.filter(k => k in store).map(k => [k, store[k]])));
         return Promise.resolve({});
       },
       set(obj) {

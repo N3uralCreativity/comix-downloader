@@ -13,7 +13,8 @@
  * JSON page list — and that is plain JS work (a fetch + a decrypt), NOT gated on
  * rendering. The decrypted JSON is produced through TextDecoder, so we grab it the
  * moment it appears. That gives every page URL (normal AND scrambled) in ~1s with no
- * scrolling at all, fully in the background. background.js reads window.__cdlPages.
+ * scrolling at all, fully in the background. Results stay in this closure until
+ * background.js requests them through a synchronous, page-local event.
  *
  * Scoped to ONLY the extension's throwaway extraction tabs via the #cdlx marker that
  * background.js appends to their URL — it never hooks anything on a page the user is
@@ -23,39 +24,20 @@
 (function () {
   'use strict';
 
-  // ── SPA route bridge (runs on EVERY comix page, in the MAIN world) ────────────
-  // comix.to is a Next.js app: it navigates client-side via history.pushState /
-  // replaceState in the page's MAIN world. A content script in its ISOLATED world
-  // CANNOT intercept those calls (verified: an isolated-world pushState override
-  // never fires for the page's own navigations), so the download-button content
-  // scripts never learned about soft navigations and their UI only appeared after a
-  // hard refresh. We patch history HERE, in the MAIN world (at document_start, before
-  // Next's router captures it), and relay a `cdl:locationchange` DOM event — which
-  // DOES cross into the isolated world — so content_title.js / content_features.js /
-  // cdl-embed-settings.js can re-inject on every route change. No #cdlx gate: this
-  // must run on the pages the user actually browses.
   try {
-    if (!(history.pushState && history.pushState.__cdlBridge)) {
-      ['pushState', 'replaceState'].forEach(function (m) {
-        var orig = history[m];
-        if (typeof orig !== 'function') return;
-        var wrapped = function () {
-          var ret = orig.apply(this, arguments);
-          try { window.dispatchEvent(new Event('cdl:locationchange')); } catch (e) {}
-          return ret;
-        };
-        wrapped.__cdlBridge = true;
-        history[m] = wrapped;
-      });
-    }
-  } catch (_) {}
-
-  try {
-    if (!/cdlx/.test(location.hash)) return;
+    if (location.hash !== '#cdlx') return;
+    // Keep the legacy extraction bootstrap, but do not leave its marker in the URL.
+    try { history.replaceState(history.state, '', location.pathname + location.search); } catch (_) {}
+    let capturedPages = null;
+    window.addEventListener('cdl:extract-pages', function (event) {
+      if (capturedPages && event.detail && typeof event.detail === 'object') {
+        event.detail.pages = capturedPages.map(function (page) { return { src: page.src, index: page.index }; });
+      }
+    });
 
     // ── Capture the decrypted page list ──────────────────────────────────────────
     const tryCapture = (s) => {
-      if (window.__cdlPages || typeof s !== 'string' || s.length < 200 || s.indexOf('"pages"') === -1) return;
+      if (capturedPages || typeof s !== 'string' || s.length < 200 || s.indexOf('"pages"') === -1) return;
       try {
         const j = JSON.parse(s);
         const r = (j && j.result) || j;
@@ -68,18 +50,27 @@
           const u = items[i] && items[i].url;
           if (typeof u === 'string' && u) out.push({ src: /^https?:/i.test(u) ? u : (base + u), index: i + 1 });
         }
-        if (out.length) window.__cdlPages = out;
+        if (out.length) { capturedPages = out; restoreDecoders(); }
       } catch (_) {}
     };
     const TD = window.TextDecoder && window.TextDecoder.prototype;
+    const nativeDecode = TD && TD.decode;
+    const nativeAtob = window.atob;
+    let decodeHook, atobHook;
+    function restoreDecoders() {
+      if (TD && TD.decode === decodeHook) TD.decode = nativeDecode;
+      if (window.atob === atobHook) window.atob = nativeAtob;
+    }
     if (TD && TD.decode) {
       const orig = TD.decode;
-      TD.decode = function () { const r = orig.apply(this, arguments); try { tryCapture(r); } catch (_) {} return r; };
+      decodeHook = function () { const r = orig.apply(this, arguments); try { tryCapture(r); } catch (_) {} return r; };
+      TD.decode = decodeHook;
     }
     // Fallback path in case decryption goes through atob() instead of TextDecoder.
     if (typeof window.atob === 'function') {
       const oa = window.atob;
-      window.atob = function (x) { const r = oa.apply(this, arguments); try { tryCapture(r); } catch (_) {} return r; };
+      atobHook = function (x) { const r = oa.apply(this, arguments); try { tryCapture(r); } catch (_) {} return r; };
+      window.atob = atobHook;
     }
 
     // ── Report visible ───────────────────────────────────────────────────────────

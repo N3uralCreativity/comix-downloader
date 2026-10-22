@@ -3,7 +3,7 @@
  *
  * Runs at document_start in the page's MAIN world so site/ad scripts receive the
  * guarded window.open. The isolated adblock-control.js content script relays the
- * stored setting through a DOM attribute + event; page code never receives access
+ * stored setting through a boolean event; page code never receives access
  * to extension storage.
  */
 (function (root, factory) {
@@ -11,13 +11,12 @@
 
   var api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
-  if (root) root.CDLAdblock = api;
   if (root && root.document) api.install(root);
 })(typeof window !== 'undefined' ? window : null, function () {
   'use strict';
 
-  var STATE_ATTR = 'data-cdl-adblock';
   var STATE_EVENT = 'cdl:adblock-state';
+  var installed = new WeakSet();
   var INTENT_MAX_AGE_MS = 1500;
   var SHARE_HOSTS = [
     'facebook.com', 'messenger.com', 'twitter.com', 'x.com',
@@ -108,16 +107,15 @@
   }
 
   function install(win) {
-    if (!win || !win.document || win.__cdlAdblockInstalled) return;
-    win.__cdlAdblockInstalled = true;
+    if (!win || !win.document || installed.has(win)) return;
+    installed.add(win);
 
     var doc = win.document;
     var enabled = true;
     var lastIntent = { trusted: false, time: 0, href: '' };
 
-    function syncState() {
-      var html = doc.documentElement;
-      enabled = !html || html.getAttribute(STATE_ATTR) !== 'off';
+    function syncState(event) {
+      if (event && typeof event.detail === 'boolean') enabled = event.detail;
     }
 
     function closestElement(target, selector) {
@@ -169,27 +167,13 @@
       };
     }
 
-    function reportBlocked() {
-      try { win.dispatchEvent(new Event('cdl:adblocked')); } catch (_) {}
-    }
-
-    syncState();
     try { win.addEventListener(STATE_EVENT, syncState, false); } catch (_) {}
-    try {
-      if (win.MutationObserver && doc.documentElement) {
-        var stateObserver = new win.MutationObserver(syncState);
-        stateObserver.observe(doc.documentElement, {
-          attributes: true,
-          attributeFilter: [STATE_ATTR]
-        });
-      }
-    } catch (_) {}
     ['pointerdown', 'mousedown', 'touchstart', 'click', 'keydown'].forEach(function (type) {
       try { win.addEventListener(type, recordIntent, true); } catch (_) {}
     });
 
     var nativeOpen = win.open;
-    if (typeof nativeOpen === 'function' && !nativeOpen.__cdlAdblockGuard) {
+    if (typeof nativeOpen === 'function') {
       var guardedOpen = function (url, targetName, features) {
         if (!enabled) return nativeOpen.apply(win, arguments);
         var intent = currentIntent();
@@ -203,18 +187,15 @@
           ageMs: intent.ageMs
         });
         if (allowed) return nativeOpen.apply(win, arguments);
-        reportBlocked();
         return null;
       };
-      guardedOpen.__cdlAdblockGuard = true;
-      guardedOpen.__cdlNative = nativeOpen;
       try { win.open = guardedOpen; } catch (_) {}
     }
 
     var Anchor = win.HTMLAnchorElement;
     var anchorProto = Anchor && Anchor.prototype;
     var nativeAnchorClick = anchorProto && anchorProto.click;
-    if (typeof nativeAnchorClick === 'function' && !nativeAnchorClick.__cdlAdblockGuard) {
+    if (typeof nativeAnchorClick === 'function') {
       var guardedAnchorClick = function () {
         if (enabled) {
           var intent = currentIntent();
@@ -228,14 +209,11 @@
             ageMs: intent.ageMs
           });
           if (blocked) {
-            reportBlocked();
             return;
           }
         }
         return nativeAnchorClick.apply(this, arguments);
       };
-      guardedAnchorClick.__cdlAdblockGuard = true;
-      guardedAnchorClick.__cdlNative = nativeAnchorClick;
       try { anchorProto.click = guardedAnchorClick; } catch (_) {}
     }
 
@@ -245,7 +223,6 @@
       if (!isOverlay(anchor)) return;
       try { event.preventDefault(); } catch (_) {}
       try { event.stopImmediatePropagation(); } catch (_) {}
-      reportBlocked();
       try { anchor.remove(); } catch (_) {}
     }
 
@@ -255,7 +232,6 @@
   }
 
   return {
-    STATE_ATTR: STATE_ATTR,
     STATE_EVENT: STATE_EVENT,
     INTENT_MAX_AGE_MS: INTENT_MAX_AGE_MS,
     shouldAllowPopup: shouldAllowPopup,

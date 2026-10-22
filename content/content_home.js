@@ -17,7 +17,7 @@
  * minimal (4px). Fully reversible: toggle off / leave Home → native Home returns untouched
  * (we only hide native nodes via a class, never delete them).
  *
- * Isolated world, loaded after content_features.js, SPA-aware via `cdl:locationchange`
+ * Isolated world, loaded after content_features.js, using private SPA notifications.
  * (dispatched by the MAIN-world bridge in content/extract-bridge.js). Pure parsing lives in
  * cdl-home-core.js (CDLHomeCore).
  */
@@ -955,7 +955,7 @@ html.${ROOT_CLASS} .cdl-home-wide{max-width:min(2040px,95vw) !important;grid-tem
     S.onChange(function (next) { cfg = next; sync(); });
     var lastPath = location.pathname;
     var onRoute = function () { if (location.pathname === lastPath) return; lastPath = location.pathname; sync(); };
-    window.addEventListener('cdl:locationchange', onRoute);
+    if (window.CDLRoute) window.CDLRoute.subscribe(onRoute);
     window.addEventListener('popstate', onRoute);
     window.addEventListener('hashchange', onRoute);
     window.addEventListener('pageshow', function (e) { if (e.persisted) sync(); });

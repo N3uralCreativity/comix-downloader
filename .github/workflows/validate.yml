@@ -58,6 +58,12 @@ jobs:
       - name: Test Cloudflare pause and resume
         run: node tests/browser/cloudflare-pause.js
 
+      - name: Test chapter progress and deprecated Download All controls
+        run: node tests/browser/chapter-progress.js
+
+      - name: Test privacy boundaries and SPA navigation
+        run: node tests/browser/privacy-boundaries.js
+
       - name: Validate D1 migrations locally
         run: npx --yes wrangler@4.110.0 d1 migrations apply FLAGS_DB --local --config worker/wrangler.toml
 

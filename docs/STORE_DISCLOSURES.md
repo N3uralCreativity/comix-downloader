@@ -4,6 +4,15 @@ Use these disclosures only after the Plus API, policies, and optional permission
 
 ## Chrome Web Store - privacy disclosure
 
+Community profile badges and chapter reports are separate from Plus and off by
+default. Enabling Community badges and chapter reports sends stable salted hashes
+of public Comix account and chapter identifiers, first-seen dates, and problem
+reports to the community Worker. The hashes are pseudonymous, not anonymous;
+chapter lookups can be matched to known IDs. Disabling this setting prevents new
+community requests but does not delete earlier server records. Remote notices
+remain separate and receive no account or chapter identifiers. Do not describe
+the community service as anonymous or all free-mode networking as local-only.
+
 Comix Downloader works without an account. Existing download, reader, settings, subscription, ad-blocking, and library features remain free.
 
 Comix Downloader Plus is an optional, user-initiated service. If a user signs in to Plus, the extension transmits the following only to the dedicated Plus API:
@@ -26,13 +35,19 @@ Suggested Chrome data categories for a Plus-enabled release: personally identifi
 
 ## Firefox - optional data declarations
 
-- `personallyIdentifyingInfo`: verified account email.
+- `personallyIdentifyingInfo`: verified Plus account email; stable pseudonymous account identifiers when community sharing is enabled.
 - `authenticationInfo`: account registration, email-code verification, sessions, and the devices signed in to the account.
-- `browsingActivity`: selected watched-series, reading-progress, and downloaded-chapter metadata inside encrypted payloads.
+- `browsingActivity`: selected Plus watched-series, reading-progress, and downloaded-chapter metadata inside encrypted payloads; stable chapter identifiers checked or reported when community sharing is enabled.
 - `websiteContent`: chapter pages the user chooses to save to the Cloud Library, encrypted in the browser before upload. Firefox counts transmitted data even when it is encrypted.
 - `technicalAndInteraction`: selected extension settings plus minimal API errors, schema, revision, size, and timing needed to operate synchronization.
 
-These declarations are optional. Firefox asks for consent only during user-initiated Plus sign-in. Rejecting them leaves every free extension function available. Accounts that signed in before `websiteContent` was declared grant it with "Allow Cloud uploads" in Plus settings; until then, Cloud uploads stop before any page is fetched and nothing is sent.
+These declarations are optional. Firefox asks for consent during user-initiated
+Plus sign-in, or for personally identifying, browsing activity and technical data
+when the separate community-sharing setting is enabled. Rejecting community
+consent leaves that setting off; local downloads and local enhancements remain
+available. Accounts that signed in before `websiteContent` was declared grant it
+with "Allow Cloud uploads" in Plus settings; until then, Cloud uploads stop before
+any page is fetched and nothing is sent.
 
 ## Reviewer notes
 

@@ -576,7 +576,9 @@
     var warned = changed.filter(function (k) { return S.SCHEMA[k] && S.SCHEMA[k].warn && S.SCHEMA[k].risk !== 'none'; });
 
     var proceed = function () {
-      S.saveSettings(draft).then(function (saved) {
+      var patch = {};
+      changed.forEach(function (key) { patch[key] = draft[key]; });
+      S.patchSettings(patch).then(function (saved) {
         current = clone(saved);
         draft = clone(saved);
         syncControls();

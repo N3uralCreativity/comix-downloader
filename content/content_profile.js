@@ -3,8 +3,8 @@
  *
  * Shows a small badge next to the name on a comix profile page (`/u/{hashId}`) that, on
  * hover, says how long that person has been a Comix-Downloader user. Only other people
- * who ALSO have the extension see it. This is a built-in, always-on part of the
- * extension (no setting / not disableable) — having the extension IS the badge.
+ * who ALSO have the extension see it. Remote registration and lookup require the
+ * user's Community badges and chapter reports opt-in.
  *
  * The badge data is shared via a tiny free backend (see worker/): the background
  * service worker registers the current user (server-timestamped first-seen) and looks
@@ -12,7 +12,7 @@
  * comix id, plus a coarse date. Pure logic lives in cdl-badge-core.js (CDLBadgeCore);
  * SPA-gated like content_home.js.
  *
- * Isolated world, loaded after content_features.js, SPA-aware via `cdl:locationchange`.
+ * Isolated world, loaded after content_features.js, using private SPA notifications.
  */
 (function () {
   'use strict';
@@ -24,6 +24,7 @@
   var DEV_ID = 'cdl-dev-badge';
   var STYLE_ID = 'cdl-badge-style';
   var registered = false, curHash = null, observer = null, debounce = null, resolved = null;
+  var sharingEnabled = false;
 
   // ── tiny DOM builders ──────────────────────────────────────────────────────
   function el(tag, props, kids) {
@@ -155,12 +156,12 @@
       .catch(function () { finishResolve(hid, hid, null); });
   }
   function finishResolve(hid, canon, name) {
-    if (curHash !== hid) { resolved = null; return; }
+    if (!sharingEnabled || curHash !== hid) return;
     var sp = Core.specialBadge(canon);
     resolved = { hid: hid, canon: canon, name: name, devLabel: sp ? sp.label : '', tenure: '' };
     tryInsert();
     bg('cdlBadgeLookup', { hashId: canon }).then(function (r) {
-      if (!resolved || resolved.hid !== hid || curHash !== hid) return;
+      if (!sharingEnabled || !resolved || resolved.hid !== hid || curHash !== hid) return;
       resolved.tenure = (r && r.ok && r.first) ? Core.formatTenure(r.first) : '';
       tryInsert();
     });
@@ -168,11 +169,11 @@
 
   // Register the current user once per page load (background throttles to ~once/day).
   function registerSelf() {
-    if (registered) return;
+    if (!sharingEnabled || registered) return;
     registered = true;
     fetch('/api/v1/user', { credentials: 'include', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }) // comix's own client headers
       .then(function (r) { return (r.ok && /json/i.test(r.headers.get('content-type') || '')) ? r.json() : null; })
-      .then(function (j) { var u = j && j.result; var hid = u && (u.hashId || u.hid); if (hid) bg('cdlBadgeRegister', { hashId: String(hid) }); })
+      .then(function (j) { var u = j && j.result; var hid = u && (u.hashId || u.hid); if (sharingEnabled && hid) bg('cdlBadgeRegister', { hashId: String(hid) }); })
       .catch(function () {});
   }
 
@@ -196,22 +197,29 @@
   }
 
   function sync() {
+    if (!sharingEnabled) { teardown(); registered = false; return; }
     registerSelf();
-    // Diagnostic marker (harmless): lets `document.documentElement.dataset.cdlProfile` report
-    // whether this script is loaded and its state — active (on a profile) | idle (elsewhere).
-    try {
-      document.documentElement.setAttribute('data-cdl-profile',
-        Core.isProfilePath(location.pathname) ? 'active' : 'idle');
-    } catch (_) {}
     if (Core.isProfilePath(location.pathname)) { renderBadge(); ensureObserver(); }
     else teardown();
   }
 
   function boot() {
-    sync();
+    if (typeof CDLSettings !== 'undefined') {
+      var settingsRevision = 0;
+      CDLSettings.getSettings().then(function (cfg) {
+        if (settingsRevision) return;
+        sharingEnabled = cfg['privacy.communitySharing'] === true;
+        sync();
+      }).catch(function () {});
+      CDLSettings.onChange(function (cfg) {
+        settingsRevision++;
+        sharingEnabled = cfg['privacy.communitySharing'] === true;
+        sync();
+      });
+    }
     var lastPath = location.pathname;
     var onRoute = function () { if (location.pathname === lastPath) return; lastPath = location.pathname; curHash = null; resolved = null; removeBadges(); sync(); };
-    window.addEventListener('cdl:locationchange', onRoute);
+    if (window.CDLRoute) window.CDLRoute.subscribe(onRoute);
     window.addEventListener('popstate', onRoute);
     window.addEventListener('hashchange', onRoute);
     window.addEventListener('pageshow', function (e) { if (e.persisted) sync(); });

@@ -49,7 +49,7 @@ test('the Agenda fills a real comix page instead of opening an extension tab', (
     'card__meta', 'card__ch', 'card__time', 'card__title',
     'btn btn--sm', 'btn--primary', 'btn--soft', 'grid-updates', 'panel cdl-agenda-panel',
   ].forEach((name) => assert.ok(content.includes(name), `uses comix's ${name}`));
-  assert.match(content, /cdl:locationchange/);
+  assert.match(content, /CDLRoute\.subscribe/);
   assert.match(content, /popstate/);
   assert.strictEqual(fs.existsSync(path.join(root, 'agenda')), false, 'the old standalone Agenda page is gone');
 });

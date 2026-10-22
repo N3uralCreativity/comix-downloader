@@ -84,7 +84,7 @@ check('chapter-list failures use the extension diagnostic panel instead of an al
 check('chapter-list errors provide Retry and Close actions',
   errorSource.includes("retry.textContent = 'Retry'") && errorSource.includes("close.textContent = 'Close'"));
 check('the loader has responsive and reduced-motion styling',
-  source.includes('#cdl-all-popup[data-progress-mode="indeterminate"] .cdl-ap-bar') &&
+  source.includes(':is(#cdl-all-popup, #cdl-chapter-popup)[data-progress-mode="indeterminate"] .cdl-ap-bar') &&
   source.includes('@media (max-width: 640px)') && source.includes('@media (prefers-reduced-motion: reduce)'));
 
 console.log(`\nRESULT: ${passed} passed, ${failed} failed`);

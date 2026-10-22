@@ -302,7 +302,8 @@ check('release validator enforces localized metadata and locale inventory',
   releaseValidator.includes("$expectedLocales = @('en', 'es', 'fr', 'id', 'ja', 'pt_BR', 'th', 'vi')") &&
   releaseValidator.includes("name -eq '__MSG_extensionName__'"));
 const adblockMain = read('content/adblock-main.js');
-check('ad blocker observes cross-world setting changes', adblockMain.includes('new win.MutationObserver(syncState)') && adblockMain.includes('attributeFilter: [STATE_ATTR]'));
+check('ad blocker receives only a transient boolean setting, without DOM state',
+  adblockMain.includes("typeof event.detail === 'boolean'") && !adblockMain.includes('STATE_ATTR'));
 
 // 6. analyzeImageSequence (background.js) — gate of the CDN page-count probe.
 // It must recognize ONLY the enumerator's signature (same base/ext, exactly
