@@ -238,6 +238,23 @@ img { display: block; max-width: 100%; }
 .callout strong { color: oklch(38% 0.08 60); }
 .callout p { color: oklch(42% 0.05 65); font-size: 14.5px; }
 
+/* Service disruption notice */
+.service-notice {
+  background: #fff4dc;
+  color: #443315;
+  border-block: 1px solid #e8cc8f;
+}
+.service-notice .container { padding-top: 20px; padding-bottom: 20px; }
+.service-notice-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; }
+.service-notice h2 { color: #443315; font-size: 20px; line-height: 1.3; letter-spacing: 0; }
+.service-notice time { color: #6c542d; font: 500 11px/1.4 var(--mono); }
+.service-notice p { margin-top: 8px; max-width: 88ch; font-size: 14.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.service-notice a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.service-notice details { margin-top: 10px; }
+.service-notice summary { width: fit-content; cursor: pointer; font-size: 14px; font-weight: 700; }
+.service-notice details p { max-width: 84ch; }
+.service-notice .service-notice-billing { font-size: 13px; }
+
 /* ── footer ─────────────────────────────────────────── */
 .footer {
   border-top: 1px solid var(--line);

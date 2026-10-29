@@ -1,0 +1,32 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+const readme = read('README.md');
+assert.ok(readme.startsWith('> [!WARNING]'));
+assert.ok(readme.indexOf('full extension rework') < readme.indexOf('# Comix Downloader'));
+assert.match(readme, /including \*\*Download All\*\*/);
+assert.match(readme, /license of code already published here is unchanged/);
+assert.match(readme, /not a promise of undetectability/);
+for (const file of ['index.html', 'plus.html', 'Documentation.html']) {
+  const html = read('docs/' + file);
+  assert.ok(html.indexOf('data-service-notice') > 0 && html.indexOf('data-service-notice') < html.indexOf('<main'), file);
+  assert.match(html, /datetime="2026-10-29"/, file);
+  assert.match(html, /unusable/, file);
+  assert.match(html, /no release date yet/, file);
+  assert.match(html, /renewals have been stopped/, file);
+  assert.match(html, /current paid or trial period ends/, file);
+  assert.match(html, /account\?mode=login/, file);
+  assert.doesNotMatch(html, /account\?mode=create/, file);
+}
+const index = read('docs/index.html');
+assert.match(index, /<details>\s*<summary>Read the developer update<\/summary>/);
+assert.match(index, /not a promise that the extension will be undetectable/);
+assert.match(index, /motivation has been low lately/);
+assert.match(index, /including Download All/);
+assert.match(index, /rewritten implementation private/);
+assert.match(read('docs/site.css'), /\.service-notice h2 \{[^}]*font-size: 20px/);
+assert.match(read('docs/plus.html'), /trials will not convert to paid memberships/);
+assert.match(read('docs/plus.html'), /No automatic refund has been issued/);
+console.log('PASS prominent static rework notices, realistic privacy wording, scheduled-cancellation copy and no new-signup CTAs');

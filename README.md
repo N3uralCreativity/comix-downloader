@@ -1,3 +1,14 @@
+> [!WARNING]
+> **A full extension rework is underway. Downloads may currently fail or be unusable. There is no release date yet.**
+>
+> I'm rebuilding the extension so download controls live in a separate, extension-owned browser tab instead of being added to comix.to or comix.ws. The goal is fewer unnecessary requests, controlled pacing, and less interference with the site, not a promise of undetectability or protection from blocks.
+>
+> I'm working on this when I can, and motivation has been low lately, so progress is slow. My aim is to restore the existing features, including **Download All**, but I can't promise a date or that everything will return unchanged.
+>
+> I may keep the rewritten implementation private to limit targeted blocking. That decision is not final, and the license of code already published here is unchanged.
+>
+> **Plus is affected too. New subscriptions are temporarily unavailable, and automatic renewals have been stopped.** Existing memberships are set to end after their current paid or trial period, without ending access early. Members can [sign in to manage their account and billing](https://plus.n3uralcreativity.top/account?mode=login). Updated 29 October 2026.
+
 <div align="center">
 
 # Comix Downloader
@@ -72,7 +83,7 @@ Everything above stays free and needs no account. Plus is an optional subscripti
 - **Release Agenda**: a week view on comix.to of when the series you follow are likely to return. These are estimates, never official dates.
 - **Sync**: settings, reading progress and watched series across up to five browsers, with 30 days of restore points.
 
-30 days free, then US$1.50/month. Sign in with a code sent to your email; the website and the extension stay signed in together. [See what Plus includes](https://n3uralcreativity.top/comix-downloader/plus.html).
+**Service disruption:** New Plus subscriptions are temporarily unavailable, and existing memberships will not renew after their current paid or trial period. Members can [sign in to manage their account and billing](https://plus.n3uralcreativity.top/account?mode=login). [Plus service update](https://n3uralcreativity.top/comix-downloader/plus.html).
 
 ![Cloud Library in the browser](docs/assets/plus-cloud-library.jpg)
 

@@ -192,7 +192,7 @@ test('Plus legal and deployment documents are complete and linked', () => {
   assert.match(read('docs/plus.html'), /href="refund\.html"/);
 });
 
-test('Plus landing page uses real product captures and opens sign-up and sign-in', () => {
+test('Plus landing page keeps product captures and existing-account access during the rework', () => {
   const plus = read('docs/plus.html');
   ['plus-cloud-library.jpg', 'plus-cloud-folder.jpg', 'plus-cloud-reader.jpg', 'plus-cloud-phone.jpg',
     'plus-cloud-save.png', 'plus-agenda.jpg', 'plus-sync.png', 'plus-popup.png'].forEach((file) => {
@@ -201,9 +201,9 @@ test('Plus landing page uses real product captures and opens sign-up and sign-in
   });
   // Every capture is described for screen readers.
   (plus.match(/<img\b[^>]*>/g) || []).forEach((tag) => assert.match(tag, /\balt="[^"]{8,}"/, tag));
-  // The trial button's hover rolls its label to the reassurance line; screen readers keep the first.
-  assert.match(plus, /account\?mode=create"><span class="roll"><span>Start 30-day free trial<\/span><span aria-hidden="true">Try it free. Stop anytime.<\/span><\/span><\/a>/);
-  // The trial button wears the headline's "Read it anywhere & offline." colour; its hover shadow is the violet.
+  assert.match(plus, /account\?mode=login"><span class="roll"><span>Manage existing account<\/span><span aria-hidden="true">Account and billing<\/span><\/span><\/a>/);
+  assert.doesNotMatch(plus, /account\?mode=create/);
+  // Existing-account access keeps the same visual treatment as the previous CTA.
   const headline = /\.plus-hero h1 span \{[^}]*color: (#[0-9a-f]{6})/.exec(plus)[1];
   assert.match(plus, new RegExp(`\\.plus-hero-cta \\.btn-start \\{[^}]*background: ${headline}; color: #15171b;`));
   // Each state carries the glow and the panel shadow, so they animate apart and never blur together.
@@ -214,7 +214,7 @@ test('Plus landing page uses real product captures and opens sign-up and sign-in
   assert.match(plus, /:is\(\.btn-start, \.plus-cta-signin\):focus-visible \{ outline: 2px solid #bda7ff;/);
   assert.match(plus, /prefers-reduced-motion: reduce\) \{\s*\.plus-hero-cta \.btn-start,/);
   assert.match(plus, /account\?mode=login"[^>]*>(?:<svg[\s\S]*?<\/svg>)?Sign in</);
-  assert.match(plus, /Now available/);
+  assert.match(plus, /Service disruption/);
   // site.css gives .btn-ghost a white fill, which reads as a blank button on this dark hero.
   assert.doesNotMatch(plus, /class="btn-ghost"/);
   assert.match(plus, /\.plus-cta-signin \{[^}]*background: transparent/);
@@ -230,7 +230,8 @@ test('every site page signs in through the portal and describes the shared websi
   const documentation = read('docs/Documentation.html');
   // The server holds each account key so an email code unlocks everything: never claim end-to-end.
   assert.doesNotMatch(index + documentation + read('docs/plus.html'), /end-to-end/i);
-  assert.match(index, /account\?mode=create">Start free trial</);
+  assert.match(index, /account\?mode=login">Manage existing account</);
+  assert.doesNotMatch(index, /account\?mode=create/);
   assert.match(documentation, /id="plus-sign-in">One sign-in for the website and the extension</);
   assert.match(documentation, /Signing out on either side signs both out/);
   assert.match(documentation, /assets\/plus-sync\.png/);
