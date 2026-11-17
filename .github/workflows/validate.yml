@@ -2,7 +2,7 @@ name: Validate source
 
 on:
   push:
-    branches: [master]
+    branches: [v4]
   pull_request:
   workflow_dispatch:
 

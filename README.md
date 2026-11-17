@@ -1,3 +1,7 @@
+> [!NOTE]
+> **This `v4` branch holds the open-source code of Comix Downloader v4, the extension that is already released.** It stays here and stays MIT licensed.
+> The rewrite, **Comics Downloader**, is closed source and coming soon: see the [announcement](https://n3uralcreativity.top/comix-downloader/). The site pages linked below are no longer online; their source is in this branch's [`docs/`](docs/) folder.
+
 > [!WARNING]
 > **A full extension rework is underway. Downloads may currently fail or be unusable. There is no release date yet.**
 >
