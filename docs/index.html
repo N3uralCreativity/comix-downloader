@@ -154,6 +154,13 @@
   .card .ic svg { width: 20px; height: 20px; }
   .card h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
   .card p { margin-top: 8px; color: var(--ink-soft); font-size: 14.5px; }
+  /* only one nav item on this page: always show it, no burger */
+  .nav .nav-solo { display: flex; }
+  .nav .nav-solo .nav-signin::before { display: none; }
+  @media (max-width: 720px) {
+    .nav .nav-solo { position: static; padding: 0; border: 0; background: none; box-shadow: none; flex-direction: row; }
+    .nav .nav-solo .nav-signin { width: auto; margin: 0; padding: 8px 14px; }
+  }
   .plus-note { margin-top: 18px; font-size: 13px; color: var(--muted); }
   .card .note { margin-top: 12px; font-size: 13px; color: var(--muted); }
 
@@ -244,15 +251,7 @@
       Comics Downloader
       <span class="ver">coming soon</span>
     </a>
-    <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-    </button>
-    <nav class="nav-links" id="nav-links">
-      <a href="index.html" class="active">Announcement</a>
-      <a href="v4.html">Current extension</a>
-      <a href="Documentation.html">Documentation</a>
-      <a href="plus.html">Plus</a>
-      <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
+    <nav class="nav-links nav-solo" aria-label="Account">
     <a class="nav-signin" href="https://plus.n3uralcreativity.top/account?mode=login"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in</a></nav>
   </div>
 </header>
@@ -287,7 +286,6 @@
 
     <div class="cta-row">
       <a class="btn btn-primary" href="https://github.com/N3uralCreativity/comix-downloader/issues/41" target="_blank" rel="noopener">Read the announcement</a>
-      <a class="btn btn-film" href="v4.html">Use the current extension</a>
     </div>
   </div>
 </section>
@@ -426,11 +424,10 @@
     <div class="meanwhile reveal">
       <div>
         <h2>In the meantime</h2>
-        <p>The current Comix Downloader is still available. Its website, documentation and store pages are all still here.</p>
+        <p>The current Comix Downloader is still available on the Chrome and Firefox stores.</p>
       </div>
       <div class="cta-row">
-        <a class="btn btn-primary" href="v4.html">Current extension site</a>
-        <a class="btn btn-ghost" href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome</a>
+        <a class="btn btn-primary" href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome</a>
         <a class="btn btn-ghost" href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">Firefox</a>
       </div>
     </div>
@@ -449,13 +446,6 @@
     <span class="brand" style="font-weight:700;"><svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>Comics Downloader</span>
     <span class="sep">·</span>
     <span>© N3uralCreativity</span>
-    <div class="right">
-      <a class="changelog-btn" href="changelog.html"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>Changelog</a>
-      <a href="v4.html">Current extension</a>
-      <a href="Documentation.html">Docs</a>
-      <a href="privacy.html">Privacy</a>
-      <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
-    </div>
   </div>
 </footer>
 
