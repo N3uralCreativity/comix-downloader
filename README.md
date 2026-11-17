@@ -33,16 +33,23 @@ The new version takes the extension beyond comix.to and turns it into a proper m
 
 - **A dedicated website** with live platform status and each site's own status.
 - **A 24/7 support bot** for common issues and basic fixes, and a direct line to me when something needs a real fix in the extension.
-- **Plus, reworked**, with more features underway:
+- **Plus, reworked.** Cloud saving is still included, and more features are underway:
   - a reading list that works across every supported site
   - better reading-list import / export
   - import / export added to sites that never had it
+  - and more on the [site](https://n3uralcreativity.top/comix-downloader/)
+
+### Looking for the code?
+
+The open-source code of the current extension (Comix Downloader v4) has moved to the **[`v4` branch](https://github.com/N3uralCreativity/comix-downloader/tree/v4)**. It's still MIT licensed and still there. This `master` branch only holds this announcement and the website.
+
+[![Browse the v4 code](https://img.shields.io/badge/Browse%20the%20code-v4%20branch-2ea44f?style=for-the-badge&logo=github)](https://github.com/N3uralCreativity/comix-downloader/tree/v4)
 
 ### Good to know
 
 - **No release date yet.** It ships when it's ready.
 - **It stays a browser extension**, not a standalone app.
-- **The rewrite's code stays private.** The extension that's already released stays open source here.
+- **The rewrite's code stays private.** The extension that's already released stays open source on the [`v4` branch](https://github.com/N3uralCreativity/comix-downloader/tree/v4).
 - **Plus right now:** new subscriptions are paused and renewals are stopped. Existing access runs until the current period ends. [Manage your account](https://plus.n3uralcreativity.top/account?mode=login).
 - **Missing a site?** Suggest it on the [announcement thread](https://github.com/N3uralCreativity/comix-downloader/issues/41).
 
@@ -50,6 +57,6 @@ The new version takes the extension beyond comix.to and turns it into a proper m
 
 **[→ Head to the site for the full announcement](https://n3uralcreativity.top/comix-downloader/)**
 
-<sub>The current Comix Downloader is still on the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp">Chrome Web Store</a> and <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/">Firefox Add-ons</a>. Its previous README is kept in <a href="README-v4.md">README-v4.md</a>.</sub>
+<sub>The current Comix Downloader is still on the <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp">Chrome Web Store</a> and <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/">Firefox Add-ons</a>. Its source code and previous README are on the <a href="https://github.com/N3uralCreativity/comix-downloader/tree/v4"><code>v4</code> branch</a>.</sub>
 
 </div>
