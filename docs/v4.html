@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comix Downloader — One-click comic downloads for comix.to</title>
+<meta name="description" content="Free, open-source browser extension that adds one-click download buttons to comix.to, with comix.ws available as a fallback. Save whole series or single chapters as organized ZIP or CBZ files.">
+<meta name="theme-color" content="#774fd0">
+<link rel="canonical" href="https://n3uralcreativity.top/comix-downloader/">
+
+<!-- Open Graph / social sharing -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Comix Downloader">
+<meta property="og:title" content="Comix Downloader — One-click comic downloads for comix.to">
+<meta property="og:description" content="Free, open-source browser extension that adds one-click download buttons to comix.to, with comix.ws available as a fallback. Save whole series or single chapters as organized ZIP or CBZ files.">
+<meta property="og:url" content="https://n3uralcreativity.top/comix-downloader/">
+<meta property="og:image" content="https://n3uralcreativity.top/comix-downloader/assets/screenshot-title.jpg">
+<meta property="og:image:width" content="1125">
+<meta property="og:image:height" content="780">
+<meta property="og:image:alt" content="Comix Downloader's Download All button on a comix.to title page">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Comix Downloader — One-click comic downloads for comix.to">
+<meta name="twitter:description" content="Free, open-source browser extension that adds one-click download buttons to comix.to, with comix.ws available as a fallback. Save whole series or single chapters as organized ZIP or CBZ files.">
+<meta name="twitter:image" content="https://n3uralcreativity.top/comix-downloader/assets/screenshot-title.jpg">
+<meta name="twitter:image:alt" content="Comix Downloader's Download All button on a comix.to title page">
+<link rel="icon" type="image/png" href="assets/icon128.png?v=2">
+<link rel="stylesheet" href="site.css">
+<style>
+  /* ── Home B · editorial asymmetric ── */
+  .hero {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 56px;
+    align-items: center;
+    padding: 84px 0 72px;
+  }
+  .hero-copy .eyebrow { display: inline-block; margin-bottom: 22px; }
+  .hero-copy h1 {
+    font-size: clamp(40px, 5vw, 62px);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    font-weight: 800;
+  }
+  .hero-copy h1 em {
+    font-style: normal;
+    color: var(--accent);
+  }
+  .hero-copy p.lede {
+    margin-top: 24px;
+    font-size: 18px;
+    color: var(--ink-soft);
+    max-width: 46ch;
+  }
+  .cta-row { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+  .btn-store-pending {
+    background: var(--surface);
+    color: var(--ink-soft);
+    border-color: var(--line-strong);
+    cursor: default;
+    box-shadow: none;
+  }
+  .btn-store-pending .btn-logo { box-shadow: 0 0 0 1px var(--line); }
+  .btn-store-pending .btn-status {
+    padding: 3px 6px;
+    border: 1px solid var(--accent-line);
+    border-radius: 4px;
+    background: var(--accent-wash);
+    color: var(--accent-deep);
+    font: 600 9px/1 var(--mono);
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+  .hero-meta {
+    margin-top: 26px;
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+  }
+  .hero-meta .stat .n {
+    font: 800 22px/1 var(--font);
+    letter-spacing: -0.02em;
+  }
+  .hero-meta .stat .l {
+    font: 500 12px/1.3 var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 6px;
+  }
+
+  .hero-visual { position: relative; }
+  .hero-visual .shot { transform: rotate(0.4deg); }
+  .hero-visual .float {
+    position: absolute;
+    bottom: -30px; right: -22px; left: auto;
+    width: 210px;
+    transform: rotate(-1.4deg);
+  }
+  .hero-visual .float .shot { box-shadow: var(--shadow-lg); }
+
+  /* demo video band — the video's own black, so the video has no visible edge */
+  .demo-band {
+    --film: #06070b;
+    background: var(--film);
+    color: oklch(95% 0.008 290);
+    padding: 64px 0 72px;
+  }
+  .demo-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 26px;
+  }
+  .demo-band .eyebrow { display: inline-block; margin-bottom: 14px; color: oklch(74% 0.14 293); }
+  .demo-band h2 { font-size: 32px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.08; text-wrap: balance; }
+  .demo-len { font: 500 12.5px/1 var(--mono); color: oklch(76% 0.02 290); white-space: nowrap; }
+  .demo-video {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius);
+    background: var(--film);
+  }
+  /* site.js swaps the native control bar for one small pause/play button */
+  .demo-frame { position: relative; }
+  .demo-frame.is-enhanced .demo-video { cursor: pointer; }
+  .demo-toggle {
+    position: absolute;
+    right: 14px;
+    bottom: 14px;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border: 1px solid oklch(100% 0 0 / 0.18);
+    border-radius: 50%;
+    background: oklch(15% 0.01 290 / 0.6);
+    color: oklch(97% 0.005 290);
+    cursor: pointer;
+    opacity: 0.75;
+    transition: opacity .15s, background .15s;
+  }
+  .demo-toggle[hidden] { display: none; }
+  .demo-toggle:hover, .demo-toggle:focus-visible { opacity: 1; background: oklch(25% 0.03 290 / 0.85); }
+  .demo-toggle svg { width: 16px; height: 16px; }
+  .demo-toggle .i-pause, .demo-frame.is-playing .demo-toggle .i-play { display: none; }
+  .demo-frame.is-playing .demo-toggle .i-pause { display: block; }
+
+  /* steps / feature list */
+  .band { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface-2); }
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 40px;
+    padding: 56px 0;
+  }
+  .step .sn {
+    font: 800 15px/1 var(--mono);
+    color: #fff;
+    background: var(--accent);
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    display: grid; place-items: center;
+    margin-bottom: 16px;
+  }
+  .step h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .step p { color: var(--ink-soft); font-size: 14.5px; margin-top: 8px; }
+
+  /* split detail */
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 52px;
+    align-items: center;
+    padding: 88px 0 0;
+  }
+  .split h2 { font-size: 32px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.08; }
+  .split p { color: var(--ink-soft); font-size: 16.5px; margin-top: 16px; }
+  .split ul { list-style: none; margin-top: 22px; display: grid; gap: 12px; }
+  .split li { position: relative; padding-left: 31px; font-size: 15px; }
+  .split li svg { position: absolute; left: 0; top: 2px; width: 19px; height: 19px; color: var(--accent); }
+
+  .android-band { margin-top: 88px; }
+  .plus-band {
+    margin-top: 88px;
+    padding: 34px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    align-items: center;
+    gap: 28px;
+  }
+  .plus-band .plus-title { display: flex; align-items: center; gap: 10px; }
+  .plus-band h2 { font-size: 24px; line-height: 1.15; font-weight: 800; letter-spacing: 0; }
+  .plus-band .tag { padding: 3px 7px; border: 1px solid var(--accent-line); border-radius: 4px; background: var(--accent-wash); color: var(--accent-deep); font: 700 9px/1 var(--mono); }
+  .plus-band p { margin-top: 8px; max-width: 68ch; color: var(--ink-soft); font-size: 14.5px; }
+  .plus-band .plus-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .android-card {
+    display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+    padding: 30px 32px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  }
+  .android-card h3 { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+  .android-card p { color: var(--ink-soft); font-size: 14.5px; margin-top: 4px; max-width: 60ch; }
+  .android-card .btn { margin-left: auto; }
+
+  @media (max-width: 820px) {
+    .hero { grid-template-columns: 1fr; gap: 40px; padding-top: 56px; }
+    .hero-visual .float { display: none; }
+    .demo-band { padding: 44px 0 48px; }
+    .demo-head { flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 20px; }
+    .demo-band h2 { font-size: 26px; }
+    .steps { grid-template-columns: 1fr; gap: 28px; padding: 40px 0; }
+    .split { grid-template-columns: 1fr; gap: 32px; padding-top: 56px; }
+    .android-card .btn { margin-left: 0; }
+    .plus-band { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
+      Comix Downloader
+      <span class="ver">v4.3.6</span>
+    </a>
+    <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <nav class="nav-links" id="nav-links">
+      <a href="index.html" class="active">Home</a>
+      <a href="Documentation.html">Documentation</a>
+      <a href="plus.html">Plus</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
+    <a class="nav-signin" href="https://plus.n3uralcreativity.top/account?mode=login"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in</a></nav>
+  </div>
+</header>
+
+<aside class="service-notice" id="rework-update" aria-labelledby="rework-title" data-service-notice>
+  <div class="container">
+    <div class="service-notice-head"><h2 id="rework-title">Extension rework in progress</h2><time datetime="2026-10-29">29 October 2026</time></div>
+    <p><strong>Downloads may currently fail or be unusable.</strong> A full rework is underway, but there is no release date yet.</p>
+    <details>
+      <summary>Read the developer update</summary>
+      <p>I'm rebuilding how Comix Downloader works. Instead of adding buttons to comix.to or comix.ws, you'll open the extension and use a separate browser tab with a familiar Comix-style chapter list and download controls.</p>
+      <p>The goal is fewer unnecessary requests, controlled pacing, and less interference with Comix's pages. This is not a promise that the extension will be undetectable or that downloads cannot be blocked.</p>
+      <p>I'm working on this when I can, and motivation has been low lately, so progress is slow. My aim is to restore the existing features, including Download All, but I can't promise a date or that everything will return unchanged.</p>
+      <p>I may keep the rewritten implementation private to limit targeted blocking. That decision is not final, and the license of code already published in the repository is unchanged.</p>
+    </details>
+    <p class="service-notice-billing"><strong>Plus: new subscriptions are temporarily unavailable, and automatic renewals have been stopped.</strong> Existing access continues until the current paid or trial period ends. <a href="https://plus.n3uralcreativity.top/account?mode=login">Manage your account and billing</a>.</p>
+  </div>
+</aside>
+
+<main class="container" id="main" tabindex="-1">
+
+  <!-- hero -->
+  <section class="hero">
+    <div class="hero-copy">
+      <span class="eyebrow">Browser extension · comix.to</span>
+      <h1>Save every chapter.<br><em>Read offline.</em></h1>
+      <p class="lede">Comix Downloader adds download buttons directly to comix.to. One click grabs a whole series — zipped, foldered, and sorted. Or pick chapters one at a time. comix.ws is supported as a fallback when the primary domain is unavailable.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">
+          <span class="btn-logo">
+            <img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/firefox.svg" alt="" width="14" height="14" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          </span>
+          Firefox Add-on
+        </a>
+        <a class="btn btn-primary" href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">
+          <span class="btn-logo">
+            <img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/chrome.svg" alt="" width="14" height="14" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 9h9"/><path d="m7.5 16.5 4.5-7.5"/><path d="M16.5 16.5h-9"/></svg>
+          </span>
+          Chrome Extension
+        </a>
+        <span class="btn btn-store-pending" role="status" aria-label="Opera extension awaiting Opera moderation" title="Submitted to Opera Add-ons and awaiting moderator approval">
+          <span class="btn-logo">
+            <img src="https://cdn.jsdelivr.net/gh/gilbarbara/logos/logos/opera.svg" alt="" width="14" height="14" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="#ff1b2d" stroke-width="2.5" style="display:none"><ellipse cx="12" cy="12" rx="7" ry="9"/></svg>
+          </span>
+          Opera
+          <span class="btn-status">Awaiting moderation</span>
+        </span>
+        <a class="btn btn-ghost" href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+          GitHub
+        </a>
+      </div>
+      <div class="hero-meta">
+        <div class="stat"><div class="n">1 click</div><div class="l">Full series</div></div>
+        <div class="stat"><div class="n">.zip</div><div class="l">Organized output</div></div>
+        <div class="stat"><div class="n">MIT</div><div class="l">Open source</div></div>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <div class="shot">
+        <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">comix.to/title/…</span></div>
+        <img src="assets/screenshot-title.jpg" alt="Download All button on a comix.to title page">
+      </div>
+      <div class="float">
+        <div class="shot">
+          <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">popup</span></div>
+          <img src="assets/progress.png" alt="Download progress popup">
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- demo video: loads as it comes near and plays muted while on screen (site.js) -->
+<section class="demo-band" aria-labelledby="demo-title">
+  <div class="container">
+    <div class="demo-head">
+      <div>
+        <span class="eyebrow">See it in 15 seconds</span>
+        <h2 id="demo-title">From a title page to a sorted ZIP.</h2>
+      </div>
+      <span class="demo-len">0:15 · no sound</span>
+    </div>
+    <div class="demo-frame">
+      <video class="demo-video" data-play-in-view controls muted loop playsinline preload="none"
+        width="1280" height="720" poster="assets/demo-poster.jpg"
+        aria-label="Demo: Download All on a comix.to title page saves 235 chapters into one sorted ZIP">
+        <source src="assets/demo.mp4" type="video/mp4">
+      </video>
+      <button type="button" class="demo-toggle" aria-label="Play the demo" hidden>
+        <svg class="i-play" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+        <svg class="i-pause" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1"/><rect x="13.5" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- steps band -->
+<section class="band">
+  <div class="container">
+    <div class="steps">
+      <div class="step">
+        <div class="sn">1</div>
+        <h3>Install &amp; open a title</h3>
+        <p>Add the extension, then visit any comix.to title page. Buttons appear automatically — no setup. Use comix.ws only when the primary domain is unavailable.</p>
+      </div>
+      <div class="step">
+        <div class="sn">2</div>
+        <h3>Download All, or one</h3>
+        <p>Hit <strong>Download All</strong> for the whole series, or tap the button on any single chapter row.</p>
+      </div>
+      <div class="step">
+        <div class="sn">3</div>
+        <h3>Get a tidy ZIP</h3>
+        <p>Chapters are foldered, named, and padded inside one archive. Watch progress in the popup.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<main class="container">
+  <!-- new in v2.4: interface customization -->
+  <section class="split">
+    <div>
+      <span class="eyebrow" style="margin-bottom:18px;display:inline-block;">New in v2.4</span>
+      <h2>Now it reshapes comix.to around you.</h2>
+      <p>The biggest update yet turns the extension into a full reading companion. Build your own <strong>custom Home</strong> — choose the sections and the order — with a unified “What’s New” feed, a featured spotlight, and hover previews. Almost everything is optional and off by default.</p>
+      <ul>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Custom Home — pick &amp; reorder your sections</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Resume the exact spot, read-ahead &amp; broken-page warnings</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Private on-device reading stats, catch-up estimates &amp; recaps</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Community chapter flags + a profile tenure badge</li>
+      </ul>
+      <a class="btn btn-ghost" href="Documentation.html#whats-new" style="margin-top:6px;">See what’s new →</a>
+    </div>
+    <div class="shot">
+      <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">comix.to/home</span></div>
+      <img src="assets/screenshot-home.jpg" alt="The extension's custom Home page: hero spotlight, your reading stats and Continue Reading">
+    </div>
+  </section>
+
+  <!-- split detail -->
+  <section class="split">
+    <div>
+      <span class="eyebrow" style="margin-bottom:18px;display:inline-block;">Per-chapter control</span>
+      <h2>Every chapter, its own button.</h2>
+      <p>The extension injects a download control into each row of the chapter list, exactly where you're already looking. Grab a single update or cherry-pick a back-catalogue.</p>
+      <ul>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Inline, no extra clicks or new tabs</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Consistent naming &amp; numbering</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Works on every title page</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">chapter list</span></div>
+      <img src="assets/screenshot-chapters.png" alt="Per-chapter download buttons">
+    </div>
+  </section>
+
+  <!-- library-grade -->
+  <section class="split">
+    <div>
+      <span class="eyebrow" style="margin-bottom:18px;display:inline-block;">Library-ready</span>
+      <h2>Library-grade, and smart about it.</h2>
+      <p>Save as <strong>CBZ with ComicInfo.xml</strong> and a cover — drop-in ready for Komga, Kavita, Mihon and YACReader. Pick everything from a simple panel when you hit Download All, or just press Start.</p>
+      <ul>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> CBZ + metadata + Kavita/Komga folder layout</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Skip already-downloaded — grab only what's new</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Subscribe &amp; get notified of new chapters</li>
+        <li><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Optional push straight to your own media server</li>
+      </ul>
+    </div>
+    <div class="shot">
+      <div class="shot-chrome"><i></i><i></i><i></i><span class="addr">Download options</span></div>
+      <img src="assets/screenshot-download-options.jpg" alt="Download options panel with output format, metadata, translator filter and chapter selection">
+    </div>
+  </section>
+
+  <!-- plus -->
+  <section class="plus-band" aria-labelledby="plus-home-title">
+    <div>
+      <div class="plus-title"><h2 id="plus-home-title">Comix Downloader Plus</h2><span class="tag">SERVICE DISRUPTION</span></div>
+      <p>Plus is affected by the extension rework. New subscriptions are temporarily unavailable, and existing memberships will not renew after their current paid or trial period. Members can sign in to manage their account, billing, and saved library.</p>
+    </div>
+    <div class="plus-actions">
+      <a class="btn btn-primary" href="https://plus.n3uralcreativity.top/account?mode=login">Manage existing account</a>
+      <a class="btn btn-ghost" href="plus.html">See Plus details &rarr;</a>
+    </div>
+  </section>
+
+  <!-- mobile setup -->
+  <section class="android-band">
+    <div class="android-card">
+      <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true" style="width:46px;height:46px;flex:none;"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
+      <div>
+        <h3>Reading on mobile?</h3>
+        <p>Add the Mihon source for native offline downloads, or run the extension as-is in Kiwi Browser. Both walked through in the docs.</p>
+      </div>
+      <a class="btn btn-ghost" href="Documentation.html">Mobile setup →</a>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span class="brand" style="font-weight:700;"><svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>Comix Downloader</span>
+    <span class="sep">·</span>
+    <span>MIT © N3uralCreativity</span>
+    <div class="right">
+      <a class="status-btn" href="https://everythingmoe.com/monitor" target="_blank" rel="noopener" title="Check comix.to status on EverythingMoe"><span class="status-dot"></span>Comix Status</a>
+      <a class="changelog-btn" href="changelog.html"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>Changelog</a>
+      <a href="plus.html">Plus</a>
+      <a href="Documentation.html">Docs</a>
+      <a href="https://addons.mozilla.org/en-US/firefox/addon/comix-chapter-downloader/" target="_blank" rel="noopener">Firefox</a>
+      <a href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome</a>
+      <a href="https://github.com/N3uralCreativity/comix-downloader" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js" defer></script>
+
+</body>
+</html>
