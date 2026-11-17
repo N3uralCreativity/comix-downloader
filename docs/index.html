@@ -164,8 +164,10 @@
   .plus-note { margin-top: 18px; font-size: 13px; color: var(--muted); }
   .card .note { margin-top: 12px; font-size: 13px; color: var(--muted); }
 
-  .split { display: grid; grid-template-columns: 1.25fr 1fr; gap: 52px; align-items: center; }
+  .split { display: grid; grid-template-columns: 1fr; gap: 36px; }
+  .split > .reveal:not(.shot-wrap) { order: -1; max-width: 640px; }
   .shot-wrap { position: relative; }
+  .shot img { display: block; height: auto; } /* keep the GIF's aspect ratio; the height attribute alone would stretch it */
   .wip {
     position: absolute; top: -12px; right: 18px;
     padding: 6px 10px;
