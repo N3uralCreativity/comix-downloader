@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comics Downloader — the rewritten extension is coming soon</title>
+<title>Comics Downloader 5.0 — out on 22 November</title>
 <meta name="description" content="Official announcement: Comix Downloader is being rewritten from the ground up and renamed Comics Downloader. A multi-platform browser extension with 42 platforms already implemented and 64 more planned.">
 <meta name="theme-color" content="#06070b">
 <link rel="canonical" href="https://n3uralcreativity.top/comics-downloader/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Comics Downloader">
-<meta property="og:title" content="Comics Downloader — the rewritten extension is coming soon">
+<meta property="og:title" content="Comics Downloader 5.0 — out on 22 November">
 <meta property="og:description" content="Comix Downloader is being rewritten and renamed Comics Downloader: a multi-platform downloader that stays a lightweight browser extension.">
 <meta property="og:url" content="https://n3uralcreativity.top/comics-downloader/">
 <meta property="og:image" content="https://n3uralcreativity.top/comics-downloader/assets/v5-preview.jpg">
@@ -19,7 +19,7 @@
 <meta property="og:video" content="https://n3uralcreativity.top/comics-downloader/assets/comics-downloader-promo.mp4">
 <meta property="og:video:type" content="video/mp4">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Comics Downloader — the rewritten extension is coming soon">
+<meta name="twitter:title" content="Comics Downloader 5.0 — out on 22 November">
 <meta name="twitter:description" content="Comix Downloader is being rewritten and renamed Comics Downloader: a multi-platform downloader that stays a lightweight browser extension.">
 <meta name="twitter:image" content="https://n3uralcreativity.top/comics-downloader/assets/v5-preview.jpg">
 <link rel="icon" type="image/png" href="assets/icon128.png?v=2">
@@ -252,7 +252,7 @@
     <a class="brand" href="index.html">
       <svg class="cdl-mark" viewBox="0 0 24 24" aria-hidden="true"><polygon class="glow" points="10,2.6 14,2.6 14,8.6 18.8,8.6 12,15.8 5.2,8.6 10,8.6"/><path class="ink" d="M3 16.8 6.2 20h11.6l3.2-3.2v4.8H3z"/></svg>
       Comics Downloader
-      <span class="ver">coming soon</span>
+      <span class="ver">22 Nov</span>
     </a>
     <nav class="nav-links nav-solo" aria-label="Account">
     <a class="nav-signin" href="https://plus.n3uralcreativity.top/account?mode=login"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Sign in</a></nav>
@@ -263,9 +263,10 @@
 
 <section class="film">
   <div class="container hero">
-    <span class="badge"><span class="dot"></span>Announcement · coming soon</span>
+    <span class="badge"><span class="dot"></span>Release · 22 November, 12:00 UTC</span>
     <h1><span class="rename"><s>Comix</s> <em>Comics</em></span> Downloader is on the way.</h1>
     <p class="lede">The extension is being rewritten and renamed. More sites, the same downloads you know, and still just a browser extension.</p>
+    <p class="lede">It comes out on Chrome and Firefox on <strong><time data-release datetime="2026-11-22T12:00:00Z">Sunday 22 November at 12:00 UTC</time></strong>. <span data-countdown></span></p>
 
     <div class="stage">
       <div class="demo-frame">
@@ -408,12 +409,12 @@
   <div class="container">
     <div class="block-head reveal">
       <span class="eyebrow">Release</span>
-      <h2>Released when it's ready.</h2>
+      <h2>Out on 22 November.</h2>
     </div>
     <div class="facts">
       <div class="fact reveal">
-        <h3>No date yet</h3>
-        <p>It ships once it's good enough. No release date yet.</p>
+        <h3>Sunday 22 November, 12:00 UTC</h3>
+        <p>Chrome and Firefox first. Edge and Opera follow once their stores have reviewed it. If you already have Comix Downloader, it updates itself.</p>
       </div>
       <div class="fact reveal">
         <h3>What stays open source</h3>
@@ -421,7 +422,7 @@
       </div>
       <div class="fact reveal">
         <h3>A new name</h3>
-        <p>Comix Downloader becomes Comics Downloader, unless something better comes along before launch.</p>
+        <p>Comix Downloader becomes Comics Downloader with this release.</p>
       </div>
       <div class="fact reveal">
         <h3>Missing a site?</h3>
@@ -432,7 +433,7 @@
     <div class="meanwhile reveal">
       <div>
         <h2>In the meantime</h2>
-        <p>The current Comix Downloader is still available on the Chrome and Firefox stores.</p>
+        <p>The current Comix Downloader is on the Chrome and Firefox stores. Keep it installed: it updates to 5.0 on its own.</p>
       </div>
       <div class="cta-row">
         <a class="btn btn-primary" href="https://chromewebstore.google.com/detail/nojjjpmicodkodnnllbdolpglhlclpdp" target="_blank" rel="noopener">Chrome</a>
@@ -458,6 +459,23 @@
 </footer>
 
 <script src="site.js" defer></script>
+<script>
+  // The release time in the visitor's own time zone, and how long until it.
+  (function () {
+    var t = document.querySelector("time[data-release]"), c = document.querySelector("[data-countdown]");
+    if (!t || !c) return;
+    var at = new Date(t.dateTime);
+    t.textContent = at.toLocaleString(undefined, { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) + " your time";
+    t.title = "12:00 UTC";
+    function tick() {
+      var m = Math.ceil((at - Date.now()) / 60000);
+      if (m <= 0) { c.textContent = "It's out now."; return clearInterval(id); }
+      c.textContent = "That's in " + (m >= 60 ? Math.floor(m / 60) + " h " : "") + (m % 60) + " min.";
+    }
+    var id = setInterval(tick, 30000);
+    tick();
+  })();
+</script>
 <script>
   // Scroll reveal: progressive enhancement, skipped with reduced motion or no IntersectionObserver.
   (function () {

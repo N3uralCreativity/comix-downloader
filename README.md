@@ -2,7 +2,7 @@
 
 # Comics Downloader
 
-### Comix Downloader is being rewritten, and renamed.
+### Comix Downloader 5.0, renamed Comics Downloader, comes out on Sunday 22 November at 12:00 UTC.
 
 <a href="https://n3uralcreativity.top/comics-downloader/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/buttons/site-dark.png"><img src="assets/readme/buttons/site-light.png" width="223" height="56" alt="Visit the site: n3uralcreativity.top"></picture></a>&nbsp;&nbsp;
 <a href="https://github.com/N3uralCreativity/comics-downloader/issues/41"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/buttons/announcement-dark.png"><img src="assets/readme/buttons/announcement-light.png" width="287" height="56" alt="Read the announcement: GitHub issue #41"></picture></a>
@@ -17,7 +17,7 @@
 
 ---
 
-The new version takes the extension beyond comix.to and turns it into a proper multi-platform downloader. It's coming soon, and it stays a browser extension.
+The new version takes the extension beyond comix.to and turns it into a proper multi-platform downloader. It comes out on **Sunday 22 November at 12:00 UTC** on Chrome and Firefox, and it stays a browser extension.
 
 | **42** | **64** | **18k** |
 | :---: | :---: | :---: |
@@ -47,7 +47,7 @@ The open-source code of the current extension (Comix Downloader v4) has moved to
 
 ### Good to know
 
-- **No release date yet.** It ships when it's ready.
+- **Out on Sunday 22 November, 12:00 UTC** on Chrome and Firefox. Edge and Opera follow once their stores have reviewed it. If you already have Comix Downloader, it updates itself.
 - **It stays a browser extension**, not a standalone app.
 - **The rewrite's code stays private.** The extension that's already released stays open source on the [`v4` branch](https://github.com/N3uralCreativity/comics-downloader/tree/v4).
 - **Plus right now:** new subscriptions are paused and renewals are stopped. Existing access runs until the current period ends. [Manage your account](https://plus.n3uralcreativity.top/account?mode=login).
