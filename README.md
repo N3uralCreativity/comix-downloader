@@ -4,8 +4,8 @@
 
 ### Comix Downloader is being rewritten, and renamed.
 
-[![Visit the site](https://img.shields.io/badge/Visit%20the%20site-n3uralcreativity.top-7c4dff?style=for-the-badge)](https://n3uralcreativity.top/comics-downloader/)
-[![Read the announcement](https://img.shields.io/badge/Read%20the%20announcement-issue%20%2341-24292f?style=for-the-badge&logo=github)](https://github.com/N3uralCreativity/comics-downloader/issues/41)
+<a href="https://n3uralcreativity.top/comics-downloader/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/buttons/site-dark.png"><img src="assets/readme/buttons/site-light.png" width="223" height="56" alt="Visit the site: n3uralcreativity.top"></picture></a>&nbsp;&nbsp;
+<a href="https://github.com/N3uralCreativity/comics-downloader/issues/41"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/buttons/announcement-dark.png"><img src="assets/readme/buttons/announcement-light.png" width="287" height="56" alt="Read the announcement: GitHub issue #41"></picture></a>
 
 <a href="https://n3uralcreativity.top/comics-downloader/">
   <img src="assets/readme/comics-downloader-promo.gif" width="800" alt="Comics Downloader promo: download manga from the sites you already read, 42 sites in one extension">
@@ -43,7 +43,7 @@ The new version takes the extension beyond comix.to and turns it into a proper m
 
 The open-source code of the current extension (Comix Downloader v4) has moved to the **[`v4` branch](https://github.com/N3uralCreativity/comics-downloader/tree/v4)**. It's still MIT licensed and still there. This `master` branch only holds this announcement and the website.
 
-[![Browse the v4 code](https://img.shields.io/badge/Browse%20the%20code-v4%20branch-2ea44f?style=for-the-badge&logo=github)](https://github.com/N3uralCreativity/comics-downloader/tree/v4)
+<a href="https://github.com/N3uralCreativity/comics-downloader/tree/v4"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/buttons/v4-code-dark.png"><img src="assets/readme/buttons/v4-code-light.png" width="255" height="56" alt="Browse the v4 code: v4 branch, MIT licence"></picture></a>
 
 ### Good to know
 
