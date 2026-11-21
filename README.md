@@ -47,7 +47,7 @@ The open-source code of the current extension (Comix Downloader v4) has moved to
 
 ### Good to know
 
-- **Out on Sunday 22 November, 12:00 UTC** on Chrome and Firefox. Edge and Opera follow once their stores have reviewed it. If you already have Comix Downloader, it updates itself.
+- **Out on Sunday 22 November, 12:00 UTC** on Chrome and Firefox. Edge, Brave and Opera install it from the Chrome Web Store. If you already have Comix Downloader, it updates itself.
 - **It stays a browser extension**, not a standalone app.
 - **The rewrite's code stays private.** The extension that's already released stays open source on the [`v4` branch](https://github.com/N3uralCreativity/comics-downloader/tree/v4).
 - **Plus right now:** new subscriptions are paused and renewals are stopped. Existing access runs until the current period ends. [Manage your account](https://plus.n3uralcreativity.top/account?mode=login).
